@@ -45,7 +45,12 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
 
         await WithBluetoothConnectionAsync(device.BluetoothMacAddress, connection =>
         {
-            SGD.DO("device.restart", string.Empty, connection);
+            // "device.restart" is not a real SGD command - SGD silently no-ops unrecognized
+            // command names rather than erroring, which is why this previously appeared to
+            // "succeed" without ever actually rebooting the printer. The documented command for a
+            // soft reset is "device.reset" (confirmed against a real-world SGD trace for a
+            // ZD-series printer: `! U1 do "device.reset" ""`).
+            SGD.DO("device.reset", string.Empty, connection);
         }, cancellationToken);
     }
 
