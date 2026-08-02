@@ -20,6 +20,7 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoothPermissionService, IAppLog appLog) : IBluetoothPairingService
 {
     private static readonly TimeSpan PairingTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan UnbondTimeout = TimeSpan.FromSeconds(10);
 
     public event EventHandler<PairingCodeRequestedEventArgs>? PairingCodeRequested;
 
@@ -102,6 +103,15 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
             return;
         }
 
+        // Waits for ACTION_BOND_STATE_CHANGED to actually confirm Bond.None, rather than firing
+        // removeBond() and returning immediately - Android's unbonding is asynchronous, and starting
+        // a fresh CreateBond() (as the next pairing attempt will) while the previous bond is still
+        // mid-teardown is a known source of the Bluetooth stack falling back to a stale/legacy
+        // pairing negotiation instead of a clean SSP handshake.
+        var unbondCompletion = new TaskCompletionSource<bool>();
+        using var bondReceiver = new BondStateReceiver(device.Address!, unbondCompletion);
+        Application.Context.RegisterReceiver(bondReceiver, new IntentFilter(BluetoothDevice.ActionBondStateChanged), ReceiverFlags.NotExported);
+
         try
         {
             // BluetoothDevice.removeBond() is a hidden/SystemApi method, not part of the public
@@ -109,12 +119,31 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
             // the reference assembly), so normal apps can only reach it via Java reflection - there
             // is no public alternative for a non-privileged app to unpair a device.
             var removeBond = device.Class.GetMethod("removeBond", []);
-            removeBond?.Invoke(device, []);
-            appLog.Log("Removed Bluetooth pairing with printer.", LogLevel.Success);
+            if (removeBond is null)
+            {
+                appLog.Log("Could not remove Bluetooth pairing: removeBond is not available on this device.", LogLevel.Warning);
+                return;
+            }
+
+            removeBond.Invoke(device, []);
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(UnbondTimeout);
+            using var registration = timeoutCts.Token.Register(() => unbondCompletion.TrySetResult(false));
+
+            await unbondCompletion.Task;
+            var removed = device.BondState == Bond.None;
+            appLog.Log(
+                removed ? "Removed Bluetooth pairing with printer." : "Bluetooth pairing removal did not complete in time.",
+                removed ? LogLevel.Success : LogLevel.Warning);
         }
         catch (Exception ex)
         {
             appLog.Log($"Could not remove Bluetooth pairing: {ex.Message}", LogLevel.Warning);
+        }
+        finally
+        {
+            Application.Context.UnregisterReceiver(bondReceiver);
         }
     }
 
@@ -155,6 +184,7 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
 
             var device = GetDeviceExtra(intent);
             var variant = intent.GetIntExtra(BluetoothDevice.ExtraPairingVariant, -1);
+            owner.Log($"Printer sent a pairing request (variant {variant}).");
 
             if (variant == BluetoothDevice.PairingVariantPasskeyConfirmation)
             {
@@ -176,6 +206,17 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
                         device?.SetPairingConfirmation(accepted);
                     },
                     TaskScheduler.Default);
+            }
+            else
+            {
+                // Not the SSP numeric-comparison flow this app is built around - most likely the
+                // printer fell back to legacy PIN pairing (e.g. after a factory reset reverted its
+                // Bluetooth security settings). Left unhandled deliberately: Android's own Settings
+                // dialog still gets this broadcast since it isn't aborted here, but logging it means
+                // a "PIN error" on the printer now shows up here instead of vanishing silently.
+                owner.Log(
+                    $"Printer requested an unsupported pairing variant ({variant}) - expected SSP numeric comparison ({BluetoothDevice.PairingVariantPasskeyConfirmation}). This usually means the printer's Bluetooth security mode isn't set up for Tap & Pair.",
+                    LogLevel.Warning);
             }
         }
     }
