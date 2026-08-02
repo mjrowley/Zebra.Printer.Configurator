@@ -55,11 +55,17 @@ public sealed class NfcPrinterDiscoveryService : IPrinterDiscoveryService, INfcF
             return;
         }
 
-        var payload = ExtractNdefPayload(intent);
-        var device = NfcPrinterTagParser.TryParse(payload);
-        if (device is not null)
+        // The tag carries multiple NDEF records (the app-specific data plus a URI fallback for
+        // phones without this app), and their order isn't guaranteed, so every record's payload is
+        // tried rather than assuming the app data is record[0].
+        foreach (var payload in ExtractNdefPayloads(intent))
         {
-            PrinterDiscovered?.Invoke(this, device);
+            var device = NfcPrinterTagParser.TryParse(payload);
+            if (device is not null)
+            {
+                PrinterDiscovered?.Invoke(this, device);
+                return;
+            }
         }
     }
 
@@ -77,10 +83,25 @@ public sealed class NfcPrinterDiscoveryService : IPrinterDiscoveryService, INfcF
         {
             new IntentFilter(NfcAdapter.ActionTagDiscovered),
             new IntentFilter(NfcAdapter.ActionNdefDiscovered),
+            CreateViewIntentFilter(),
         };
 
         _adapter.EnableForegroundDispatch(_activity, pendingIntent, filters, null);
         _dispatchEnabled = true;
+    }
+
+    private static IntentFilter CreateViewIntentFilter()
+    {
+        // The printer's NFC tag also carries a URI record (Zebra's support page) as a fallback for
+        // phones without this app installed. When an NDEF message's leading record is a well-known
+        // URI type, Android's NFC dispatcher routes the tag as ACTION_VIEW instead of
+        // ACTION_NDEF_DISCOVERED - without this filter that intent falls outside foreground
+        // dispatch entirely and the OS shows its own app-chooser dialog for it instead of handing
+        // the tag to this app.
+        var filter = new IntentFilter(Intent.ActionView);
+        filter.AddDataScheme("http");
+        filter.AddDataScheme("https");
+        return filter;
     }
 
     private void TryDisableDispatch()
@@ -94,23 +115,31 @@ public sealed class NfcPrinterDiscoveryService : IPrinterDiscoveryService, INfcF
         _dispatchEnabled = false;
     }
 
-    private static string? ExtractNdefPayload(Intent intent)
+    private static IEnumerable<string> ExtractNdefPayloads(Intent intent)
     {
         // minSdk is 33, so the typed overload (added in API 33) is always available -
         // no need for the deprecated untyped GetParcelableArrayExtra(string).
         var rawMessages = intent.GetParcelableArrayExtra(NfcAdapter.ExtraNdefMessages, Java.Lang.Class.FromType(typeof(NdefMessage)));
-        if (rawMessages is not { Length: > 0 } || rawMessages[0] is not NdefMessage message)
+        if (rawMessages is not { Length: > 0 })
         {
-            return null;
+            yield break;
         }
 
-        var records = message.GetRecords();
-        if (records is not { Length: > 0 })
+        foreach (var rawMessage in rawMessages)
         {
-            return null;
-        }
+            if (rawMessage is not NdefMessage message)
+            {
+                continue;
+            }
 
-        var payloadBytes = records[0].GetPayload();
-        return payloadBytes is null ? null : Encoding.UTF8.GetString(payloadBytes);
+            foreach (var record in message.GetRecords() ?? [])
+            {
+                var payloadBytes = record.GetPayload();
+                if (payloadBytes is not null)
+                {
+                    yield return Encoding.UTF8.GetString(payloadBytes);
+                }
+            }
+        }
     }
 }
