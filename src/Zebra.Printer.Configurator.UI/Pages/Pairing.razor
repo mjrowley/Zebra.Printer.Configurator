@@ -58,8 +58,8 @@
 
     case PairingUiState.FactoryResetComplete:
         <p data-testid="factory-reset-complete">
-            Factory reset command sent. The printer will restart with default settings - you may need
-            to pair again.
+            Factory reset command sent. The printer is restarting with default settings, and its
+            Bluetooth pairing has been removed - tap the printer again to re-pair.
         </p>
         <button type="button" class="btn btn-primary" @onclick="Retry">Start Over</button>
         break;
@@ -168,6 +168,12 @@
         try
         {
             await FactoryResetService.ResetToFactoryDefaultsAsync(_discoveredDevice);
+
+            // The printer's own Bluetooth pairing key is reset along with everything else, so the
+            // phone's stored bond is now stale and would otherwise make the next pairing attempt
+            // fail - remove it so re-pairing starts clean.
+            await BluetoothPairingService.RemoveBondAsync(_discoveredDevice.BluetoothMacAddress);
+
             _state = PairingUiState.FactoryResetComplete;
         }
         catch (Exception ex)

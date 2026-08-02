@@ -99,9 +99,17 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
             // ^XA ^JUF ^XZ". It's raw ZPL, not an SGD command, so it's written directly to the
             // connection rather than going through SGD.SET/DO.
             connection.Write(Encoding.ASCII.GetBytes("^XA^JUF^XZ"));
+
+            // ^JUF alone only reloads the factory defaults into the printer's active configuration -
+            // per the same Programming Guide, that reload "is lost at power-off if not saved". A
+            // reset makes it actually take effect and persist rather than silently reverting on the
+            // next power cycle - the same soft-reset command RestartAsync uses, sent here before the
+            // connection closes rather than left for the caller to trigger separately.
+            appLog.Log("Restarting printer to apply factory defaults...");
+            SGD.DO("device.reset", string.Empty, connection);
         }, appLog, cancellationToken);
         appLog.Log(
-            "Factory reset command sent. The printer will restart with default settings - Bluetooth pairing may need to be redone.",
+            "Factory reset command sent. The printer is restarting with default settings - Bluetooth pairing may need to be redone.",
             LogLevel.Warning);
     }
 

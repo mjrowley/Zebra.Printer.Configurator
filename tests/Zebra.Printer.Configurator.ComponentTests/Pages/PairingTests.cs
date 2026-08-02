@@ -143,10 +143,11 @@ public class PairingTests : BunitContext
 
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='factory-reset-complete']")));
         Assert.Equal("AABBCCDDEEFF", _factoryResetService.LastResetMacAddress);
+        Assert.Equal("AABBCCDDEEFF", _pairingService.LastRemovedBondMacAddress);
     }
 
     [Fact]
-    public void WhenFactoryResetFails_ShowsError()
+    public void WhenFactoryResetFails_ShowsErrorAndDoesNotRemoveBond()
     {
         _factoryResetService.ShouldThrow = true;
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
@@ -156,6 +157,7 @@ public class PairingTests : BunitContext
         cut.Find("[data-testid='factory-reset-confirm']").Click();
 
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='pairing-error']")));
+        Assert.Null(_pairingService.LastRemovedBondMacAddress);
     }
 
     [Fact]
@@ -187,10 +189,18 @@ public class PairingTests : BunitContext
     {
         public Func<string, Task<bool>> EnsurePairedHandler { get; set; } = _ => Task.FromResult(true);
 
+        public string? LastRemovedBondMacAddress { get; private set; }
+
         public event EventHandler<PairingCodeRequestedEventArgs>? PairingCodeRequested;
 
         public Task<bool> EnsurePairedAsync(string macAddress, CancellationToken cancellationToken = default) =>
             EnsurePairedHandler(macAddress);
+
+        public Task RemoveBondAsync(string macAddress, CancellationToken cancellationToken = default)
+        {
+            LastRemovedBondMacAddress = macAddress;
+            return Task.CompletedTask;
+        }
 
         public void RaisePairingCodeRequested(PairingCodeRequestedEventArgs args) => PairingCodeRequested?.Invoke(this, args);
     }

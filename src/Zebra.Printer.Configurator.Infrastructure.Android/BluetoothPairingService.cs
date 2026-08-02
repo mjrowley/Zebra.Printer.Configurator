@@ -80,6 +80,44 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
         }
     }
 
+    public async Task RemoveBondAsync(string macAddress, CancellationToken cancellationToken = default)
+    {
+        var granted = await bluetoothPermissionService.EnsureGrantedAsync(cancellationToken);
+        if (!granted)
+        {
+            appLog.Log("Bluetooth permission was not granted; cannot remove pairing.", LogLevel.Warning);
+            return;
+        }
+
+        var bluetoothManager = (BluetoothManager?)Application.Context.GetSystemService(Context.BluetoothService);
+        var adapter = bluetoothManager?.Adapter
+            ?? throw new InvalidOperationException("This device does not support Bluetooth.");
+
+        var device = adapter.GetRemoteDevice(macAddress)
+            ?? throw new InvalidOperationException($"'{macAddress}' is not a valid Bluetooth address.");
+
+        if (device.BondState != Bond.Bonded)
+        {
+            appLog.Log("No existing Bluetooth pairing to remove.");
+            return;
+        }
+
+        try
+        {
+            // BluetoothDevice.removeBond() is a hidden/SystemApi method, not part of the public
+            // Android SDK (confirmed absent from Mono.Android's bound members via reflection against
+            // the reference assembly), so normal apps can only reach it via Java reflection - there
+            // is no public alternative for a non-privileged app to unpair a device.
+            var removeBond = device.Class.GetMethod("removeBond", []);
+            removeBond?.Invoke(device, []);
+            appLog.Log("Removed Bluetooth pairing with printer.", LogLevel.Success);
+        }
+        catch (Exception ex)
+        {
+            appLog.Log($"Could not remove Bluetooth pairing: {ex.Message}", LogLevel.Warning);
+        }
+    }
+
     private void RaisePairingCodeRequested(PairingCodeRequestedEventArgs args) => PairingCodeRequested?.Invoke(this, args);
 
     private void Log(string message, LogLevel level = LogLevel.Info) => appLog.Log(message, level);
