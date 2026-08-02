@@ -26,6 +26,11 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
     // appear on screen (or in anything the user might screenshot/share for support).
     private static readonly HashSet<string> SensitiveKeys = ["wlan.wpa.psk"];
 
+    // Zebra's SGD docs state getvar on wlan.wpa.psk always prints a single "*" "for protection",
+    // regardless of what was actually stored - so a verification pass can't expect the sent value
+    // (a 64-hex-digit PSK) to be echoed back; "*" itself IS the confirmation something was accepted.
+    private const string MaskedPskReadback = "*";
+
     public async Task ApplyAsync(PrinterDevice device, WlanConfiguration configuration, CancellationToken cancellationToken = default)
     {
         await EnsureBluetoothPermissionAsync(cancellationToken);
@@ -50,7 +55,9 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
             foreach (var (key, value) in commands)
             {
                 var actual = SGD.GET(key, connection);
-                var matches = string.Equals(actual, value, StringComparison.Ordinal);
+                var matches = key == "wlan.wpa.psk"
+                    ? string.Equals(actual, MaskedPskReadback, StringComparison.Ordinal)
+                    : string.Equals(actual, value, StringComparison.Ordinal);
                 appLog.Log(
                     matches
                         ? $"{key}: confirmed ({DisplayValue(key, actual)})"

@@ -23,6 +23,17 @@ namespace Zebra.Printer.Configurator.Core.Configuration;
 /// reads, so reading wlan.ssid back afterwards "confirmed" a value that was never actually driving
 /// the radio's association at all - it explains wlan.state staying blank even after every other
 /// setting (including the bogus wlan.ssid itself) read back exactly as sent.
+///
+/// wlan.security and wlan.wpa.psk had the same class of problem, confirmed against Zebra's SGD
+/// Wireless Commands reference (Programming Guide for ZPL II/ZBI 2/SGD, "wlan.security"/
+/// "wlan.wpa.psk" sections): wlan.security only accepts a documented set of numeric codes or their
+/// exact name aliases (e.g. "1"/"none", "9"/"wpa psk") - "wpa2-psk" is neither, so it was silently
+/// rejected and the printer stayed on its default ("1"/"none") even for a secured network. And
+/// wlan.wpa.psk's documented setvar value is "64 hexadecimal digits", not an ASCII passphrase - the
+/// printer accepted the raw password string under that key but it was never a valid PSK the radio
+/// could authenticate with. The docs also note getvar on wlan.wpa.psk always prints a single "*"
+/// "for protection", regardless of what's stored - so a verification pass must not expect the sent
+/// value to be echoed back for that key alone.
 /// </summary>
 public static class WlanConfigurationCommandBuilder
 {
@@ -49,8 +60,10 @@ public static class WlanConfigurationCommandBuilder
         }
         else
         {
-            commands.Add(("wlan.security", "wpa2-psk"));
-            commands.Add(("wlan.wpa.psk", configuration.Password));
+            // "wpa psk" (value 9) covers both WPA and WPA2 PSK - Zebra's docs note that configuring
+            // for WPA also allows the printer to associate on WPA2 networks.
+            commands.Add(("wlan.security", "wpa psk"));
+            commands.Add(("wlan.wpa.psk", WpaPskDeriver.DeriveHexPsk(configuration.Ssid, configuration.Password)));
         }
 
         commands.Add(("wlan.essid", configuration.Ssid));

@@ -40,12 +40,19 @@ public class WlanConfigurationCommandBuilderTests
     }
 
     [Fact]
-    public void BuildSetCommands_ForSecuredNetwork_SetsWpa2PskSecurityAndPassphrase()
+    public void BuildSetCommands_ForSecuredNetwork_SetsWpaPskSecurityAndDerivedHexPassphrase()
     {
+        // "wpa2-psk" is not a value wlan.security recognizes at all (confirmed against Zebra's SGD
+        // Wireless Commands reference: the documented values are numeric codes 1-15 or their exact
+        // name aliases, e.g. "9"/"wpa psk") - it was silently rejected and the printer stayed on its
+        // default ("none") even though the command "succeeded". Likewise wlan.wpa.psk's documented
+        // setvar value is 64 hexadecimal digits, not the raw ASCII passphrase.
         var commands = WlanConfigurationCommandBuilder.BuildSetCommands(SecuredConfiguration);
 
-        Assert.Contains(("wlan.security", "wpa2-psk"), commands);
-        Assert.Contains(("wlan.wpa.psk", SecuredConfiguration.Password), commands);
+        Assert.Contains(("wlan.security", "wpa psk"), commands);
+        Assert.Contains(
+            ("wlan.wpa.psk", WpaPskDeriver.DeriveHexPsk(SecuredConfiguration.Ssid, SecuredConfiguration.Password)),
+            commands);
         Assert.DoesNotContain(commands, c => c.Key == "wlan.password");
     }
 
