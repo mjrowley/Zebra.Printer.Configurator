@@ -32,12 +32,14 @@ public static class MauiProgram
 		builder.Services.AddSingleton<IBluetoothPermissionService, BluetoothPermissionService>();
 		builder.Services.AddSingleton<IBluetoothPairingService, BluetoothPairingService>();
 
-		// Single instance backs all three interfaces: configuring the printer, restarting it, and
-		// factory-resetting it all happen over the same kind of Bluetooth connection.
+		// Single instance backs all four interfaces: configuring the printer, restarting it,
+		// factory-resetting it, and reading its configuration back all happen over the same kind of
+		// Bluetooth connection.
 		builder.Services.AddSingleton<LinkOsPrinterConfigurationService>();
 		builder.Services.AddSingleton<IPrinterConfigurationService>(sp => sp.GetRequiredService<LinkOsPrinterConfigurationService>());
 		builder.Services.AddSingleton<IPrinterRestartService>(sp => sp.GetRequiredService<LinkOsPrinterConfigurationService>());
 		builder.Services.AddSingleton<IPrinterFactoryResetService>(sp => sp.GetRequiredService<LinkOsPrinterConfigurationService>());
+		builder.Services.AddSingleton<IPrinterConfigurationReader>(sp => sp.GetRequiredService<LinkOsPrinterConfigurationService>());
 		builder.Services.AddSingleton<IPrinterConnectivityTestService, LinkOsConnectivityTestService>();
 
 		// Both singletons: single-window app, one pairing attempt in flight at a time.

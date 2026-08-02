@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Bunit;
+using NSubstitute;
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Models;
 using Zebra.Printer.Configurator.Core.Workflow;
@@ -12,12 +13,14 @@ public class PairingTests : BunitContext
     private readonly FakePrinterDiscoveryService _discoveryService = new();
     private readonly FakeBluetoothPairingService _pairingService = new();
     private readonly FakePrinterFactoryResetService _factoryResetService = new();
+    private readonly IPrinterConfigurationReader _configurationReader = Substitute.For<IPrinterConfigurationReader>();
 
     public PairingTests()
     {
         Services.AddSingleton<IPrinterDiscoveryService>(_discoveryService);
         Services.AddSingleton<IBluetoothPairingService>(_pairingService);
         Services.AddSingleton<IPrinterFactoryResetService>(_factoryResetService);
+        Services.AddSingleton(_configurationReader);
         Services.AddSingleton(new PairingSession());
     }
 
@@ -133,6 +136,15 @@ public class PairingTests : BunitContext
     }
 
     [Fact]
+    public void ReadyState_ShowsCheckConfigurationButton()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        var cut = RenderWithReadyPrinter(device);
+
+        Assert.NotNull(cut.Find("[data-testid='check-configuration-button']"));
+    }
+
+    [Fact]
     public void WhileFactoryResetIsSelected_ConfigurePrinterButtonIsDisabled()
     {
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
@@ -141,6 +153,7 @@ public class PairingTests : BunitContext
         cut.Find("[data-testid='factory-reset-button']").Click();
 
         Assert.True(cut.Find("button").HasAttribute("disabled")); // "Configure Printer" - first button
+        Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled"));
     }
 
     [Fact]

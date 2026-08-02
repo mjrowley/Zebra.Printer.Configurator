@@ -37,6 +37,7 @@
         </p>
         <button type="button" class="btn btn-primary" disabled="@_factoryResetActive" @onclick="Continue">Configure Printer</button>
         <FactoryResetPanel Device="_discoveredDevice!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
+        <CheckConfigurationPanel Device="_discoveredDevice!" Disabled="_factoryResetActive" />
         break;
 
     case PairingUiState.Failed:

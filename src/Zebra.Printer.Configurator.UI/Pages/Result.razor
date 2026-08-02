@@ -11,6 +11,7 @@
     </p>
     <button type="button" class="btn btn-primary" disabled="@_factoryResetActive" @onclick="Reconfigure">Reconfigure Printer</button>
     <FactoryResetPanel Device="Session.Device!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
+    <CheckConfigurationPanel Device="Session.Device!" Disabled="_factoryResetActive" />
 }
 else
 {

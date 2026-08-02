@@ -23,6 +23,7 @@ public class ResultTests : BunitContext
 
     private readonly IPrinterFactoryResetService _factoryResetService = Substitute.For<IPrinterFactoryResetService>();
     private readonly IBluetoothPairingService _pairingService = Substitute.For<IBluetoothPairingService>();
+    private readonly IPrinterConfigurationReader _configurationReader = Substitute.For<IPrinterConfigurationReader>();
 
     private async Task<(PairAndConfigureWorkflow Workflow, PairingSession Session)> RunWorkflowToCompletionAsync(ConnectionTestResult connectivityResult)
     {
@@ -39,6 +40,7 @@ public class ResultTests : BunitContext
         Services.AddSingleton(session);
         Services.AddSingleton(_factoryResetService);
         Services.AddSingleton(_pairingService);
+        Services.AddSingleton(_configurationReader);
 
         return (workflow, session);
     }
@@ -68,7 +70,7 @@ public class ResultTests : BunitContext
     }
 
     [Fact]
-    public async Task SucceededWorkflow_ShowsReconfigureAndFactoryResetButtons()
+    public async Task SucceededWorkflow_ShowsReconfigureFactoryResetAndCheckConfigurationButtons()
     {
         await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
 
@@ -76,6 +78,7 @@ public class ResultTests : BunitContext
 
         Assert.Contains("Reconfigure Printer", cut.Markup);
         Assert.NotNull(cut.Find("[data-testid='factory-reset-button']"));
+        Assert.NotNull(cut.Find("[data-testid='check-configuration-button']"));
     }
 
     [Fact]
@@ -100,6 +103,17 @@ public class ResultTests : BunitContext
         cut.Find("[data-testid='factory-reset-button']").Click();
 
         Assert.True(cut.Find("button").HasAttribute("disabled")); // "Reconfigure Printer" - first button
+    }
+
+    [Fact]
+    public async Task WhileFactoryResetIsSelected_CheckConfigurationButtonIsDisabled()
+    {
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+        var cut = Render<Result>();
+
+        cut.Find("[data-testid='factory-reset-button']").Click();
+
+        Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled"));
     }
 
     [Fact]

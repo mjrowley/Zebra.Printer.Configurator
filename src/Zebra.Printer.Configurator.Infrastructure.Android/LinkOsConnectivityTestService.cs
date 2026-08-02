@@ -1,4 +1,5 @@
 using Zebra.Printer.Configurator.Core.Abstractions;
+using Zebra.Printer.Configurator.Core.Configuration;
 using Zebra.Printer.Configurator.Core.Connectivity;
 using Zebra.Printer.Configurator.Core.Models;
 using Zebra.Sdk.Comm;
@@ -23,22 +24,6 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog) : IPrinterConn
     private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(3);
-
-    // wlan.wpa.psk is included so a diagnosing user can at least see whether *something* was
-    // stored (length > 0) without the actual WiFi password appearing on screen.
-    private static readonly string[] DiagnosticKeys =
-    [
-        "wlan.enable",
-        "wlan.security",
-        "wlan.essid",
-        "wlan.wpa.psk",
-        "wlan.ip.protocol",
-        "wlan.ip.default_addr_enable",
-        "wlan.ip.addr",
-        "wlan.ip.netmask",
-        "wlan.ip.gateway",
-        "wlan.state",
-    ];
 
     public async Task<ConnectionTestResult> TestConnectionAsync(PrinterDevice device, WlanConfiguration configuration, CancellationToken cancellationToken = default)
     {
@@ -91,7 +76,7 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog) : IPrinterConn
         {
             await BluetoothConnectionRunner.RunAsync(device.BluetoothMacAddress, connection =>
             {
-                foreach (var key in DiagnosticKeys)
+                foreach (var key in WlanDiagnosticKeys.All)
                 {
                     var value = SGD.GET(key, connection);
                     var displayValue = key == "wlan.wpa.psk"
