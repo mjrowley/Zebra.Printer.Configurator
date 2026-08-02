@@ -20,7 +20,7 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
 {
     private const int ConnectionAttempts = 3;
     private static readonly TimeSpan ConnectionRetryDelay = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan BondTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan BondTimeout = TimeSpan.FromSeconds(15);
 
     public async Task ApplyAsync(PrinterDevice device, WlanConfiguration configuration, CancellationToken cancellationToken = default)
     {
@@ -64,11 +64,13 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
 
     /// <summary>
     /// The app's whole point is that the user shouldn't have to separately pair the printer via
-    /// Android's Bluetooth settings before tapping NFC, so this establishes the OS-level bond
-    /// programmatically. Skipping this is the most likely cause of BluetoothConnection.Open()
-    /// failing with "read failed, socket might closed or timeout" - an unbonded RFCOMM connection
-    /// to many Bluetooth Classic peripherals is unreliable even when the socket-level connect
-    /// nominally succeeds.
+    /// Android's Bluetooth settings before tapping NFC, so this attempts the OS-level bond
+    /// programmatically as a best effort. It deliberately doesn't throw on failure/timeout: many
+    /// Zebra SPP printers accept RFCOMM connections without a prior OS-level bond at all, so a
+    /// bonding attempt that doesn't succeed (or that the printer doesn't respond to the way a
+    /// standard Bluetooth peripheral would) shouldn't block the actual connection attempt -
+    /// WithBluetoothConnectionAsync's retry loop below is the real, definitive test of whether the
+    /// printer is reachable.
     /// </summary>
     private static async Task EnsureBondedAsync(string macAddress, CancellationToken cancellationToken)
     {
@@ -83,12 +85,7 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
             return;
         }
 
-        var bonded = await WaitForBondAsync(device, cancellationToken);
-        if (!bonded)
-        {
-            throw new InvalidOperationException(
-                $"Could not pair with the printer ({macAddress}). Make sure it's powered on and in range, then try again.");
-        }
+        await WaitForBondAsync(device, cancellationToken);
     }
 
     private static async Task<bool> WaitForBondAsync(BluetoothDevice device, CancellationToken cancellationToken)

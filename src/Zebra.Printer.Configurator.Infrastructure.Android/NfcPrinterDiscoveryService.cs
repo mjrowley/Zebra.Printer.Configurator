@@ -10,10 +10,14 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 
 /// <summary>
 /// NFC discovery via NfcAdapter foreground dispatch, modeled on Zebra's own
-/// LinkOS-Android-Samples "TapScanConnectTCPBT" sample. <see cref="StartListening"/>/
-/// <see cref="StopListening"/> (called from the Pairing page's lifecycle) control whether tag reads
-/// are acted on; <see cref="INfcForegroundDispatch"/> (called from MainActivity) tracks whether the
-/// Activity is actually resumed, since Android only allows foreground dispatch to be enabled then.
+/// LinkOS-Android-Samples "TapScanConnectTCPBT" sample. Foreground dispatch itself is armed purely
+/// by <see cref="INfcForegroundDispatch"/>'s Activity-resumed/paused lifecycle (called from
+/// MainActivity), independent of <see cref="StartListening"/>/<see cref="StopListening"/> (called
+/// from the Pairing page's lifecycle) - MAUI's BlazorWebView takes noticeably longer to reach the
+/// Pairing page's OnInitialized than Activity.OnResume fires, so gating dispatch registration on
+/// StartListening left a real window on cold start where a tap fell outside dispatch entirely and
+/// hit Android's normal tag-handling chooser instead of this app. StartListening/StopListening
+/// still gate whether a discovered tag is actually acted on, via the check in OnNewIntent.
 /// </summary>
 public sealed class NfcPrinterDiscoveryService : IPrinterDiscoveryService, INfcForegroundDispatch
 {
@@ -27,13 +31,11 @@ public sealed class NfcPrinterDiscoveryService : IPrinterDiscoveryService, INfcF
     public void StartListening()
     {
         _isListening = true;
-        TryEnableDispatch();
     }
 
     public void StopListening()
     {
         _isListening = false;
-        TryDisableDispatch();
     }
 
     public void OnActivityResumed(Activity activity)
@@ -71,7 +73,7 @@ public sealed class NfcPrinterDiscoveryService : IPrinterDiscoveryService, INfcF
 
     private void TryEnableDispatch()
     {
-        if (_dispatchEnabled || !_isListening || _activity is null || _adapter is null)
+        if (_dispatchEnabled || _activity is null || _adapter is null)
         {
             return;
         }
