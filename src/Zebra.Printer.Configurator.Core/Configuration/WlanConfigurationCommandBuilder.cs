@@ -11,13 +11,18 @@ namespace Zebra.Printer.Configurator.Core.Configuration;
 /// Commands) and in reading the printer's own settings back over Bluetooth after a failed connect,
 /// rather than continued assumption: wlan.password isn't a real SGD key (the WPA/WPA2 passphrase
 /// key is wlan.wpa.psk), static IP values need wlan.ip.protocol=permanent to actually take effect
-/// (not just be accepted), and - confirmed by reading back wlan.ssid/wlan.security/wlan.wpa.psk as
-/// still their untouched defaults after a full apply - wlan.enable must be turned on BEFORE the
-/// radio-specific settings (security/PSK/SSID) are sent, not after: those are properties of the
-/// radio, and the printer silently ignores them while the radio is off, whereas the IP fields are
-/// just stored network-stack values that get accepted regardless of radio state. The printer's own
-/// reported default for an unsecured network is "none", not the "open" this previously sent -
-/// likely rejected as an unrecognized value on this firmware, same silent-ignore failure mode.
+/// (not just be accepted), wlan.enable must be turned on BEFORE the radio-specific settings
+/// (security/PSK/network name) are sent since the printer silently ignores those while the radio is
+/// off, and the printer's own reported default for an unsecured network is "none", not "open".
+///
+/// wlan.ssid (used until this point) is not a real SGD command either - Zebra's own troubleshooting
+/// docs confirm the actual key is wlan.essid: "If the wireless network name isn't specified, users
+/// must set it using the command: `! U1 setvar "wlan.essid" "value"`". This is the same
+/// silently-accepted-but-inert failure mode as wlan.password/device.restart before it: SGD.SET on an
+/// unrecognized key just stores it under that name without connecting it to anything the radio
+/// reads, so reading wlan.ssid back afterwards "confirmed" a value that was never actually driving
+/// the radio's association at all - it explains wlan.state staying blank even after every other
+/// setting (including the bogus wlan.ssid itself) read back exactly as sent.
 /// </summary>
 public static class WlanConfigurationCommandBuilder
 {
@@ -48,7 +53,7 @@ public static class WlanConfigurationCommandBuilder
             commands.Add(("wlan.wpa.psk", configuration.Password));
         }
 
-        commands.Add(("wlan.ssid", configuration.Ssid));
+        commands.Add(("wlan.essid", configuration.Ssid));
         commands.Add(("wlan.ip.addr", configuration.StaticIpAddress));
         commands.Add(("wlan.ip.netmask", configuration.Netmask));
         commands.Add(("wlan.ip.gateway", configuration.Gateway));

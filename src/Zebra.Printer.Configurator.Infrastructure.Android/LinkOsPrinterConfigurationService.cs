@@ -33,11 +33,29 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
         appLog.Log("Connecting to printer to apply WiFi configuration...");
         await BluetoothConnectionRunner.RunAsync(device.BluetoothMacAddress, connection =>
         {
-            foreach (var (key, value) in WlanConfigurationCommandBuilder.BuildSetCommands(configuration))
+            var commands = WlanConfigurationCommandBuilder.BuildSetCommands(configuration);
+
+            foreach (var (key, value) in commands)
             {
-                var loggedValue = SensitiveKeys.Contains(key) ? "********" : value;
-                appLog.Log($"Setting {key} = {loggedValue}");
+                appLog.Log($"Setting {key} = {DisplayValue(key, value)}");
                 SGD.SET(key, value, connection);
+            }
+
+            // Read every value straight back and compare against what was sent, rather than
+            // trusting that SET succeeding means it stuck - SGD.SET on a key the printer doesn't
+            // actually recognize succeeds silently and just stores it inertly under that name,
+            // which is exactly how wlan.password/device.restart/wlan.ssid all looked "confirmed"
+            // on readback while never doing anything.
+            appLog.Log("Verifying settings were saved...");
+            foreach (var (key, value) in commands)
+            {
+                var actual = SGD.GET(key, connection);
+                var matches = string.Equals(actual, value, StringComparison.Ordinal);
+                appLog.Log(
+                    matches
+                        ? $"{key}: confirmed ({DisplayValue(key, actual)})"
+                        : $"{key}: MISMATCH - sent '{DisplayValue(key, value)}', printer has '{DisplayValue(key, actual)}'",
+                    matches ? LogLevel.Success : LogLevel.Warning);
             }
         }, appLog, cancellationToken);
         appLog.Log("WiFi configuration applied.", LogLevel.Success);
@@ -59,6 +77,11 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
         }, appLog, cancellationToken);
         appLog.Log("Restart command sent.", LogLevel.Success);
     }
+
+    // Redacts to a length rather than a fixed mask, so a mismatch between sent/read-back length is
+    // still visible in the log without the actual WiFi password ever appearing on screen.
+    private static string DisplayValue(string key, string? value) =>
+        SensitiveKeys.Contains(key) ? $"<redacted, length {value?.Length ?? 0}>" : value ?? "<null>";
 
     private async Task EnsureBluetoothPermissionAsync(CancellationToken cancellationToken)
     {

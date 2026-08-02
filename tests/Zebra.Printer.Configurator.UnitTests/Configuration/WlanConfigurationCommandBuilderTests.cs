@@ -65,7 +65,7 @@ public class WlanConfigurationCommandBuilderTests
     {
         var commands = WlanConfigurationCommandBuilder.BuildSetCommands(SecuredConfiguration);
 
-        Assert.Contains(("wlan.ssid", SecuredConfiguration.Ssid), commands);
+        Assert.Contains(("wlan.essid", SecuredConfiguration.Ssid), commands);
         Assert.Contains(("wlan.ip.addr", SecuredConfiguration.StaticIpAddress), commands);
         Assert.Contains(("wlan.ip.netmask", SecuredConfiguration.Netmask), commands);
         Assert.Contains(("wlan.ip.gateway", SecuredConfiguration.Gateway), commands);
@@ -98,7 +98,7 @@ public class WlanConfigurationCommandBuilderTests
         var enableIndex = commands.ToList().FindIndex(c => c.Key == "wlan.enable");
         var securityIndex = commands.ToList().FindIndex(c => c.Key == "wlan.security");
         var pskIndex = commands.ToList().FindIndex(c => c.Key == "wlan.wpa.psk");
-        var ssidIndex = commands.ToList().FindIndex(c => c.Key == "wlan.ssid");
+        var ssidIndex = commands.ToList().FindIndex(c => c.Key == "wlan.essid");
 
         Assert.True(enableIndex < securityIndex);
         Assert.True(enableIndex < pskIndex);

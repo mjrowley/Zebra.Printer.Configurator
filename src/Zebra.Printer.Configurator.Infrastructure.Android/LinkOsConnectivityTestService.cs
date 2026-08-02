@@ -30,7 +30,7 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog) : IPrinterConn
     [
         "wlan.enable",
         "wlan.security",
-        "wlan.ssid",
+        "wlan.essid",
         "wlan.wpa.psk",
         "wlan.ip.protocol",
         "wlan.ip.default_addr_enable",
