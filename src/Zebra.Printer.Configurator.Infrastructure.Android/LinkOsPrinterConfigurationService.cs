@@ -115,6 +115,21 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
             // connection rather than going through SGD.SET/DO.
             connection.Write(Encoding.ASCII.GetBytes("^XA^JUF^XZ"));
 
+            // Confirmed on-device: ^JUF alone leaves WLAN and Bluetooth pairing state untouched -
+            // consistent with the Programming Guide's own notes throughout the wireless SGD
+            // reference that certain settings are unaffected by "^JUF ... and device.restore_defaults".
+            // device.restore_defaults resets one SGD branch wholesale; "wlan" is one of its three
+            // documented branches (the others being "ip" and "internal_wired").
+            appLog.Log("Restoring network settings to factory defaults...");
+            SGD.DO("device.restore_defaults", "wlan", connection);
+
+            // Clears the printer's own memory of previously-paired devices ("Deletes all information
+            // related to previous Bluetooth pairing events from the printer", per the SGD Network
+            // Commands reference) - the host side of the same stale pairing state is cleared
+            // separately by IBluetoothPairingService.RemoveBondAsync after this call returns.
+            appLog.Log("Clearing Bluetooth pairing cache...");
+            SGD.DO("bluetooth.clear_bonding_cache", string.Empty, connection);
+
             // ^JUF alone only reloads the factory defaults into the printer's active configuration -
             // per the same Programming Guide, that reload "is lost at power-off if not saved". A
             // reset makes it actually take effect and persist rather than silently reverting on the
@@ -124,7 +139,7 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
             SGD.DO("device.reset", string.Empty, connection);
         }, appLog, cancellationToken);
         appLog.Log(
-            "Factory reset command sent. The printer is restarting with default settings - Bluetooth pairing may need to be redone.",
+            "Factory reset command sent. The printer is restarting with default network and Bluetooth settings - Bluetooth pairing may need to be redone.",
             LogLevel.Warning);
     }
 

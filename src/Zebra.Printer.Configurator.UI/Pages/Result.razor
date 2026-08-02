@@ -9,8 +9,8 @@
     <p data-testid="result-success">
         The printer is now connected to @Session.Configuration?.Ssid at @Session.Configuration?.StaticIpAddress.
     </p>
-    <button type="button" class="btn btn-primary" @onclick="Reconfigure">Reconfigure Printer</button>
-    <FactoryResetPanel Device="Session.Device!" OnFinished="Retry" />
+    <button type="button" class="btn btn-primary" disabled="@_factoryResetActive" @onclick="Reconfigure">Reconfigure Printer</button>
+    <FactoryResetPanel Device="Session.Device!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
 }
 else
 {
@@ -20,6 +20,8 @@ else
 }
 
 @code {
+    private bool _factoryResetActive;
+
     protected override void OnInitialized()
     {
         if (Workflow.State is not (PairingWorkflowState.Succeeded or PairingWorkflowState.Failed))
@@ -28,7 +30,17 @@ else
         }
     }
 
-    private void Reconfigure() => Navigation.NavigateTo("/configure");
+    private void Reconfigure()
+    {
+        if (_factoryResetActive)
+        {
+            return;
+        }
+
+        Navigation.NavigateTo("/configure");
+    }
+
+    private void OnFactoryResetActiveChanged(bool active) => _factoryResetActive = active;
 
     private void Retry()
     {

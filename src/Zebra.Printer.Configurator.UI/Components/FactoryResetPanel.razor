@@ -7,7 +7,7 @@
 @switch (_state)
 {
     case State.Idle:
-        <button type="button" class="btn btn-outline-danger" data-testid="factory-reset-button" @onclick="RequestFactoryReset">Factory Reset</button>
+        <button type="button" class="btn btn-outline-danger" data-testid="factory-reset-button" @onclick="() => SetState(State.Confirming)">Factory Reset</button>
         break;
 
     case State.Confirming:
@@ -16,7 +16,7 @@
             the current Bluetooth pairing. Continue?
         </p>
         <button type="button" class="btn btn-danger" data-testid="factory-reset-confirm" @onclick="ConfirmFactoryReset">Factory Reset</button>
-        <button type="button" class="btn btn-secondary" data-testid="factory-reset-cancel" @onclick="CancelFactoryReset">Cancel</button>
+        <button type="button" class="btn btn-secondary" data-testid="factory-reset-cancel" @onclick="() => SetState(State.Idle)">Cancel</button>
         break;
 
     case State.Resetting:
@@ -57,16 +57,20 @@
     [Parameter]
     public EventCallback OnFinished { get; set; }
 
+    /// <summary>
+    /// Raised whenever this panel moves out of (true) or back into (false) its idle state, so a
+    /// host page can disable actions that would race a Bluetooth connection this panel is using, or
+    /// that assume a printer configuration this panel might be about to wipe.
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> IsActiveChanged { get; set; }
+
     private State _state = State.Idle;
     private string? _errorMessage;
 
-    private void RequestFactoryReset() => _state = State.Confirming;
-
-    private void CancelFactoryReset() => _state = State.Idle;
-
     private async Task ConfirmFactoryReset()
     {
-        _state = State.Resetting;
+        await SetState(State.Resetting);
 
         try
         {
@@ -77,12 +81,24 @@
             // fail - remove it so re-pairing starts clean.
             await BluetoothPairingService.RemoveBondAsync(Device.BluetoothMacAddress);
 
-            _state = State.Complete;
+            await SetState(State.Complete);
         }
         catch (Exception ex)
         {
             _errorMessage = $"Factory reset failed: {ex.Message}";
-            _state = State.Failed;
+            await SetState(State.Failed);
+        }
+    }
+
+    private async Task SetState(State state)
+    {
+        var wasActive = _state != State.Idle;
+        _state = state;
+        var isActive = _state != State.Idle;
+
+        if (wasActive != isActive)
+        {
+            await IsActiveChanged.InvokeAsync(isActive);
         }
     }
 }

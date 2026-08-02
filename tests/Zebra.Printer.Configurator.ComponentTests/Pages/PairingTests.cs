@@ -133,6 +133,29 @@ public class PairingTests : BunitContext
     }
 
     [Fact]
+    public void WhileFactoryResetIsSelected_ConfigurePrinterButtonIsDisabled()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        var cut = RenderWithReadyPrinter(device);
+
+        cut.Find("[data-testid='factory-reset-button']").Click();
+
+        Assert.True(cut.Find("button").HasAttribute("disabled")); // "Configure Printer" - first button
+    }
+
+    [Fact]
+    public void AfterCancellingFactoryReset_ConfigurePrinterButtonIsEnabledAgain()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        var cut = RenderWithReadyPrinter(device);
+        cut.Find("[data-testid='factory-reset-button']").Click();
+
+        cut.Find("[data-testid='factory-reset-cancel']").Click();
+
+        Assert.False(cut.Find("button").HasAttribute("disabled"));
+    }
+
+    [Fact]
     public void ConfirmingFactoryReset_CallsServiceWithDiscoveredDeviceAndShowsCompletion()
     {
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };

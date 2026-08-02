@@ -93,4 +93,48 @@ public class FactoryResetPanelTests : BunitContext
 
         Assert.True(finishedRaised);
     }
+
+    [Fact]
+    public void ClickingFactoryReset_RaisesIsActiveChangedTrue()
+    {
+        var activeStates = new List<bool>();
+        var cut = Render<FactoryResetPanel>(p => p
+            .Add(c => c.Device, Device)
+            .Add(c => c.IsActiveChanged, active => activeStates.Add(active)));
+
+        cut.Find("[data-testid='factory-reset-button']").Click();
+
+        Assert.Equal([true], activeStates);
+    }
+
+    [Fact]
+    public void CancellingConfirmation_RaisesIsActiveChangedFalse()
+    {
+        var activeStates = new List<bool>();
+        var cut = Render<FactoryResetPanel>(p => p
+            .Add(c => c.Device, Device)
+            .Add(c => c.IsActiveChanged, active => activeStates.Add(active)));
+        cut.Find("[data-testid='factory-reset-button']").Click();
+
+        cut.Find("[data-testid='factory-reset-cancel']").Click();
+
+        Assert.Equal([true, false], activeStates);
+    }
+
+    [Fact]
+    public void ConfirmingReset_StaysActiveThroughCompletion()
+    {
+        var activeStates = new List<bool>();
+        var cut = Render<FactoryResetPanel>(p => p
+            .Add(c => c.Device, Device)
+            .Add(c => c.IsActiveChanged, active => activeStates.Add(active)));
+        cut.Find("[data-testid='factory-reset-button']").Click();
+
+        cut.Find("[data-testid='factory-reset-confirm']").Click();
+
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='factory-reset-complete']")));
+        // Only one "became active" transition (Idle -> Confirming) - Resetting and Complete are
+        // still non-idle, so no further IsActiveChanged events fire until something returns to Idle.
+        Assert.Equal([true], activeStates);
+    }
 }

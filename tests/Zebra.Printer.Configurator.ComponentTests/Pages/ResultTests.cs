@@ -92,6 +92,17 @@ public class ResultTests : BunitContext
     }
 
     [Fact]
+    public async Task WhileFactoryResetIsSelected_ReconfigurePrinterButtonIsDisabled()
+    {
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+        var cut = Render<Result>();
+
+        cut.Find("[data-testid='factory-reset-button']").Click();
+
+        Assert.True(cut.Find("button").HasAttribute("disabled")); // "Reconfigure Printer" - first button
+    }
+
+    [Fact]
     public async Task ClickingRetry_ResetsSessionAndNavigatesToPairing()
     {
         var (_, session) = await RunWorkflowToCompletionAsync(ConnectionTestResult.Failed("Printer did not respond."));

@@ -35,8 +35,8 @@
         <p data-testid="discovered-device">
             Printer found@(_discoveredDevice?.SerialNumber is not null ? $" (serial {_discoveredDevice.SerialNumber})" : ".")
         </p>
-        <button type="button" class="btn btn-primary" @onclick="Continue">Configure Printer</button>
-        <FactoryResetPanel Device="_discoveredDevice!" OnFinished="Retry" />
+        <button type="button" class="btn btn-primary" disabled="@_factoryResetActive" @onclick="Continue">Configure Printer</button>
+        <FactoryResetPanel Device="_discoveredDevice!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
         break;
 
     case PairingUiState.Failed:
@@ -60,6 +60,7 @@
     private string? _pairingCode;
     private string? _errorMessage;
     private PairingCodeRequestedEventArgs? _pendingPairingRequest;
+    private bool _factoryResetActive;
 
     protected override void OnInitialized()
     {
@@ -115,7 +116,7 @@
 
     private void Continue()
     {
-        if (_discoveredDevice is null)
+        if (_discoveredDevice is null || _factoryResetActive)
         {
             return;
         }
@@ -124,10 +125,13 @@
         Navigation.NavigateTo("/configure");
     }
 
+    private void OnFactoryResetActiveChanged(bool active) => _factoryResetActive = active;
+
     private void Retry()
     {
         _discoveredDevice = null;
         _errorMessage = null;
+        _factoryResetActive = false;
         _state = PairingUiState.WaitingForTap;
     }
 
