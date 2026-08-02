@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Zebra.Printer.Configurator.App/Zebra.Printer.Configurator.App.csproj" />
+    <Project Path="src/Zebra.Printer.Configurator.Core/Zebra.Printer.Configurator.Core.csproj" />
+    <Project Path="src/Zebra.Printer.Configurator.Infrastructure.Android/Zebra.Printer.Configurator.Infrastructure.Android.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Zebra.Printer.Configurator.ComponentTests/Zebra.Printer.Configurator.ComponentTests.csproj" />
+    <Project Path="tests/Zebra.Printer.Configurator.IntegrationTests/Zebra.Printer.Configurator.IntegrationTests.csproj" />
+    <Project Path="tests/Zebra.Printer.Configurator.UnitTests/Zebra.Printer.Configurator.UnitTests.csproj" />
+  </Folder>
+</Solution>

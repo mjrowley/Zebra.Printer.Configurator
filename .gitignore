@@ -1,0 +1,36 @@
+# Build results
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# .NET / MAUI
+*.binlog
+*.nvci.log
+project.lock.json
+project.fragment.lock.json
+artifacts/
+TestResults/
+
+# Android
+*.apk
+*.aab
+*.ap_
+*.dex
+local.properties
+
+# macOS
+.DS_Store
