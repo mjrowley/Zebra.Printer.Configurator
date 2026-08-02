@@ -45,7 +45,7 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
             return true;
         }
 
-        appLog.Log("Requesting Bluetooth pairing with printer...");
+        appLog.Log($"Requesting Bluetooth pairing with printer ({device.Address})...");
 
         var bondCompletion = new TaskCompletionSource<bool>();
         using var bondReceiver = new BondStateReceiver(device.Address!, bondCompletion);
@@ -177,6 +177,13 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
     {
         public override void OnReceive(Context? context, Intent? intent)
         {
+            // Logged unconditionally, before the filter below - if a pairing attempt fails with no
+            // "pairing request" line at all in the log, this receiver either never ran (broadcast
+            // priority/registration problem) or ran with an address that didn't match targetAddress
+            // (visible here either way, rather than silently dropping out).
+            var receivedAddress = intent is not null ? GetDeviceExtra(intent)?.Address : null;
+            owner.Log($"PairingRequestReceiver.OnReceive: action={intent?.Action}, device={receivedAddress}, expected={targetAddress}");
+
             if (intent?.Action != BluetoothDevice.ActionPairingRequest || !MatchesTarget(intent, targetAddress))
             {
                 return;
