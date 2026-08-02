@@ -26,7 +26,7 @@ public class ResultTests : BunitContext
         var configurationService = Substitute.For<IPrinterConfigurationService>();
         var restartService = Substitute.For<IPrinterRestartService>();
         var connectivityTestService = Substitute.For<IPrinterConnectivityTestService>();
-        connectivityTestService.TestConnectionAsync(Configuration, Arg.Any<CancellationToken>()).Returns(connectivityResult);
+        connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>()).Returns(connectivityResult);
 
         var workflow = new PairAndConfigureWorkflow(configurationService, restartService, connectivityTestService);
         await workflow.RunAsync(Device, Configuration);

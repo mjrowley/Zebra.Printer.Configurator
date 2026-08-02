@@ -1,7 +1,6 @@
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Configuration;
 using Zebra.Printer.Configurator.Core.Models;
-using Zebra.Sdk.Comm;
 using Zebra.Sdk.Printer;
 
 namespace Zebra.Printer.Configurator.Infrastructure.Android;
@@ -9,8 +8,7 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// <summary>
 /// Applies WLAN configuration and issues the restart command over Bluetooth - the printer isn't on
 /// the target WiFi network yet at this point, so Bluetooth (paired via the MAC address read from
-/// the NFC tag) is the only connection available. The SDK's Connection.Open/Close/SGD calls are
-/// synchronous blocking I/O with no async overloads, so they're wrapped in Task.Run.
+/// the NFC tag) is the only connection available.
 ///
 /// Deliberately does NOT call BluetoothDevice.CreateBond() before connecting. An earlier version
 /// of this class did, on the theory that an unbonded RFCOMM connection was the cause of
@@ -24,9 +22,6 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionService bluetoothPermissionService, IAppLog appLog)
     : IPrinterConfigurationService, IPrinterRestartService
 {
-    private const int ConnectionAttempts = 3;
-    private static readonly TimeSpan ConnectionRetryDelay = TimeSpan.FromSeconds(2);
-
     // Logged as-is; every other SGD value is safe to show, but the WiFi password should never
     // appear on screen (or in anything the user might screenshot/share for support).
     private static readonly HashSet<string> SensitiveKeys = ["wlan.wpa.psk"];
@@ -36,7 +31,7 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
         await EnsureBluetoothPermissionAsync(cancellationToken);
 
         appLog.Log("Connecting to printer to apply WiFi configuration...");
-        await WithBluetoothConnectionAsync(device.BluetoothMacAddress, connection =>
+        await BluetoothConnectionRunner.RunAsync(device.BluetoothMacAddress, connection =>
         {
             foreach (var (key, value) in WlanConfigurationCommandBuilder.BuildSetCommands(configuration))
             {
@@ -44,7 +39,7 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
                 appLog.Log($"Setting {key} = {loggedValue}");
                 SGD.SET(key, value, connection);
             }
-        }, cancellationToken);
+        }, appLog, cancellationToken);
         appLog.Log("WiFi configuration applied.", LogLevel.Success);
     }
 
@@ -53,7 +48,7 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
         await EnsureBluetoothPermissionAsync(cancellationToken);
 
         appLog.Log("Restarting printer...");
-        await WithBluetoothConnectionAsync(device.BluetoothMacAddress, connection =>
+        await BluetoothConnectionRunner.RunAsync(device.BluetoothMacAddress, connection =>
         {
             // "device.restart" is not a real SGD command - SGD silently no-ops unrecognized
             // command names rather than erroring, which is why this previously appeared to
@@ -61,7 +56,7 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
             // soft reset is "device.reset" (confirmed against a real-world SGD trace for a
             // ZD-series printer: `! U1 do "device.reset" ""`).
             SGD.DO("device.reset", string.Empty, connection);
-        }, cancellationToken);
+        }, appLog, cancellationToken);
         appLog.Log("Restart command sent.", LogLevel.Success);
     }
 
@@ -77,38 +72,6 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
             appLog.Log("Bluetooth permission is required to configure the printer.", LogLevel.Error);
             throw new InvalidOperationException(
                 "Bluetooth permission is required to configure the printer. Please grant it and try again.");
-        }
-    }
-
-    private async Task WithBluetoothConnectionAsync(string macAddress, Action<Connection> action, CancellationToken cancellationToken)
-    {
-        for (var attempt = 1; attempt <= ConnectionAttempts; attempt++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                await Task.Run(() =>
-                {
-                    Connection connection = new BluetoothConnection(macAddress);
-                    connection.Open();
-                    try
-                    {
-                        action(connection);
-                    }
-                    finally
-                    {
-                        connection.Close();
-                    }
-                }, cancellationToken);
-                return;
-            }
-            catch (Exception ex) when (attempt < ConnectionAttempts)
-            {
-                // Bluetooth Classic connections are commonly flaky - a short retry resolves most
-                // transient "read failed"-style errors.
-                appLog.Log($"Connection attempt {attempt} of {ConnectionAttempts} failed ({ex.Message}). Retrying...", LogLevel.Warning);
-                await Task.Delay(ConnectionRetryDelay, cancellationToken);
-            }
         }
     }
 }

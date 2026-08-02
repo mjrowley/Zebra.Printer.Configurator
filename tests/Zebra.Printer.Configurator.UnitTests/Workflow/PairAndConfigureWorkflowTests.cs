@@ -36,7 +36,7 @@ public class PairAndConfigureWorkflowTests
     public async Task RunAsync_TransitionsThroughExpectedStates_OnSuccess()
     {
         var (_, _, connectivityTestService, workflow) = CreateWorkflow();
-        connectivityTestService.TestConnectionAsync(Configuration, Arg.Any<CancellationToken>())
+        connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
             .Returns(ConnectionTestResult.Succeeded("CONNECTED"));
 
         var observedStates = new List<PairingWorkflowState>();
@@ -60,7 +60,7 @@ public class PairAndConfigureWorkflowTests
     public async Task RunAsync_CallsServicesInOrder()
     {
         var (configurationService, restartService, connectivityTestService, workflow) = CreateWorkflow();
-        connectivityTestService.TestConnectionAsync(Configuration, Arg.Any<CancellationToken>())
+        connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
             .Returns(ConnectionTestResult.Succeeded("CONNECTED"));
 
         await workflow.RunAsync(Device, Configuration);
@@ -69,7 +69,7 @@ public class PairAndConfigureWorkflowTests
         {
             configurationService.ApplyAsync(Device, Configuration, Arg.Any<CancellationToken>());
             restartService.RestartAsync(Device, Arg.Any<CancellationToken>());
-            connectivityTestService.TestConnectionAsync(Configuration, Arg.Any<CancellationToken>());
+            connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>());
         });
     }
 
@@ -77,7 +77,7 @@ public class PairAndConfigureWorkflowTests
     public async Task RunAsync_EndsInFailed_WhenConnectivityTestFails()
     {
         var (_, _, connectivityTestService, workflow) = CreateWorkflow();
-        connectivityTestService.TestConnectionAsync(Configuration, Arg.Any<CancellationToken>())
+        connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
             .Returns(ConnectionTestResult.Failed("Printer did not respond."));
 
         await workflow.RunAsync(Device, Configuration);
@@ -99,14 +99,14 @@ public class PairAndConfigureWorkflowTests
         Assert.Equal(PairingWorkflowState.Failed, workflow.State);
         Assert.Equal("Bluetooth connection failed.", workflow.FailureReason);
         await restartService.DidNotReceive().RestartAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>());
-        await connectivityTestService.DidNotReceive().TestConnectionAsync(Arg.Any<WlanConfiguration>(), Arg.Any<CancellationToken>());
+        await connectivityTestService.DidNotReceive().TestConnectionAsync(Arg.Any<PrinterDevice>(), Arg.Any<WlanConfiguration>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task RunAsync_ResetsPreviousResultAndFailureReason_OnRetry()
     {
         var (_, _, connectivityTestService, workflow) = CreateWorkflow();
-        connectivityTestService.TestConnectionAsync(Configuration, Arg.Any<CancellationToken>())
+        connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
             .Returns(ConnectionTestResult.Failed("first failure"), ConnectionTestResult.Succeeded("CONNECTED"));
 
         await workflow.RunAsync(Device, Configuration);

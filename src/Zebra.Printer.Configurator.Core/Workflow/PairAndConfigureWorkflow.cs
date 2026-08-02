@@ -35,7 +35,7 @@ public sealed class PairAndConfigureWorkflow(
             await restartService.RestartAsync(device, cancellationToken).ConfigureAwait(false);
 
             SetState(PairingWorkflowState.TestingConnection);
-            var result = await connectivityTestService.TestConnectionAsync(configuration, cancellationToken).ConfigureAwait(false);
+            var result = await connectivityTestService.TestConnectionAsync(device, configuration, cancellationToken).ConfigureAwait(false);
 
             Result = result;
             FailureReason = result.Success ? null : result.FailureReason;

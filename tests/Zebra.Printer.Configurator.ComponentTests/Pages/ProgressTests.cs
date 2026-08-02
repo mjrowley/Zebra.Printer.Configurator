@@ -28,7 +28,7 @@ public class ProgressTests : BunitContext
     [Fact]
     public void OnSuccessfulRun_NavigatesToResult()
     {
-        _connectivityTestService.TestConnectionAsync(Configuration, Arg.Any<CancellationToken>())
+        _connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
             .Returns(ConnectionTestResult.Succeeded("CONNECTED"));
         var workflow = new PairAndConfigureWorkflow(_configurationService, _restartService, _connectivityTestService);
         Services.AddSingleton(workflow);
@@ -47,7 +47,7 @@ public class ProgressTests : BunitContext
     [Fact]
     public void OnFailedRun_StillNavigatesToResult_LeavingFailureDetailsOnTheWorkflow()
     {
-        _connectivityTestService.TestConnectionAsync(Configuration, Arg.Any<CancellationToken>())
+        _connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
             .Returns(ConnectionTestResult.Failed("Printer did not respond."));
         var workflow = new PairAndConfigureWorkflow(_configurationService, _restartService, _connectivityTestService);
         Services.AddSingleton(workflow);
