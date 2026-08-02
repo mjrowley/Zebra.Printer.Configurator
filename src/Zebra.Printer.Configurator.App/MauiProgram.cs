@@ -1,4 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
+using Zebra.Printer.Configurator.Core.Abstractions;
+using Zebra.Printer.Configurator.Infrastructure.Android;
 
 namespace Zebra.Printer.Configurator.App;
 
@@ -15,6 +17,12 @@ public static class MauiProgram
 			});
 
 		builder.Services.AddMauiBlazorWebView();
+
+		// Single instance backs both interfaces: IPrinterDiscoveryService is what the UI/workflow
+		// depends on, INfcForegroundDispatch is what MainActivity forwards Activity lifecycle/intents to.
+		builder.Services.AddSingleton<NfcPrinterDiscoveryService>();
+		builder.Services.AddSingleton<IPrinterDiscoveryService>(sp => sp.GetRequiredService<NfcPrinterDiscoveryService>());
+		builder.Services.AddSingleton<INfcForegroundDispatch>(sp => sp.GetRequiredService<NfcPrinterDiscoveryService>());
 
 #if DEBUG
 		builder.Services.AddBlazorWebViewDeveloperTools();
