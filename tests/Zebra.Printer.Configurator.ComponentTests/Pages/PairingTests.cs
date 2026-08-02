@@ -11,12 +11,22 @@ public class PairingTests : BunitContext
 {
     private readonly FakePrinterDiscoveryService _discoveryService = new();
     private readonly FakeBluetoothPairingService _pairingService = new();
+    private readonly FakePrinterFactoryResetService _factoryResetService = new();
 
     public PairingTests()
     {
         Services.AddSingleton<IPrinterDiscoveryService>(_discoveryService);
         Services.AddSingleton<IBluetoothPairingService>(_pairingService);
+        Services.AddSingleton<IPrinterFactoryResetService>(_factoryResetService);
         Services.AddSingleton(new PairingSession());
+    }
+
+    private IRenderedComponent<Pairing> RenderWithReadyPrinter(PrinterDevice device)
+    {
+        var cut = Render<Pairing>();
+        _discoveryService.RaisePrinterDiscovered(device);
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='discovered-device']")));
+        return cut;
     }
 
     [Fact]
@@ -98,6 +108,57 @@ public class PairingTests : BunitContext
     }
 
     [Fact]
+    public void ClickingFactoryReset_ShowsConfirmationWarning()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        var cut = RenderWithReadyPrinter(device);
+
+        cut.Find("[data-testid='factory-reset-button']").Click();
+
+        Assert.NotNull(cut.Find("[data-testid='factory-reset-warning']"));
+    }
+
+    [Fact]
+    public void CancellingFactoryResetConfirmation_ReturnsToReadyWithoutCallingService()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        var cut = RenderWithReadyPrinter(device);
+        cut.Find("[data-testid='factory-reset-button']").Click();
+
+        cut.Find("[data-testid='factory-reset-cancel']").Click();
+
+        Assert.NotNull(cut.Find("[data-testid='discovered-device']"));
+        Assert.Empty(cut.FindAll("[data-testid='factory-reset-warning']"));
+        Assert.Null(_factoryResetService.LastResetMacAddress);
+    }
+
+    [Fact]
+    public void ConfirmingFactoryReset_CallsServiceWithDiscoveredDeviceAndShowsCompletion()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        var cut = RenderWithReadyPrinter(device);
+        cut.Find("[data-testid='factory-reset-button']").Click();
+
+        cut.Find("[data-testid='factory-reset-confirm']").Click();
+
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='factory-reset-complete']")));
+        Assert.Equal("AABBCCDDEEFF", _factoryResetService.LastResetMacAddress);
+    }
+
+    [Fact]
+    public void WhenFactoryResetFails_ShowsError()
+    {
+        _factoryResetService.ShouldThrow = true;
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        var cut = RenderWithReadyPrinter(device);
+        cut.Find("[data-testid='factory-reset-button']").Click();
+
+        cut.Find("[data-testid='factory-reset-confirm']").Click();
+
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='pairing-error']")));
+    }
+
+    [Fact]
     public void Dispose_StopsListening()
     {
         var cut = Render<Pairing>();
@@ -132,5 +193,23 @@ public class PairingTests : BunitContext
             EnsurePairedHandler(macAddress);
 
         public void RaisePairingCodeRequested(PairingCodeRequestedEventArgs args) => PairingCodeRequested?.Invoke(this, args);
+    }
+
+    private sealed class FakePrinterFactoryResetService : IPrinterFactoryResetService
+    {
+        public bool ShouldThrow { get; set; }
+
+        public string? LastResetMacAddress { get; private set; }
+
+        public Task ResetToFactoryDefaultsAsync(PrinterDevice device, CancellationToken cancellationToken = default)
+        {
+            LastResetMacAddress = device.BluetoothMacAddress;
+            if (ShouldThrow)
+            {
+                throw new InvalidOperationException("simulated factory reset failure");
+            }
+
+            return Task.CompletedTask;
+        }
     }
 }

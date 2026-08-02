@@ -17,6 +17,11 @@ public class ConfigureTests : BunitContext
     {
         Services.AddSingleton(_hostNetworkInfoService);
         Services.AddSingleton(_session);
+
+        // Host network detection now happens on page load rather than at submit time, so every test
+        // needs a default happy-path stub unless it's specifically exercising the error/prefill case.
+        _hostNetworkInfoService.GetCurrentAsync(Arg.Any<CancellationToken>())
+            .Returns(new HostNetworkInfo { Netmask = "255.255.255.0", Gateway = "192.168.1.1" });
     }
 
     private static void FillIp(IRenderedComponent<Configure> cut, string ip)
@@ -74,18 +79,36 @@ public class ConfigureTests : BunitContext
     }
 
     [Fact]
-    public async Task Submit_WhenHostNotOnWifi_ShowsBlockingErrorAndDoesNotNavigate()
+    public void WhenHostNotOnWifi_ShowsBlockingErrorAndDoesNotRenderForm()
     {
         _hostNetworkInfoService.GetCurrentAsync(Arg.Any<CancellationToken>()).Returns((HostNetworkInfo?)null);
+
         var cut = Render<Configure>();
 
-        cut.Find("#ssid").Change("Warehouse-WiFi");
-        cut.Find("#password").Change("correcthorsebatterystaple");
-        FillIp(cut, "192.168.1.50");
-        await cut.Find("form").SubmitAsync();
-
         Assert.NotNull(cut.Find("[data-testid='host-network-error']"));
+        Assert.Empty(cut.FindAll("#ssid"));
         Assert.Null(_session.Configuration);
+    }
+
+    [Fact]
+    public void WhenHostNetworkHasSsid_PrefillsSsidField()
+    {
+        _hostNetworkInfoService.GetCurrentAsync(Arg.Any<CancellationToken>())
+            .Returns(new HostNetworkInfo { Netmask = "255.255.255.0", Gateway = "192.168.1.1", Ssid = "Warehouse-WiFi" });
+
+        var cut = Render<Configure>();
+
+        Assert.Equal("Warehouse-WiFi", cut.Find("#ssid").GetAttribute("value"));
+    }
+
+    [Fact]
+    public void WhenHostNetworkHasNoSsid_LeavesSsidFieldEmpty()
+    {
+        // HostNetworkInfo.Ssid is null whenever location permission wasn't granted - the SSID is
+        // only ever a convenience default, so this must not block or pre-fill anything odd.
+        var cut = Render<Configure>();
+
+        Assert.Equal(string.Empty, cut.Find("#ssid").GetAttribute("value"));
     }
 
     [Fact]

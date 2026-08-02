@@ -1,3 +1,4 @@
+using System.Text;
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Configuration;
 using Zebra.Printer.Configurator.Core.Models;
@@ -20,7 +21,7 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// Bonding still happens, but earlier and correctly, via BluetoothPairingService/IBluetoothPairingService.
 /// </summary>
 public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionService bluetoothPermissionService, IAppLog appLog)
-    : IPrinterConfigurationService, IPrinterRestartService
+    : IPrinterConfigurationService, IPrinterRestartService, IPrinterFactoryResetService
 {
     // Logged as-is; every other SGD value is safe to show, but the WiFi password should never
     // appear on screen (or in anything the user might screenshot/share for support).
@@ -83,6 +84,25 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
             SGD.DO("device.reset", string.Empty, connection);
         }, appLog, cancellationToken);
         appLog.Log("Restart command sent.", LogLevel.Success);
+    }
+
+    public async Task ResetToFactoryDefaultsAsync(PrinterDevice device, CancellationToken cancellationToken = default)
+    {
+        await EnsureBluetoothPermissionAsync(cancellationToken);
+
+        appLog.Log("Sending factory reset command to printer...", LogLevel.Warning);
+        await BluetoothConnectionRunner.RunAsync(device.BluetoothMacAddress, connection =>
+        {
+            // "^JUF" ("reload factory settings") is the ZPL Configuration Update command - Zebra's
+            // own Programming Guide gives this exact sequence as the way to factory-reset a printer:
+            // "To return the printer to the default factory settings using ZPL, send this:
+            // ^XA ^JUF ^XZ". It's raw ZPL, not an SGD command, so it's written directly to the
+            // connection rather than going through SGD.SET/DO.
+            connection.Write(Encoding.ASCII.GetBytes("^XA^JUF^XZ"));
+        }, appLog, cancellationToken);
+        appLog.Log(
+            "Factory reset command sent. The printer will restart with default settings - Bluetooth pairing may need to be redone.",
+            LogLevel.Warning);
     }
 
     // Redacts to a length rather than a fixed mask, so a mismatch between sent/read-back length is

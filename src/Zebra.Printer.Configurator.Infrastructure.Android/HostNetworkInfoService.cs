@@ -1,6 +1,8 @@
 using Android.Content;
 using Android.Net;
+using Android.Net.Wifi;
 using Java.Net;
+using Microsoft.Maui.ApplicationModel;
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Models;
 using Zebra.Printer.Configurator.Core.Networking;
@@ -16,32 +18,32 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// </summary>
 public sealed class HostNetworkInfoService : IHostNetworkInfoService
 {
-    public Task<HostNetworkInfo?> GetCurrentAsync(CancellationToken cancellationToken = default)
+    public async Task<HostNetworkInfo?> GetCurrentAsync(CancellationToken cancellationToken = default)
     {
         var connectivityManager = (ConnectivityManager?)Application.Context.GetSystemService(Context.ConnectivityService);
         var activeNetwork = connectivityManager?.ActiveNetwork;
         if (connectivityManager is null || activeNetwork is null)
         {
-            return Task.FromResult<HostNetworkInfo?>(null);
+            return null;
         }
 
         var capabilities = connectivityManager.GetNetworkCapabilities(activeNetwork);
         if (capabilities is null || !capabilities.HasTransport(TransportType.Wifi))
         {
-            return Task.FromResult<HostNetworkInfo?>(null);
+            return null;
         }
 
         var linkProperties = connectivityManager.GetLinkProperties(activeNetwork);
         if (linkProperties is null)
         {
-            return Task.FromResult<HostNetworkInfo?>(null);
+            return null;
         }
 
         var ipv4Address = linkProperties.LinkAddresses?
             .FirstOrDefault(a => a.Address is Inet4Address);
         if (ipv4Address is null)
         {
-            return Task.FromResult<HostNetworkInfo?>(null);
+            return null;
         }
 
         var ipv4GatewayRoute = linkProperties.Routes?
@@ -49,15 +51,55 @@ public sealed class HostNetworkInfoService : IHostNetworkInfoService
         var gateway = ipv4GatewayRoute?.Gateway?.HostAddress;
         if (gateway is null)
         {
-            return Task.FromResult<HostNetworkInfo?>(null);
+            return null;
         }
 
-        var hostNetworkInfo = new HostNetworkInfo
+        return new HostNetworkInfo
         {
             Netmask = Ipv4NetmaskConverter.FromPrefixLength(ipv4Address.PrefixLength),
             Gateway = gateway,
+            Ssid = await TryGetCurrentSsidAsync(),
         };
+    }
 
-        return Task.FromResult<HostNetworkInfo?>(hostNetworkInfo);
+    // Android only returns the real SSID (rather than the literal placeholder "<unknown ssid>")
+    // when location permission is granted - a platform privacy restriction, not a bug. This is only
+    // ever a form default the user can freely overwrite, so a denied/unavailable permission should
+    // leave it blank rather than block WiFi configuration entirely - hence the broad catch.
+    private static async Task<string?> TryGetCurrentSsidAsync()
+    {
+        try
+        {
+            var status = await Permissions.CheckStatusAsync<Permissions.LocationWhenInUse>();
+            if (status != PermissionStatus.Granted)
+            {
+                status = await Permissions.RequestAsync<Permissions.LocationWhenInUse>();
+            }
+
+            if (status != PermissionStatus.Granted)
+            {
+                return null;
+            }
+
+            var wifiManager = (WifiManager?)Application.Context.GetSystemService(Context.WifiService);
+
+            // WifiManager.ConnectionInfo is deprecated (API 31+) in favor of registering a
+            // NetworkCallback and reading WifiInfo off its NetworkCapabilities - real plumbing for a
+            // feature that's only ever a convenience form default here. It's deprecated, not
+            // removed, and still returns real data on every OS version this app targets (33-36).
+#pragma warning disable CA1422
+            var ssid = wifiManager?.ConnectionInfo?.SSID;
+#pragma warning restore CA1422
+            if (string.IsNullOrEmpty(ssid) || ssid == "<unknown ssid>")
+            {
+                return null;
+            }
+
+            return ssid.Trim('"');
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
