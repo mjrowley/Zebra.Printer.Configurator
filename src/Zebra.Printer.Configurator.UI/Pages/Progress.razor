@@ -1,0 +1,62 @@
+@page "/progress"
+@implements IDisposable
+@inject PairAndConfigureWorkflow Workflow
+@inject PairingSession Session
+@inject NavigationManager Navigation
+
+<h1>Configuring Printer</h1>
+
+<ul class="list-group" data-testid="progress-steps">
+    <li class="list-group-item @StepClass(PairingWorkflowState.ApplyingConfiguration)" data-testid="step-applying-configuration">
+        Connecting and applying configuration
+    </li>
+    <li class="list-group-item @StepClass(PairingWorkflowState.Restarting)" data-testid="step-restarting">
+        Restarting printer
+    </li>
+    <li class="list-group-item @StepClass(PairingWorkflowState.TestingConnection)" data-testid="step-testing-connection">
+        Waiting for printer to rejoin WiFi
+    </li>
+</ul>
+
+@code {
+    private readonly HashSet<PairingWorkflowState> _observedStates = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Session.Device is null || Session.Configuration is null)
+        {
+            Navigation.NavigateTo("/", replace: true);
+            return;
+        }
+
+        Workflow.StateChanged += OnWorkflowStateChanged;
+
+        await Workflow.RunAsync(Session.Device, Session.Configuration);
+
+        Navigation.NavigateTo("/result", replace: true);
+    }
+
+    private void OnWorkflowStateChanged(object? sender, EventArgs e)
+    {
+        InvokeAsync(() =>
+        {
+            _observedStates.Add(Workflow.State);
+            StateHasChanged();
+        });
+    }
+
+    private string StepClass(PairingWorkflowState step)
+    {
+        if (Workflow.State == step)
+        {
+            return "active";
+        }
+
+        return _observedStates.Contains(step) ? "done" : string.Empty;
+    }
+
+    public void Dispose()
+    {
+        Workflow.StateChanged -= OnWorkflowStateChanged;
+    }
+}

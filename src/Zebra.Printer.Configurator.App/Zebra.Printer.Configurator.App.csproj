@@ -72,6 +72,7 @@
     <ItemGroup>
       <ProjectReference Include="..\Zebra.Printer.Configurator.Core\Zebra.Printer.Configurator.Core.csproj" />
       <ProjectReference Include="..\Zebra.Printer.Configurator.Infrastructure.Android\Zebra.Printer.Configurator.Infrastructure.Android.csproj" />
+      <ProjectReference Include="..\Zebra.Printer.Configurator.UI\Zebra.Printer.Configurator.UI.csproj" />
     </ItemGroup>
 
 </Project>

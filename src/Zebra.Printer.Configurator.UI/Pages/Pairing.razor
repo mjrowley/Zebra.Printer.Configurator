@@ -1,0 +1,56 @@
+@page "/"
+@implements IDisposable
+@inject IPrinterDiscoveryService DiscoveryService
+@inject PairingSession Session
+@inject NavigationManager Navigation
+
+<h1>Pair a Printer</h1>
+
+@if (_discoveredDevice is null)
+{
+    <p>Tap your Zebra printer to the back of your phone to begin.</p>
+}
+else
+{
+    <p data-testid="discovered-device">
+        Printer found@(_discoveredDevice.SerialNumber is not null ? $" (serial {_discoveredDevice.SerialNumber})" : ".")
+    </p>
+    <button type="button" class="btn btn-primary" @onclick="Continue">Continue</button>
+}
+
+@code {
+    private PrinterDevice? _discoveredDevice;
+
+    protected override void OnInitialized()
+    {
+        Session.Reset();
+        DiscoveryService.PrinterDiscovered += OnPrinterDiscovered;
+        DiscoveryService.StartListening();
+    }
+
+    private void OnPrinterDiscovered(object? sender, PrinterDevice device)
+    {
+        InvokeAsync(() =>
+        {
+            _discoveredDevice = device;
+            StateHasChanged();
+        });
+    }
+
+    private void Continue()
+    {
+        if (_discoveredDevice is null)
+        {
+            return;
+        }
+
+        Session.Device = _discoveredDevice;
+        Navigation.NavigateTo("/configure");
+    }
+
+    public void Dispose()
+    {
+        DiscoveryService.PrinterDiscovered -= OnPrinterDiscovered;
+        DiscoveryService.StopListening();
+    }
+}

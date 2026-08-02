@@ -1,0 +1,34 @@
+@page "/result"
+@inject PairAndConfigureWorkflow Workflow
+@inject PairingSession Session
+@inject NavigationManager Navigation
+
+@if (Workflow.State == PairingWorkflowState.Succeeded)
+{
+    <h1>Success</h1>
+    <p data-testid="result-success">
+        The printer is now connected to @Session.Configuration?.Ssid at @Session.Configuration?.StaticIpAddress.
+    </p>
+}
+else
+{
+    <h1>Configuration Failed</h1>
+    <p data-testid="result-failure">@(Workflow.FailureReason ?? "An unknown error occurred.")</p>
+    <button type="button" class="btn btn-primary" @onclick="Retry">Retry</button>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        if (Workflow.State is not (PairingWorkflowState.Succeeded or PairingWorkflowState.Failed))
+        {
+            Navigation.NavigateTo("/", replace: true);
+        }
+    }
+
+    private void Retry()
+    {
+        Session.Reset();
+        Navigation.NavigateTo("/", replace: true);
+    }
+}

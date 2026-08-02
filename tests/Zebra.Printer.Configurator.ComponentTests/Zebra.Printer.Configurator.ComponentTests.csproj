@@ -11,6 +11,7 @@
     <PackageReference Include="bunit" Version="2.8.6" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="NSubstitute" Version="6.0.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
@@ -21,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Zebra.Printer.Configurator.Core\Zebra.Printer.Configurator.Core.csproj" />
+    <ProjectReference Include="..\..\src\Zebra.Printer.Configurator.UI\Zebra.Printer.Configurator.UI.csproj" />
   </ItemGroup>
 
 </Project>

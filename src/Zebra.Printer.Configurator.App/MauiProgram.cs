@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using Zebra.Printer.Configurator.Core.Abstractions;
+using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Printer.Configurator.Infrastructure.Android;
 
 namespace Zebra.Printer.Configurator.App;
@@ -31,6 +32,10 @@ public static class MauiProgram
 		builder.Services.AddSingleton<IPrinterConfigurationService>(sp => sp.GetRequiredService<LinkOsPrinterConfigurationService>());
 		builder.Services.AddSingleton<IPrinterRestartService>(sp => sp.GetRequiredService<LinkOsPrinterConfigurationService>());
 		builder.Services.AddSingleton<IPrinterConnectivityTestService, LinkOsConnectivityTestService>();
+
+		// Both singletons: single-window app, one pairing attempt in flight at a time.
+		builder.Services.AddSingleton<PairingSession>();
+		builder.Services.AddSingleton<PairAndConfigureWorkflow>();
 
 #if DEBUG
 		builder.Services.AddBlazorWebViewDeveloperTools();

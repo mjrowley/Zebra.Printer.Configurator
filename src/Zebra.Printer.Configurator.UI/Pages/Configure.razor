@@ -1,0 +1,85 @@
+@page "/configure"
+@inject PairingSession Session
+@inject IHostNetworkInfoService HostNetworkInfoService
+@inject NavigationManager Navigation
+
+<h1>WiFi Configuration</h1>
+
+<EditForm Model="_model" OnValidSubmit="Submit">
+    <DataAnnotationsValidator />
+
+    <div class="mb-3">
+        <label for="ssid">WiFi SSID</label>
+        <InputText id="ssid" class="form-control" @bind-Value="_model.Ssid" />
+        <ValidationMessage For="() => _model.Ssid" />
+    </div>
+
+    <div class="mb-3">
+        <label for="password">WiFi Password</label>
+        <InputText id="password" type="password" class="form-control" @bind-Value="_model.Password" />
+        <ValidationMessage For="() => _model.Password" />
+    </div>
+
+    <div class="mb-3">
+        <label for="ip">Printer Static IP Address</label>
+        <InputText id="ip" class="form-control" @bind-Value="_model.StaticIpAddress" />
+        <ValidationMessage For="() => _model.StaticIpAddress" />
+    </div>
+
+    @if (_hostNetworkError is not null)
+    {
+        <p class="text-danger" data-testid="host-network-error">@_hostNetworkError</p>
+    }
+
+    <button type="submit" class="btn btn-primary">Continue</button>
+</EditForm>
+
+@code {
+    private readonly ConfigureFormModel _model = new();
+    private string? _hostNetworkError;
+
+    protected override void OnInitialized()
+    {
+        if (Session.Device is null)
+        {
+            Navigation.NavigateTo("/", replace: true);
+        }
+    }
+
+    private async Task Submit()
+    {
+        _hostNetworkError = null;
+
+        // The phone is assumed to already be on the target WiFi network, so netmask/gateway are
+        // inherited from its current connection rather than asked for in the form.
+        var hostNetworkInfo = await HostNetworkInfoService.GetCurrentAsync();
+        if (hostNetworkInfo is null)
+        {
+            _hostNetworkError = "This device must be connected to the target WiFi network before configuring the printer.";
+            return;
+        }
+
+        Session.Configuration = new WlanConfiguration
+        {
+            Ssid = _model.Ssid,
+            Password = _model.Password,
+            StaticIpAddress = _model.StaticIpAddress,
+            Netmask = hostNetworkInfo.Netmask,
+            Gateway = hostNetworkInfo.Gateway,
+        };
+
+        Navigation.NavigateTo("/progress");
+    }
+
+    private sealed class ConfigureFormModel
+    {
+        [Ssid]
+        public string Ssid { get; set; } = string.Empty;
+
+        [WifiPassword]
+        public string Password { get; set; } = string.Empty;
+
+        [IPv4Address]
+        public string StaticIpAddress { get; set; } = string.Empty;
+    }
+}

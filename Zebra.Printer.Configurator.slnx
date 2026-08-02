@@ -3,6 +3,7 @@
     <Project Path="src/Zebra.Printer.Configurator.App/Zebra.Printer.Configurator.App.csproj" />
     <Project Path="src/Zebra.Printer.Configurator.Core/Zebra.Printer.Configurator.Core.csproj" />
     <Project Path="src/Zebra.Printer.Configurator.Infrastructure.Android/Zebra.Printer.Configurator.Infrastructure.Android.csproj" />
+    <Project Path="src/Zebra.Printer.Configurator.UI/Zebra.Printer.Configurator.UI.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Zebra.Printer.Configurator.ComponentTests/Zebra.Printer.Configurator.ComponentTests.csproj" />

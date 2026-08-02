@@ -2,12 +2,12 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:Zebra.Printer.Configurator.App"
-             xmlns:components="clr-namespace:Zebra.Printer.Configurator.App.Components"
+             xmlns:ui="clr-namespace:Zebra.Printer.Configurator.UI;assembly=Zebra.Printer.Configurator.UI"
              x:Class="Zebra.Printer.Configurator.App.MainPage">
 
     <BlazorWebView x:Name="blazorWebView" HostPage="wwwroot/index.html">
         <BlazorWebView.RootComponents>
-            <RootComponent Selector="#app" ComponentType="{x:Type components:Routes}" />
+            <RootComponent Selector="#app" ComponentType="{x:Type ui:Routes}" />
         </BlazorWebView.RootComponents>
     </BlazorWebView>
 

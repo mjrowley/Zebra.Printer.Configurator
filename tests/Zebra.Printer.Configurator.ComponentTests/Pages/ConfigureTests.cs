@@ -1,0 +1,112 @@
+using Microsoft.Extensions.DependencyInjection;
+using Bunit;
+using NSubstitute;
+using Zebra.Printer.Configurator.Core.Abstractions;
+using Zebra.Printer.Configurator.Core.Models;
+using Zebra.Printer.Configurator.Core.Workflow;
+using Zebra.Printer.Configurator.UI.Pages;
+
+namespace Zebra.Printer.Configurator.ComponentTests.Pages;
+
+public class ConfigureTests : BunitContext
+{
+    private readonly IHostNetworkInfoService _hostNetworkInfoService = Substitute.For<IHostNetworkInfoService>();
+    private readonly PairingSession _session = new() { Device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" } };
+
+    public ConfigureTests()
+    {
+        Services.AddSingleton(_hostNetworkInfoService);
+        Services.AddSingleton(_session);
+    }
+
+    [Fact]
+    public async Task Submit_WithInvalidSsid_ShowsValidationErrorAndDoesNotNavigate()
+    {
+        var cut = Render<Configure>();
+
+        cut.Find("#ssid").Change("");
+        cut.Find("#password").Change("correcthorsebatterystaple");
+        cut.Find("#ip").Change("192.168.1.50");
+        await cut.Find("form").SubmitAsync();
+
+        Assert.Contains("SSID is required", cut.Markup);
+        Assert.Null(_session.Configuration);
+    }
+
+    [Fact]
+    public async Task Submit_WithInvalidPassword_ShowsValidationErrorAndDoesNotNavigate()
+    {
+        var cut = Render<Configure>();
+
+        cut.Find("#ssid").Change("Warehouse-WiFi");
+        cut.Find("#password").Change("short");
+        cut.Find("#ip").Change("192.168.1.50");
+        await cut.Find("form").SubmitAsync();
+
+        Assert.Contains("between 8 and 63 characters", cut.Markup);
+        Assert.Null(_session.Configuration);
+    }
+
+    [Fact]
+    public async Task Submit_WithInvalidIpAddress_ShowsValidationErrorAndDoesNotNavigate()
+    {
+        var cut = Render<Configure>();
+
+        cut.Find("#ssid").Change("Warehouse-WiFi");
+        cut.Find("#password").Change("correcthorsebatterystaple");
+        cut.Find("#ip").Change("not-an-ip");
+        await cut.Find("form").SubmitAsync();
+
+        Assert.Contains("dotted-quad IPv4 format", cut.Markup);
+        Assert.Null(_session.Configuration);
+    }
+
+    [Fact]
+    public async Task Submit_WhenHostNotOnWifi_ShowsBlockingErrorAndDoesNotNavigate()
+    {
+        _hostNetworkInfoService.GetCurrentAsync(Arg.Any<CancellationToken>()).Returns((HostNetworkInfo?)null);
+        var cut = Render<Configure>();
+
+        cut.Find("#ssid").Change("Warehouse-WiFi");
+        cut.Find("#password").Change("correcthorsebatterystaple");
+        cut.Find("#ip").Change("192.168.1.50");
+        await cut.Find("form").SubmitAsync();
+
+        Assert.NotNull(cut.Find("[data-testid='host-network-error']"));
+        Assert.Null(_session.Configuration);
+    }
+
+    [Fact]
+    public async Task Submit_WithValidFormAndHostOnWifi_PopulatesSessionAndNavigatesToProgress()
+    {
+        _hostNetworkInfoService.GetCurrentAsync(Arg.Any<CancellationToken>())
+            .Returns(new HostNetworkInfo { Netmask = "255.255.255.0", Gateway = "192.168.1.1" });
+        var cut = Render<Configure>();
+
+        cut.Find("#ssid").Change("Warehouse-WiFi");
+        cut.Find("#password").Change("correcthorsebatterystaple");
+        cut.Find("#ip").Change("192.168.1.50");
+        await cut.Find("form").SubmitAsync();
+
+        Assert.NotNull(_session.Configuration);
+        Assert.Equal("Warehouse-WiFi", _session.Configuration!.Ssid);
+        Assert.Equal("correcthorsebatterystaple", _session.Configuration.Password);
+        Assert.Equal("192.168.1.50", _session.Configuration.StaticIpAddress);
+        Assert.Equal("255.255.255.0", _session.Configuration.Netmask);
+        Assert.Equal("192.168.1.1", _session.Configuration.Gateway);
+
+        var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        Assert.EndsWith("/progress", navigation.Uri);
+    }
+
+    [Fact]
+    public void WhenNoDeviceInSession_RedirectsToPairing()
+    {
+        _session.Device = null;
+
+        Render<Configure>();
+
+        var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        Assert.EndsWith("/", navigation.Uri);
+    }
+}
