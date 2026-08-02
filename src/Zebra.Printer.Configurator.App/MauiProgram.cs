@@ -25,6 +25,7 @@ public static class MauiProgram
 		builder.Services.AddSingleton<IPrinterDiscoveryService>(sp => sp.GetRequiredService<NfcPrinterDiscoveryService>());
 		builder.Services.AddSingleton<INfcForegroundDispatch>(sp => sp.GetRequiredService<NfcPrinterDiscoveryService>());
 		builder.Services.AddSingleton<IHostNetworkInfoService, HostNetworkInfoService>();
+		builder.Services.AddSingleton<IBluetoothPermissionService, BluetoothPermissionService>();
 
 		// Single instance backs both interfaces: configuring the printer and restarting it both
 		// happen over the same kind of Bluetooth connection, back-to-back in the pairing workflow.

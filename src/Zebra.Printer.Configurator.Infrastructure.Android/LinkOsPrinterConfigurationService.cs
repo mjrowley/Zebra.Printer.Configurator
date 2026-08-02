@@ -12,13 +12,15 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// the NFC tag) is the only connection available. The SDK's Connection.Open/Close/SGD calls are
 /// synchronous blocking I/O with no async overloads, so they're wrapped in Task.Run.
 /// </summary>
-public sealed class LinkOsPrinterConfigurationService : IPrinterConfigurationService, IPrinterRestartService
+public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionService bluetoothPermissionService)
+    : IPrinterConfigurationService, IPrinterRestartService
 {
-    public Task ApplyAsync(PrinterDevice device, WlanConfiguration configuration, CancellationToken cancellationToken = default)
+    public async Task ApplyAsync(PrinterDevice device, WlanConfiguration configuration, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        await EnsureBluetoothPermissionAsync(cancellationToken);
 
-        return Task.Run(() =>
+        await Task.Run(() =>
         {
             Connection connection = new BluetoothConnection(device.BluetoothMacAddress);
             connection.Open();
@@ -36,11 +38,12 @@ public sealed class LinkOsPrinterConfigurationService : IPrinterConfigurationSer
         }, cancellationToken);
     }
 
-    public Task RestartAsync(PrinterDevice device, CancellationToken cancellationToken = default)
+    public async Task RestartAsync(PrinterDevice device, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        await EnsureBluetoothPermissionAsync(cancellationToken);
 
-        return Task.Run(() =>
+        await Task.Run(() =>
         {
             Connection connection = new BluetoothConnection(device.BluetoothMacAddress);
             connection.Open();
@@ -53,5 +56,18 @@ public sealed class LinkOsPrinterConfigurationService : IPrinterConfigurationSer
                 connection.Close();
             }
         }, cancellationToken);
+    }
+
+    private async Task EnsureBluetoothPermissionAsync(CancellationToken cancellationToken)
+    {
+        // Requested here, on the calling context, rather than inside Task.Run below - showing the
+        // system permission dialog and awaiting the user's response needs the Activity, not a
+        // background thread-pool thread.
+        var granted = await bluetoothPermissionService.EnsureGrantedAsync(cancellationToken);
+        if (!granted)
+        {
+            throw new InvalidOperationException(
+                "Bluetooth permission is required to configure the printer. Please grant it and try again.");
+        }
     }
 }

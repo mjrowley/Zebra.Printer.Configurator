@@ -2,6 +2,8 @@
 using Android.Content;
 using Android.Content.PM;
 using Android.OS;
+using Android.Runtime;
+using Microsoft.Maui.ApplicationModel;
 using Zebra.Printer.Configurator.Infrastructure.Android;
 
 namespace Zebra.Printer.Configurator.App;
@@ -33,5 +35,13 @@ public class MainActivity : MauiAppCompatActivity
 		{
 			NfcDispatch.OnNewIntent(intent);
 		}
+	}
+
+	// Required for Microsoft.Maui.ApplicationModel.Permissions.RequestAsync<T>() (used to request
+	// BLUETOOTH_SCAN/BLUETOOTH_CONNECT) to resolve its awaited Task with the user's response.
+	public override void OnRequestPermissionsResult(int requestCode, string[] permissions, [GeneratedEnum] Permission[] grantResults)
+	{
+		Platform.OnRequestPermissionsResult(requestCode, permissions, grantResults);
+		base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
 	}
 }
