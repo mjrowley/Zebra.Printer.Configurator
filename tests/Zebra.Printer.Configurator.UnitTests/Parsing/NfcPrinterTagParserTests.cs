@@ -9,12 +9,15 @@ public class NfcPrinterTagParserTests
     private const string FullPayload = "91031503&mB=AABBCCDDEEFF&sN12345678901234&mW=001122334455TAIL";
 
     [Fact]
-    public void TryParse_ExtractsBluetoothMacAddress()
+    public void TryParse_ExtractsBluetoothMacAddress_InColonSeparatedForm()
     {
+        // The tag encodes a bare 12-hex-digit string, but Android's BluetoothAdapter/
+        // BluetoothConnection both require the standard colon-separated form - passing the raw
+        // form throws "<address> is not a valid Bluetooth address" from Android itself.
         var device = NfcPrinterTagParser.TryParse(FullPayload);
 
         Assert.NotNull(device);
-        Assert.Equal("AABBCCDDEEFF", device!.BluetoothMacAddress);
+        Assert.Equal("AA:BB:CC:DD:EE:FF", device!.BluetoothMacAddress);
     }
 
     [Fact]
@@ -41,7 +44,7 @@ public class NfcPrinterTagParserTests
         var device = NfcPrinterTagParser.TryParse("&mB=AABBCCDDEEFF");
 
         Assert.NotNull(device);
-        Assert.Equal("AABBCCDDEEFF", device!.BluetoothMacAddress);
+        Assert.Equal("AA:BB:CC:DD:EE:FF", device!.BluetoothMacAddress);
         Assert.Null(device.SerialNumber);
         Assert.Null(device.WifiMacAddress);
     }
@@ -62,6 +65,14 @@ public class NfcPrinterTagParserTests
     {
         // Marker present but fewer than 12 characters follow it.
         var device = NfcPrinterTagParser.TryParse("&mB=AABB");
+
+        Assert.Null(device);
+    }
+
+    [Fact]
+    public void TryParse_ReturnsNull_WhenBluetoothMacContainsNonHexCharacters()
+    {
+        var device = NfcPrinterTagParser.TryParse("&mB=AABBCCDDEEZZ");
 
         Assert.Null(device);
     }

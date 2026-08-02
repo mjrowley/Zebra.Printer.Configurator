@@ -35,7 +35,8 @@ public static class NfcPrinterTagParser
             return null;
         }
 
-        var bluetoothMac = ExtractField(ndefPayload, BluetoothMacMarker, BluetoothMacSkip, BluetoothMacLength);
+        var rawBluetoothMac = ExtractField(ndefPayload, BluetoothMacMarker, BluetoothMacSkip, BluetoothMacLength);
+        var bluetoothMac = rawBluetoothMac is null ? null : FormatAsColonSeparatedMac(rawBluetoothMac);
         if (bluetoothMac is null)
         {
             return null;
@@ -64,5 +65,22 @@ public static class NfcPrinterTagParser
         }
 
         return payload.Substring(start, length);
+    }
+
+    /// <summary>
+    /// The tag encodes the Bluetooth MAC as a bare 12-hex-digit string (e.g. "AABBCCDDEEFF"), but
+    /// Android's BluetoothAdapter.GetRemoteDevice/BluetoothConnection both require the standard
+    /// colon-separated form ("AA:BB:CC:DD:EE:FF") - passing the raw form throws "&lt;address&gt; is
+    /// not a valid Bluetooth address" (Android's own message, no exception ever reaches this app's
+    /// own validation).
+    /// </summary>
+    private static string? FormatAsColonSeparatedMac(string rawHex)
+    {
+        if (rawHex.Length != 12 || !rawHex.All(Uri.IsHexDigit))
+        {
+            return null;
+        }
+
+        return string.Join(':', Enumerable.Range(0, 6).Select(i => rawHex.Substring(i * 2, 2))).ToUpperInvariant();
     }
 }
