@@ -23,6 +23,7 @@ public static class MauiProgram
 		builder.Services.AddSingleton<NfcPrinterDiscoveryService>();
 		builder.Services.AddSingleton<IPrinterDiscoveryService>(sp => sp.GetRequiredService<NfcPrinterDiscoveryService>());
 		builder.Services.AddSingleton<INfcForegroundDispatch>(sp => sp.GetRequiredService<NfcPrinterDiscoveryService>());
+		builder.Services.AddSingleton<IHostNetworkInfoService, HostNetworkInfoService>();
 
 #if DEBUG
 		builder.Services.AddBlazorWebViewDeveloperTools();
