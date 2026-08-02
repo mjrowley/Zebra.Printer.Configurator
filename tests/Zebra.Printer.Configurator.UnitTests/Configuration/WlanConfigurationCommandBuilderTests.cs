@@ -17,11 +17,15 @@ public class WlanConfigurationCommandBuilderTests
     private static readonly WlanConfiguration OpenConfiguration = SecuredConfiguration with { Password = "" };
 
     [Fact]
-    public void BuildSetCommands_PutsDefaultAddrEnableOffFirst()
+    public void BuildSetCommands_EnablesWlanRadioFirst()
     {
+        // Confirmed by reading the printer's own settings back over Bluetooth after a failed
+        // connect: wlan.ssid/wlan.security/wlan.wpa.psk were still their untouched defaults even
+        // though wlan.ip.* had all applied correctly - the radio-specific settings are silently
+        // ignored while the radio is off, so it must be enabled before them, not after.
         var commands = WlanConfigurationCommandBuilder.BuildSetCommands(SecuredConfiguration);
 
-        Assert.Equal(("wlan.ip.default_addr_enable", "off"), commands[0]);
+        Assert.Equal(("wlan.enable", "on"), commands[0]);
     }
 
     [Fact]
@@ -46,11 +50,13 @@ public class WlanConfigurationCommandBuilderTests
     }
 
     [Fact]
-    public void BuildSetCommands_ForOpenNetwork_SetsOpenSecurityAndOmitsPsk()
+    public void BuildSetCommands_ForOpenNetwork_SetsNoneSecurityAndOmitsPsk()
     {
+        // The printer's own reported default/native value for an unsecured network is "none",
+        // not "open" - "open" was likely rejected as an unrecognized value on this firmware.
         var commands = WlanConfigurationCommandBuilder.BuildSetCommands(OpenConfiguration);
 
-        Assert.Contains(("wlan.security", "open"), commands);
+        Assert.Contains(("wlan.security", "none"), commands);
         Assert.DoesNotContain(commands, c => c.Key == "wlan.wpa.psk");
     }
 
@@ -66,16 +72,18 @@ public class WlanConfigurationCommandBuilderTests
     }
 
     [Fact]
-    public void BuildSetCommands_SetsStaticIpFieldsAfterDefaultAddrEnableAndIpProtocol()
+    public void BuildSetCommands_SetsStaticIpFieldsAfterEnableAndDefaultAddrEnableAndIpProtocol()
     {
         var commands = WlanConfigurationCommandBuilder.BuildSetCommands(SecuredConfiguration);
 
+        var enableIndex = commands.ToList().FindIndex(c => c.Key == "wlan.enable");
         var defaultAddrEnableIndex = commands.ToList().FindIndex(c => c.Key == "wlan.ip.default_addr_enable");
         var ipProtocolIndex = commands.ToList().FindIndex(c => c.Key == "wlan.ip.protocol");
         var ipAddrIndex = commands.ToList().FindIndex(c => c.Key == "wlan.ip.addr");
         var netmaskIndex = commands.ToList().FindIndex(c => c.Key == "wlan.ip.netmask");
         var gatewayIndex = commands.ToList().FindIndex(c => c.Key == "wlan.ip.gateway");
 
+        Assert.True(enableIndex < defaultAddrEnableIndex);
         Assert.True(defaultAddrEnableIndex < ipAddrIndex);
         Assert.True(ipProtocolIndex < ipAddrIndex);
         Assert.True(defaultAddrEnableIndex < netmaskIndex);
@@ -83,11 +91,26 @@ public class WlanConfigurationCommandBuilderTests
     }
 
     [Fact]
+    public void BuildSetCommands_SetsWlanEnableBeforeRadioSpecificSettings()
+    {
+        var commands = WlanConfigurationCommandBuilder.BuildSetCommands(SecuredConfiguration);
+
+        var enableIndex = commands.ToList().FindIndex(c => c.Key == "wlan.enable");
+        var securityIndex = commands.ToList().FindIndex(c => c.Key == "wlan.security");
+        var pskIndex = commands.ToList().FindIndex(c => c.Key == "wlan.wpa.psk");
+        var ssidIndex = commands.ToList().FindIndex(c => c.Key == "wlan.ssid");
+
+        Assert.True(enableIndex < securityIndex);
+        Assert.True(enableIndex < pskIndex);
+        Assert.True(enableIndex < ssidIndex);
+    }
+
+    [Fact]
     public void BuildSetCommands_ReturnsExpectedCountForSecuredNetwork()
     {
         var commands = WlanConfigurationCommandBuilder.BuildSetCommands(SecuredConfiguration);
 
-        // default_addr_enable, ip.protocol, security, wpa.psk, ssid, ip.addr, netmask, gateway, enable
+        // enable, default_addr_enable, ip.protocol, security, wpa.psk, ssid, ip.addr, netmask, gateway
         Assert.Equal(9, commands.Count);
     }
 
@@ -98,16 +121,5 @@ public class WlanConfigurationCommandBuilderTests
 
         // Same as secured, minus wlan.wpa.psk
         Assert.Equal(8, commands.Count);
-    }
-
-    [Fact]
-    public void BuildSetCommands_EnablesWlanRadioLast()
-    {
-        // Many Zebra printers ship with the WLAN radio disabled until explicitly enabled - without
-        // this, every other setting above is stored but the printer never attempts to associate
-        // with any network. Set last so the radio turns on already knowing the full configuration.
-        var commands = WlanConfigurationCommandBuilder.BuildSetCommands(SecuredConfiguration);
-
-        Assert.Equal(("wlan.enable", "on"), commands[^1]);
     }
 }
