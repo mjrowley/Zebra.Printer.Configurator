@@ -21,8 +21,8 @@
     </div>
 
     <div class="mb-3">
-        <label for="ip">Printer Static IP Address</label>
-        <InputText id="ip" class="form-control" @bind-Value="_model.StaticIpAddress" />
+        <label for="ip-octet-1">Printer Static IP Address</label>
+        <IpAddressInput @bind-Value="_model.StaticIpAddress" />
         <ValidationMessage For="() => _model.StaticIpAddress" />
     </div>
 

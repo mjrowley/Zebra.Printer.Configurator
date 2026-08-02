@@ -1,0 +1,84 @@
+@* Four numeric-only octet boxes instead of one free-text field, so the printer's static IP can be
+   entered without the user having to type the separating periods themselves. *@
+
+<div class="ip-address-input">
+    <input @ref="_octetRefs[0]" id="ip-octet-1" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3"
+           class="form-control ip-octet" value="@_octets[0]"
+           @oninput="e => OnOctetInput(0, e)" @onkeydown="e => OnOctetKeyDown(0, e)" />
+    <span class="ip-dot" aria-hidden="true">.</span>
+    <input @ref="_octetRefs[1]" id="ip-octet-2" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3"
+           class="form-control ip-octet" value="@_octets[1]"
+           @oninput="e => OnOctetInput(1, e)" @onkeydown="e => OnOctetKeyDown(1, e)" />
+    <span class="ip-dot" aria-hidden="true">.</span>
+    <input @ref="_octetRefs[2]" id="ip-octet-3" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3"
+           class="form-control ip-octet" value="@_octets[2]"
+           @oninput="e => OnOctetInput(2, e)" @onkeydown="e => OnOctetKeyDown(2, e)" />
+    <span class="ip-dot" aria-hidden="true">.</span>
+    <input @ref="_octetRefs[3]" id="ip-octet-4" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3"
+           class="form-control ip-octet" value="@_octets[3]"
+           @oninput="e => OnOctetInput(3, e)" @onkeydown="e => OnOctetKeyDown(3, e)" />
+</div>
+
+@code {
+    private readonly string[] _octets = ["", "", "", ""];
+    private readonly ElementReference[] _octetRefs = new ElementReference[4];
+
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        // Only re-sync from the incoming Value when it doesn't already match what these octets
+        // would produce, so the parent re-rendering with our own just-echoed value doesn't
+        // clobber what's mid-typing (e.g. reset a field back to "" while the user is still on it).
+        if (Value != CombinedValue())
+        {
+            var parts = (Value ?? string.Empty).Split('.');
+            for (var i = 0; i < 4; i++)
+            {
+                _octets[i] = i < parts.Length ? parts[i] : string.Empty;
+            }
+        }
+    }
+
+    private string CombinedValue() => string.Join('.', _octets);
+
+    private async Task OnOctetInput(int index, ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? string.Empty;
+
+        // Typing "." is a natural "move to the next octet" gesture even before 3 digits are
+        // entered (e.g. "10." -> next box) - detected here, before it gets stripped below.
+        var advanceRequested = raw.Contains('.');
+
+        var digitsOnly = new string(raw.Where(char.IsAsciiDigit).ToArray());
+        if (digitsOnly.Length > 3)
+        {
+            digitsOnly = digitsOnly[..3];
+        }
+
+        if (int.TryParse(digitsOnly, out var numericValue) && numericValue > 255)
+        {
+            digitsOnly = "255";
+        }
+
+        _octets[index] = digitsOnly;
+        await ValueChanged.InvokeAsync(CombinedValue());
+
+        if (index < 3 && (digitsOnly.Length == 3 || advanceRequested))
+        {
+            await _octetRefs[index + 1].FocusAsync();
+        }
+    }
+
+    private async Task OnOctetKeyDown(int index, KeyboardEventArgs e)
+    {
+        if (index > 0 && e.Key == "Backspace" && string.IsNullOrEmpty(_octets[index]))
+        {
+            await _octetRefs[index - 1].FocusAsync();
+        }
+    }
+}

@@ -19,6 +19,15 @@ public class ConfigureTests : BunitContext
         Services.AddSingleton(_session);
     }
 
+    private static void FillIp(IRenderedComponent<Configure> cut, string ip)
+    {
+        var octets = ip.Split('.');
+        for (var i = 0; i < 4; i++)
+        {
+            cut.Find($"#ip-octet-{i + 1}").Input(i < octets.Length ? octets[i] : string.Empty);
+        }
+    }
+
     [Fact]
     public async Task Submit_WithInvalidSsid_ShowsValidationErrorAndDoesNotNavigate()
     {
@@ -26,7 +35,7 @@ public class ConfigureTests : BunitContext
 
         cut.Find("#ssid").Change("");
         cut.Find("#password").Change("correcthorsebatterystaple");
-        cut.Find("#ip").Change("192.168.1.50");
+        FillIp(cut, "192.168.1.50");
         await cut.Find("form").SubmitAsync();
 
         Assert.Contains("SSID is required", cut.Markup);
@@ -40,7 +49,7 @@ public class ConfigureTests : BunitContext
 
         cut.Find("#ssid").Change("Warehouse-WiFi");
         cut.Find("#password").Change("short");
-        cut.Find("#ip").Change("192.168.1.50");
+        FillIp(cut, "192.168.1.50");
         await cut.Find("form").SubmitAsync();
 
         Assert.Contains("between 8 and 63 characters", cut.Markup);
@@ -48,13 +57,16 @@ public class ConfigureTests : BunitContext
     }
 
     [Fact]
-    public async Task Submit_WithInvalidIpAddress_ShowsValidationErrorAndDoesNotNavigate()
+    public async Task Submit_WithIncompleteIpAddress_ShowsValidationErrorAndDoesNotNavigate()
     {
+        // The segmented input can't produce free-text garbage like "not-an-ip" anymore (each box
+        // only accepts digits), so the reachable invalid case is leaving octets blank.
         var cut = Render<Configure>();
 
         cut.Find("#ssid").Change("Warehouse-WiFi");
         cut.Find("#password").Change("correcthorsebatterystaple");
-        cut.Find("#ip").Change("not-an-ip");
+        cut.Find("#ip-octet-1").Input("192");
+        cut.Find("#ip-octet-2").Input("168");
         await cut.Find("form").SubmitAsync();
 
         Assert.Contains("dotted-quad IPv4 format", cut.Markup);
@@ -69,7 +81,7 @@ public class ConfigureTests : BunitContext
 
         cut.Find("#ssid").Change("Warehouse-WiFi");
         cut.Find("#password").Change("correcthorsebatterystaple");
-        cut.Find("#ip").Change("192.168.1.50");
+        FillIp(cut, "192.168.1.50");
         await cut.Find("form").SubmitAsync();
 
         Assert.NotNull(cut.Find("[data-testid='host-network-error']"));
@@ -85,7 +97,7 @@ public class ConfigureTests : BunitContext
 
         cut.Find("#ssid").Change("Warehouse-WiFi");
         cut.Find("#password").Change("correcthorsebatterystaple");
-        cut.Find("#ip").Change("192.168.1.50");
+        FillIp(cut, "192.168.1.50");
         await cut.Find("form").SubmitAsync();
 
         Assert.NotNull(_session.Configuration);
