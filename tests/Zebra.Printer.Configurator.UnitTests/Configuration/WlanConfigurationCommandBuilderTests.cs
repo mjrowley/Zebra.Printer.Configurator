@@ -87,8 +87,8 @@ public class WlanConfigurationCommandBuilderTests
     {
         var commands = WlanConfigurationCommandBuilder.BuildSetCommands(SecuredConfiguration);
 
-        // default_addr_enable, ip.protocol, security, wpa.psk, ssid, ip.addr, netmask, gateway
-        Assert.Equal(8, commands.Count);
+        // default_addr_enable, ip.protocol, security, wpa.psk, ssid, ip.addr, netmask, gateway, enable
+        Assert.Equal(9, commands.Count);
     }
 
     [Fact]
@@ -97,6 +97,17 @@ public class WlanConfigurationCommandBuilderTests
         var commands = WlanConfigurationCommandBuilder.BuildSetCommands(OpenConfiguration);
 
         // Same as secured, minus wlan.wpa.psk
-        Assert.Equal(7, commands.Count);
+        Assert.Equal(8, commands.Count);
+    }
+
+    [Fact]
+    public void BuildSetCommands_EnablesWlanRadioLast()
+    {
+        // Many Zebra printers ship with the WLAN radio disabled until explicitly enabled - without
+        // this, every other setting above is stored but the printer never attempts to associate
+        // with any network. Set last so the radio turns on already knowing the full configuration.
+        var commands = WlanConfigurationCommandBuilder.BuildSetCommands(SecuredConfiguration);
+
+        Assert.Equal(("wlan.enable", "on"), commands[^1]);
     }
 }

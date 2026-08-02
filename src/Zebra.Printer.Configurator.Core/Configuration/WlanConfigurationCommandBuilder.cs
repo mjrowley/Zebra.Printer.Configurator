@@ -45,6 +45,13 @@ public static class WlanConfigurationCommandBuilder
         commands.Add(("wlan.ip.netmask", configuration.Netmask));
         commands.Add(("wlan.ip.gateway", configuration.Gateway));
 
+        // The WLAN radio itself isn't necessarily on by default (many Zebra printers ship with it
+        // disabled until explicitly enabled) - without this, every setting above is stored but the
+        // printer never attempts to associate with any network at all. Set last, once the rest of
+        // the configuration it needs is already in place, matching the ordering in Zebra's own
+        // reference SGD command sequences.
+        commands.Add(("wlan.enable", "on"));
+
         return commands;
     }
 }
