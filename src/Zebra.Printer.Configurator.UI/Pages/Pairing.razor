@@ -1,40 +1,109 @@
 @page "/"
 @implements IDisposable
 @inject IPrinterDiscoveryService DiscoveryService
+@inject IBluetoothPairingService BluetoothPairingService
 @inject PairingSession Session
 @inject NavigationManager Navigation
 
 <h1>Pair a Printer</h1>
 
-@if (_discoveredDevice is null)
+@switch (_state)
 {
-    <p>Tap your Zebra printer to the back of your phone to begin.</p>
-}
-else
-{
-    <p data-testid="discovered-device">
-        Printer found@(_discoveredDevice.SerialNumber is not null ? $" (serial {_discoveredDevice.SerialNumber})" : ".")
-    </p>
-    <button type="button" class="btn btn-primary" @onclick="Continue">Continue</button>
+    case PairingUiState.WaitingForTap:
+        <p>Tap your Zebra printer to the back of your phone to begin.</p>
+        break;
+
+    case PairingUiState.Pairing:
+        <p>Pairing with printer&hellip;</p>
+        break;
+
+    case PairingUiState.ConfirmingCode:
+        <p data-testid="pairing-code">
+            Confirm this code matches the code shown on the printer: <strong>@_pairingCode</strong>
+        </p>
+        <button type="button" class="btn btn-primary" @onclick="ConfirmPairingCode">Pair</button>
+        <button type="button" class="btn btn-secondary" @onclick="RejectPairingCode">Cancel</button>
+        break;
+
+    case PairingUiState.Ready:
+        <p data-testid="discovered-device">
+            Printer found@(_discoveredDevice?.SerialNumber is not null ? $" (serial {_discoveredDevice.SerialNumber})" : ".")
+        </p>
+        <button type="button" class="btn btn-primary" @onclick="Continue">Continue</button>
+        break;
+
+    case PairingUiState.Failed:
+        <p class="text-danger" data-testid="pairing-error">@_errorMessage</p>
+        <button type="button" class="btn btn-primary" @onclick="Retry">Try Again</button>
+        break;
 }
 
 @code {
+    private enum PairingUiState
+    {
+        WaitingForTap,
+        Pairing,
+        ConfirmingCode,
+        Ready,
+        Failed,
+    }
+
+    private PairingUiState _state = PairingUiState.WaitingForTap;
     private PrinterDevice? _discoveredDevice;
+    private string? _pairingCode;
+    private string? _errorMessage;
+    private PairingCodeRequestedEventArgs? _pendingPairingRequest;
 
     protected override void OnInitialized()
     {
         Session.Reset();
         DiscoveryService.PrinterDiscovered += OnPrinterDiscovered;
+        BluetoothPairingService.PairingCodeRequested += OnPairingCodeRequested;
         DiscoveryService.StartListening();
     }
 
     private void OnPrinterDiscovered(object? sender, PrinterDevice device)
     {
-        InvokeAsync(() =>
+        InvokeAsync(async () =>
         {
             _discoveredDevice = device;
+            _state = PairingUiState.Pairing;
+            StateHasChanged();
+
+            var paired = await BluetoothPairingService.EnsurePairedAsync(device.BluetoothMacAddress);
+
+            _state = paired ? PairingUiState.Ready : PairingUiState.Failed;
+            _errorMessage = paired
+                ? null
+                : "Could not pair with the printer. Make sure it's powered on and in range, then try again.";
             StateHasChanged();
         });
+    }
+
+    private void OnPairingCodeRequested(object? sender, PairingCodeRequestedEventArgs args)
+    {
+        InvokeAsync(() =>
+        {
+            _pendingPairingRequest = args;
+            _pairingCode = args.PairingCode;
+            _state = PairingUiState.ConfirmingCode;
+            StateHasChanged();
+        });
+    }
+
+    private void ConfirmPairingCode() => RespondToPairingCode(accepted: true);
+
+    private void RejectPairingCode() => RespondToPairingCode(accepted: false);
+
+    private void RespondToPairingCode(bool accepted)
+    {
+        // Set state before resolving Response: TrySetResult can run the awaiter's continuation
+        // (which advances _state again, e.g. to Ready/Failed) synchronously, so nothing here should
+        // run after it that could stomp on that.
+        var request = _pendingPairingRequest;
+        _pendingPairingRequest = null;
+        _state = PairingUiState.Pairing;
+        request?.Response.TrySetResult(accepted);
     }
 
     private void Continue()
@@ -48,9 +117,17 @@ else
         Navigation.NavigateTo("/configure");
     }
 
+    private void Retry()
+    {
+        _discoveredDevice = null;
+        _errorMessage = null;
+        _state = PairingUiState.WaitingForTap;
+    }
+
     public void Dispose()
     {
         DiscoveryService.PrinterDiscovered -= OnPrinterDiscovered;
+        BluetoothPairingService.PairingCodeRequested -= OnPairingCodeRequested;
         DiscoveryService.StopListening();
     }
 }
