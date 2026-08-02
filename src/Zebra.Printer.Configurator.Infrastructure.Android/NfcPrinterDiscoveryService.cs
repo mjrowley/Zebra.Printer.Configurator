@@ -19,7 +19,7 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// hit Android's normal tag-handling chooser instead of this app. StartListening/StopListening
 /// still gate whether a discovered tag is actually acted on, via the check in OnNewIntent.
 /// </summary>
-public sealed class NfcPrinterDiscoveryService : IPrinterDiscoveryService, INfcForegroundDispatch
+public sealed class NfcPrinterDiscoveryService(IAppLog appLog) : IPrinterDiscoveryService, INfcForegroundDispatch
 {
     private Activity? _activity;
     private NfcAdapter? _adapter;
@@ -31,6 +31,7 @@ public sealed class NfcPrinterDiscoveryService : IPrinterDiscoveryService, INfcF
     public void StartListening()
     {
         _isListening = true;
+        appLog.Log("Waiting for NFC tap...");
     }
 
     public void StopListening()
@@ -57,6 +58,8 @@ public sealed class NfcPrinterDiscoveryService : IPrinterDiscoveryService, INfcF
             return;
         }
 
+        appLog.Log("NFC tag detected. Reading printer data...");
+
         // The tag carries multiple NDEF records (the app-specific data plus a URI fallback for
         // phones without this app), and their order isn't guaranteed, so every record's payload is
         // tried rather than assuming the app data is record[0].
@@ -65,10 +68,13 @@ public sealed class NfcPrinterDiscoveryService : IPrinterDiscoveryService, INfcF
             var device = NfcPrinterTagParser.TryParse(payload);
             if (device is not null)
             {
+                appLog.Log($"Printer identified (Bluetooth MAC: {device.BluetoothMacAddress}).", LogLevel.Success);
                 PrinterDiscovered?.Invoke(this, device);
                 return;
             }
         }
+
+        appLog.Log("NFC tag did not contain recognizable Zebra printer data.", LogLevel.Warning);
     }
 
     private void TryEnableDispatch()

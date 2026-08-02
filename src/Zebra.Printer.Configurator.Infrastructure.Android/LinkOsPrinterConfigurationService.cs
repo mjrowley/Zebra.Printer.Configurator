@@ -19,30 +19,40 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// Android system "PIN error" toast) and left the connection in a worse state, with the same read
 /// failure recurring afterward. Zebra SPP printers commonly accept RFCOMM connections without a
 /// prior OS-level bond at all, so skipping bonding avoids provoking that failed negotiation.
+/// Bonding still happens, but earlier and correctly, via BluetoothPairingService/IBluetoothPairingService.
 /// </summary>
-public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionService bluetoothPermissionService)
+public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionService bluetoothPermissionService, IAppLog appLog)
     : IPrinterConfigurationService, IPrinterRestartService
 {
     private const int ConnectionAttempts = 3;
     private static readonly TimeSpan ConnectionRetryDelay = TimeSpan.FromSeconds(2);
 
+    // Logged as-is; every other SGD value is safe to show, but the WiFi password should never
+    // appear on screen (or in anything the user might screenshot/share for support).
+    private static readonly HashSet<string> SensitiveKeys = ["wlan.wpa.psk"];
+
     public async Task ApplyAsync(PrinterDevice device, WlanConfiguration configuration, CancellationToken cancellationToken = default)
     {
         await EnsureBluetoothPermissionAsync(cancellationToken);
 
+        appLog.Log("Connecting to printer to apply WiFi configuration...");
         await WithBluetoothConnectionAsync(device.BluetoothMacAddress, connection =>
         {
             foreach (var (key, value) in WlanConfigurationCommandBuilder.BuildSetCommands(configuration))
             {
+                var loggedValue = SensitiveKeys.Contains(key) ? "********" : value;
+                appLog.Log($"Setting {key} = {loggedValue}");
                 SGD.SET(key, value, connection);
             }
         }, cancellationToken);
+        appLog.Log("WiFi configuration applied.", LogLevel.Success);
     }
 
     public async Task RestartAsync(PrinterDevice device, CancellationToken cancellationToken = default)
     {
         await EnsureBluetoothPermissionAsync(cancellationToken);
 
+        appLog.Log("Restarting printer...");
         await WithBluetoothConnectionAsync(device.BluetoothMacAddress, connection =>
         {
             // "device.restart" is not a real SGD command - SGD silently no-ops unrecognized
@@ -52,6 +62,7 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
             // ZD-series printer: `! U1 do "device.reset" ""`).
             SGD.DO("device.reset", string.Empty, connection);
         }, cancellationToken);
+        appLog.Log("Restart command sent.", LogLevel.Success);
     }
 
     private async Task EnsureBluetoothPermissionAsync(CancellationToken cancellationToken)
@@ -63,6 +74,7 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
         var granted = await bluetoothPermissionService.EnsureGrantedAsync(cancellationToken);
         if (!granted)
         {
+            appLog.Log("Bluetooth permission is required to configure the printer.", LogLevel.Error);
             throw new InvalidOperationException(
                 "Bluetooth permission is required to configure the printer. Please grant it and try again.");
         }
@@ -90,10 +102,11 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
                 }, cancellationToken);
                 return;
             }
-            catch (Exception) when (attempt < ConnectionAttempts)
+            catch (Exception ex) when (attempt < ConnectionAttempts)
             {
                 // Bluetooth Classic connections are commonly flaky - a short retry resolves most
                 // transient "read failed"-style errors.
+                appLog.Log($"Connection attempt {attempt} of {ConnectionAttempts} failed ({ex.Message}). Retrying...", LogLevel.Warning);
                 await Task.Delay(ConnectionRetryDelay, cancellationToken);
             }
         }

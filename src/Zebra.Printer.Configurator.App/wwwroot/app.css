@@ -1,5 +1,11 @@
 html, body {
+    height: 100%;
+    margin: 0;
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+#app {
+    height: 100%;
 }
 
 a, .btn-link {

@@ -12,7 +12,7 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// stack won't answer on is exactly what the retry loop is for), then once reachable opens a real
 /// Zebra SDK TcpConnection and reads wlan.state as positive confirmation.
 /// </summary>
-public sealed class LinkOsConnectivityTestService : IPrinterConnectivityTestService
+public sealed class LinkOsConnectivityTestService(IAppLog appLog) : IPrinterConnectivityTestService
 {
     private const int SgdPort = 6101;
     private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(45);
@@ -21,6 +21,8 @@ public sealed class LinkOsConnectivityTestService : IPrinterConnectivityTestServ
 
     public async Task<ConnectionTestResult> TestConnectionAsync(WlanConfiguration configuration, CancellationToken cancellationToken = default)
     {
+        appLog.Log($"Waiting for printer to rejoin WiFi at {configuration.StaticIpAddress} (up to {PollTimeout.TotalSeconds:N0}s)...");
+
         var reachable = await RetryPoller.PollUntilAsync(
             attempt: () => TcpPortProbe.IsReachableAsync(configuration.StaticIpAddress, SgdPort, ProbeTimeout, cancellationToken),
             timeout: PollTimeout,
@@ -29,10 +31,12 @@ public sealed class LinkOsConnectivityTestService : IPrinterConnectivityTestServ
 
         if (!reachable)
         {
-            return ConnectionTestResult.Failed(
-                $"Printer did not respond on {configuration.StaticIpAddress}:{SgdPort} within {PollTimeout.TotalSeconds:N0}s after restart.");
+            var failure = $"Printer did not respond on {configuration.StaticIpAddress}:{SgdPort} within {PollTimeout.TotalSeconds:N0}s after restart.";
+            appLog.Log(failure, LogLevel.Error);
+            return ConnectionTestResult.Failed(failure);
         }
 
+        appLog.Log($"Printer is reachable at {configuration.StaticIpAddress}:{SgdPort}. Confirming WiFi state...");
         cancellationToken.ThrowIfCancellationRequested();
 
         return await Task.Run(() =>
@@ -42,9 +46,14 @@ public sealed class LinkOsConnectivityTestService : IPrinterConnectivityTestServ
             try
             {
                 var wlanState = SGD.GET("wlan.state", connection);
-                return string.IsNullOrWhiteSpace(wlanState)
-                    ? ConnectionTestResult.Failed("Printer responded on the network but wlan.state was empty.")
-                    : ConnectionTestResult.Succeeded(wlanState);
+                if (string.IsNullOrWhiteSpace(wlanState))
+                {
+                    appLog.Log("Printer responded on the network but wlan.state was empty.", LogLevel.Error);
+                    return ConnectionTestResult.Failed("Printer responded on the network but wlan.state was empty.");
+                }
+
+                appLog.Log($"WiFi state: {wlanState}", LogLevel.Success);
+                return ConnectionTestResult.Succeeded(wlanState);
             }
             finally
             {

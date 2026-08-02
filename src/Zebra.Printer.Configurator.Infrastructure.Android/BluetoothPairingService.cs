@@ -17,7 +17,7 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// legacy PIN negotiation (visible as an OS "PIN error" toast) instead of the printer's actual SSP
 /// numeric-comparison method - driving the pairing-request broadcast explicitly avoids that.
 /// </summary>
-public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoothPermissionService) : IBluetoothPairingService
+public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoothPermissionService, IAppLog appLog) : IBluetoothPairingService
 {
     private static readonly TimeSpan PairingTimeout = TimeSpan.FromSeconds(30);
 
@@ -28,6 +28,7 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
         var granted = await bluetoothPermissionService.EnsureGrantedAsync(cancellationToken);
         if (!granted)
         {
+            appLog.Log("Bluetooth permission was not granted.", LogLevel.Error);
             return false;
         }
 
@@ -39,8 +40,11 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
             ?? throw new InvalidOperationException($"'{macAddress}' is not a valid Bluetooth address.");
         if (device.BondState == Bond.Bonded)
         {
+            appLog.Log("Printer is already paired.");
             return true;
         }
+
+        appLog.Log("Requesting Bluetooth pairing with printer...");
 
         var bondCompletion = new TaskCompletionSource<bool>();
         using var bondReceiver = new BondStateReceiver(device.Address!, bondCompletion);
@@ -55,6 +59,7 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
         {
             if (!device.CreateBond())
             {
+                appLog.Log("Could not start Bluetooth pairing.", LogLevel.Error);
                 return false;
             }
 
@@ -62,7 +67,11 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
             timeoutCts.CancelAfter(PairingTimeout);
             using var registration = timeoutCts.Token.Register(() => bondCompletion.TrySetResult(false));
 
-            return await bondCompletion.Task;
+            var bonded = await bondCompletion.Task;
+            appLog.Log(
+                bonded ? "Bluetooth pairing succeeded." : "Bluetooth pairing failed or timed out.",
+                bonded ? LogLevel.Success : LogLevel.Error);
+            return bonded;
         }
         finally
         {
@@ -72,6 +81,8 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
     }
 
     private void RaisePairingCodeRequested(PairingCodeRequestedEventArgs args) => PairingCodeRequested?.Invoke(this, args);
+
+    private void Log(string message, LogLevel level = LogLevel.Info) => appLog.Log(message, level);
 
     private sealed class BondStateReceiver(string targetAddress, TaskCompletionSource<bool> completionSource) : BroadcastReceiver
     {
@@ -114,10 +125,18 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
                 InvokeAbortBroadcast();
                 var passkey = intent.GetIntExtra(BluetoothDevice.ExtraPairingKey, -1);
                 var args = new PairingCodeRequestedEventArgs(passkey.ToString("D6"));
+                owner.Log($"Printer is requesting pairing confirmation. Code: {args.PairingCode}");
                 owner.RaisePairingCodeRequested(args);
 
                 args.Response.Task.ContinueWith(
-                    t => device?.SetPairingConfirmation(!t.IsFaulted && !t.IsCanceled && t.Result),
+                    t =>
+                    {
+                        var accepted = !t.IsFaulted && !t.IsCanceled && t.Result;
+                        owner.Log(
+                            accepted ? "User confirmed the pairing code." : "User rejected the pairing code.",
+                            accepted ? LogLevel.Info : LogLevel.Warning);
+                        device?.SetPairingConfirmation(accepted);
+                    },
                     TaskScheduler.Default);
             }
         }
