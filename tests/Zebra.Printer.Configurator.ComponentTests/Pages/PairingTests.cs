@@ -156,7 +156,7 @@ public class PairingTests : BunitContext
 
         cut.Find("[data-testid='factory-reset-confirm']").Click();
 
-        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='pairing-error']")));
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='factory-reset-error']")));
         Assert.Null(_pairingService.LastRemovedBondMacAddress);
     }
 

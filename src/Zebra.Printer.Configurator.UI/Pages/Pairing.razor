@@ -2,7 +2,6 @@
 @implements IDisposable
 @inject IPrinterDiscoveryService DiscoveryService
 @inject IBluetoothPairingService BluetoothPairingService
-@inject IPrinterFactoryResetService FactoryResetService
 @inject PairingSession Session
 @inject NavigationManager Navigation
 
@@ -37,31 +36,7 @@
             Printer found@(_discoveredDevice?.SerialNumber is not null ? $" (serial {_discoveredDevice.SerialNumber})" : ".")
         </p>
         <button type="button" class="btn btn-primary" @onclick="Continue">Configure Printer</button>
-        <button type="button" class="btn btn-outline-danger" data-testid="factory-reset-button" @onclick="RequestFactoryReset">Factory Reset</button>
-        break;
-
-    case PairingUiState.ConfirmingFactoryReset:
-        <p class="text-danger" data-testid="factory-reset-warning">
-            This erases all settings on the printer and restores factory defaults. It may also break
-            the Bluetooth pairing you just completed. Continue?
-        </p>
-        <button type="button" class="btn btn-danger" data-testid="factory-reset-confirm" @onclick="ConfirmFactoryReset">Factory Reset</button>
-        <button type="button" class="btn btn-secondary" data-testid="factory-reset-cancel" @onclick="CancelFactoryReset">Cancel</button>
-        break;
-
-    case PairingUiState.ResettingToFactoryDefaults:
-        <p data-testid="factory-reset-progress">
-            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-            Resetting printer to factory defaults&hellip;
-        </p>
-        break;
-
-    case PairingUiState.FactoryResetComplete:
-        <p data-testid="factory-reset-complete">
-            Factory reset command sent. The printer is restarting with default settings, and its
-            Bluetooth pairing has been removed - tap the printer again to re-pair.
-        </p>
-        <button type="button" class="btn btn-primary" @onclick="Retry">Start Over</button>
+        <FactoryResetPanel Device="_discoveredDevice!" OnFinished="Retry" />
         break;
 
     case PairingUiState.Failed:
@@ -77,9 +52,6 @@
         Pairing,
         ConfirmingCode,
         Ready,
-        ConfirmingFactoryReset,
-        ResettingToFactoryDefaults,
-        FactoryResetComplete,
         Failed,
     }
 
@@ -150,37 +122,6 @@
 
         Session.Device = _discoveredDevice;
         Navigation.NavigateTo("/configure");
-    }
-
-    private void RequestFactoryReset() => _state = PairingUiState.ConfirmingFactoryReset;
-
-    private void CancelFactoryReset() => _state = PairingUiState.Ready;
-
-    private async Task ConfirmFactoryReset()
-    {
-        if (_discoveredDevice is null)
-        {
-            return;
-        }
-
-        _state = PairingUiState.ResettingToFactoryDefaults;
-
-        try
-        {
-            await FactoryResetService.ResetToFactoryDefaultsAsync(_discoveredDevice);
-
-            // The printer's own Bluetooth pairing key is reset along with everything else, so the
-            // phone's stored bond is now stale and would otherwise make the next pairing attempt
-            // fail - remove it so re-pairing starts clean.
-            await BluetoothPairingService.RemoveBondAsync(_discoveredDevice.BluetoothMacAddress);
-
-            _state = PairingUiState.FactoryResetComplete;
-        }
-        catch (Exception ex)
-        {
-            _errorMessage = $"Factory reset failed: {ex.Message}";
-            _state = PairingUiState.Failed;
-        }
     }
 
     private void Retry()

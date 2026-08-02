@@ -9,6 +9,8 @@
     <p data-testid="result-success">
         The printer is now connected to @Session.Configuration?.Ssid at @Session.Configuration?.StaticIpAddress.
     </p>
+    <button type="button" class="btn btn-primary" @onclick="Reconfigure">Reconfigure Printer</button>
+    <FactoryResetPanel Device="Session.Device!" OnFinished="Retry" />
 }
 else
 {
@@ -25,6 +27,8 @@ else
             Navigation.NavigateTo("/", replace: true);
         }
     }
+
+    private void Reconfigure() => Navigation.NavigateTo("/configure");
 
     private void Retry()
     {

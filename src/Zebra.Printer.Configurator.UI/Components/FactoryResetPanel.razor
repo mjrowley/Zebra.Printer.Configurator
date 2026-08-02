@@ -1,0 +1,88 @@
+@* Self-contained factory-reset button + confirm/progress/result flow for a paired printer. Shared
+   between Pairing (right after tap-pairing) and Result (after a successful reconfiguration), rather
+   than duplicating the same confirm-then-reset-then-remove-bond state machine on both pages. *@
+@inject IPrinterFactoryResetService FactoryResetService
+@inject IBluetoothPairingService BluetoothPairingService
+
+@switch (_state)
+{
+    case State.Idle:
+        <button type="button" class="btn btn-outline-danger" data-testid="factory-reset-button" @onclick="RequestFactoryReset">Factory Reset</button>
+        break;
+
+    case State.Confirming:
+        <p class="text-danger" data-testid="factory-reset-warning">
+            This erases all settings on the printer and restores factory defaults. It may also break
+            the current Bluetooth pairing. Continue?
+        </p>
+        <button type="button" class="btn btn-danger" data-testid="factory-reset-confirm" @onclick="ConfirmFactoryReset">Factory Reset</button>
+        <button type="button" class="btn btn-secondary" data-testid="factory-reset-cancel" @onclick="CancelFactoryReset">Cancel</button>
+        break;
+
+    case State.Resetting:
+        <p data-testid="factory-reset-progress">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            Resetting printer to factory defaults&hellip;
+        </p>
+        break;
+
+    case State.Complete:
+        <p data-testid="factory-reset-complete">
+            Factory reset command sent. The printer is restarting with default settings, and its
+            Bluetooth pairing has been removed - tap the printer again to re-pair.
+        </p>
+        <button type="button" class="btn btn-primary" @onclick="() => OnFinished.InvokeAsync()">Start Over</button>
+        break;
+
+    case State.Failed:
+        <p class="text-danger" data-testid="factory-reset-error">@_errorMessage</p>
+        <button type="button" class="btn btn-primary" @onclick="() => OnFinished.InvokeAsync()">Try Again</button>
+        break;
+}
+
+@code {
+    private enum State
+    {
+        Idle,
+        Confirming,
+        Resetting,
+        Complete,
+        Failed,
+    }
+
+    [Parameter, EditorRequired]
+    public PrinterDevice Device { get; set; } = null!;
+
+    /// <summary>Raised when the user dismisses a terminal (Complete/Failed) state via its button.</summary>
+    [Parameter]
+    public EventCallback OnFinished { get; set; }
+
+    private State _state = State.Idle;
+    private string? _errorMessage;
+
+    private void RequestFactoryReset() => _state = State.Confirming;
+
+    private void CancelFactoryReset() => _state = State.Idle;
+
+    private async Task ConfirmFactoryReset()
+    {
+        _state = State.Resetting;
+
+        try
+        {
+            await FactoryResetService.ResetToFactoryDefaultsAsync(Device);
+
+            // The printer's own Bluetooth pairing key is reset along with everything else, so the
+            // phone's stored bond is now stale and would otherwise make the next pairing attempt
+            // fail - remove it so re-pairing starts clean.
+            await BluetoothPairingService.RemoveBondAsync(Device.BluetoothMacAddress);
+
+            _state = State.Complete;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Factory reset failed: {ex.Message}";
+            _state = State.Failed;
+        }
+    }
+}

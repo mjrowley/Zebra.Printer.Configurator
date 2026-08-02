@@ -21,6 +21,9 @@ public class ResultTests : BunitContext
         Gateway = "192.168.1.1",
     };
 
+    private readonly IPrinterFactoryResetService _factoryResetService = Substitute.For<IPrinterFactoryResetService>();
+    private readonly IBluetoothPairingService _pairingService = Substitute.For<IBluetoothPairingService>();
+
     private async Task<(PairAndConfigureWorkflow Workflow, PairingSession Session)> RunWorkflowToCompletionAsync(ConnectionTestResult connectivityResult)
     {
         var configurationService = Substitute.For<IPrinterConfigurationService>();
@@ -34,6 +37,8 @@ public class ResultTests : BunitContext
         var session = new PairingSession { Device = Device, Configuration = Configuration };
         Services.AddSingleton(workflow);
         Services.AddSingleton(session);
+        Services.AddSingleton(_factoryResetService);
+        Services.AddSingleton(_pairingService);
 
         return (workflow, session);
     }
@@ -60,6 +65,30 @@ public class ResultTests : BunitContext
         var failureElement = cut.Find("[data-testid='result-failure']");
         Assert.Contains("Printer did not respond.", failureElement.TextContent);
         Assert.NotNull(cut.Find("button"));
+    }
+
+    [Fact]
+    public async Task SucceededWorkflow_ShowsReconfigureAndFactoryResetButtons()
+    {
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+
+        var cut = Render<Result>();
+
+        Assert.Contains("Reconfigure Printer", cut.Markup);
+        Assert.NotNull(cut.Find("[data-testid='factory-reset-button']"));
+    }
+
+    [Fact]
+    public async Task ClickingReconfigure_NavigatesToConfigureWithoutResettingSession()
+    {
+        var (_, session) = await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+        var cut = Render<Result>();
+
+        cut.Find("button").Click(); // "Reconfigure Printer" - first button in the succeeded branch
+
+        Assert.Same(Device, session.Device);
+        var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        Assert.EndsWith("/configure", navigation.Uri);
     }
 
     [Fact]
