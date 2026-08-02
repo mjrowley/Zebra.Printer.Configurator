@@ -1,7 +1,17 @@
 .app-layout {
+    position: relative;
     display: flex;
     flex-direction: column;
     height: 100%;
+}
+
+.app-version {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.75rem;
+    font-size: 0.75rem;
+    color: #888;
+    z-index: 10;
 }
 
 .content {

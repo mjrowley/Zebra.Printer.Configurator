@@ -21,6 +21,7 @@ public static class MauiProgram
 		builder.Services.AddMauiBlazorWebView();
 
 		builder.Services.AddSingleton<IAppLog, AppLog>();
+		builder.Services.AddSingleton<IAppVersionProvider, AppVersionProvider>();
 
 		// Single instance backs both interfaces: IPrinterDiscoveryService is what the UI/workflow
 		// depends on, INfcForegroundDispatch is what MainActivity forwards Activity lifecycle/intents to.

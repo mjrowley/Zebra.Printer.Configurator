@@ -9,10 +9,12 @@ namespace Zebra.Printer.Configurator.ComponentTests.Layout;
 public class MainLayoutTests : BunitContext
 {
     private readonly AppLog _appLog = new();
+    private readonly FakeAppVersionProvider _appVersionProvider = new();
 
     public MainLayoutTests()
     {
         Services.AddSingleton<IAppLog>(_appLog);
+        Services.AddSingleton<IAppVersionProvider>(_appVersionProvider);
     }
 
     [Fact]
@@ -21,6 +23,14 @@ public class MainLayoutTests : BunitContext
         var cut = Render<MainLayout>();
 
         Assert.Contains("No activity yet.", cut.Markup);
+    }
+
+    [Fact]
+    public void InitialRender_ShowsAppVersion()
+    {
+        var cut = Render<MainLayout>();
+
+        Assert.Equal("v1.2 (3)", cut.Find("[data-testid='app-version']").TextContent);
     }
 
     [Fact]
@@ -48,5 +58,10 @@ public class MainLayoutTests : BunitContext
             Assert.Contains("Second event", entries[0].TextContent);
             Assert.Contains("First event", entries[1].TextContent);
         });
+    }
+
+    private sealed class FakeAppVersionProvider : IAppVersionProvider
+    {
+        public string VersionLabel => "v1.2 (3)";
     }
 }

@@ -1,8 +1,11 @@
 @inherits LayoutComponentBase
 @implements IDisposable
 @inject IAppLog AppLog
+@inject IAppVersionProvider AppVersionProvider
 
 <div class="app-layout">
+    <span class="app-version" data-testid="app-version">@AppVersionProvider.VersionLabel</span>
+
     <article class="content">
         @Body
     </article>
