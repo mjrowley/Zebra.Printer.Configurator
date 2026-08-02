@@ -30,6 +30,7 @@ public static class MauiProgram
 		builder.Services.AddSingleton<LinkOsPrinterConfigurationService>();
 		builder.Services.AddSingleton<IPrinterConfigurationService>(sp => sp.GetRequiredService<LinkOsPrinterConfigurationService>());
 		builder.Services.AddSingleton<IPrinterRestartService>(sp => sp.GetRequiredService<LinkOsPrinterConfigurationService>());
+		builder.Services.AddSingleton<IPrinterConnectivityTestService, LinkOsConnectivityTestService>();
 
 #if DEBUG
 		builder.Services.AddBlazorWebViewDeveloperTools();
