@@ -3,6 +3,8 @@ using Android.Content;
 using Android.Content.PM;
 using Android.OS;
 using Android.Runtime;
+using Android.Views;
+using AndroidX.Core.View;
 using Microsoft.Maui.ApplicationModel;
 using Zebra.Printer.Configurator.Infrastructure.Android;
 
@@ -15,6 +17,31 @@ public class MainActivity : MauiAppCompatActivity
 	// lifecycle is forwarded to the service rather than the service managing it independently.
 	private INfcForegroundDispatch NfcDispatch =>
 		IPlatformApplication.Current!.Services.GetRequiredService<INfcForegroundDispatch>();
+
+	protected override void OnCreate(Bundle? savedInstanceState)
+	{
+		base.OnCreate(savedInstanceState);
+
+		// Android 15+ (targetSdk 35+) enforces edge-to-edge by default and ignores
+		// Window.SetDecorFitsSystemWindows(true), so content draws behind the status bar/gesture
+		// nav bar unless padded for explicitly. Insets are applied to the DecorView so this covers
+		// the BlazorWebView regardless of how MAUI lays it out inside the page.
+		ViewCompat.SetOnApplyWindowInsetsListener(Window!.DecorView, new SystemBarsInsetsListener());
+	}
+
+	private sealed class SystemBarsInsetsListener : Java.Lang.Object, IOnApplyWindowInsetsListener
+	{
+		public WindowInsetsCompat? OnApplyWindowInsets(global::Android.Views.View? view, WindowInsetsCompat? insets)
+		{
+			var systemBars = insets?.GetInsets(WindowInsetsCompat.Type.SystemBars());
+			if (systemBars is { } bars)
+			{
+				view?.SetPadding(bars.Left, bars.Top, bars.Right, bars.Bottom);
+			}
+
+			return insets;
+		}
+	}
 
 	protected override void OnResume()
 	{
