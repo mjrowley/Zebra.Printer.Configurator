@@ -12,8 +12,17 @@ namespace Zebra.Printer.Configurator.Core.Parsing;
 /// </summary>
 public static class NfcPrinterTagParser
 {
-    private const string BluetoothMacMarker = "&mB=";
-    private const int BluetoothMacSkip = 4;
+    // A ZD421/ZQ630 Plus tag uses "&mB=" for the Bluetooth MAC, but a ZD621 unit's tag reported
+    // directly from an on-device NDEF payload dump used "&mBL=" instead:
+    // "...&mE=60953260083d&mW=000000000000&mBL=6095325ef47e&c=ZD6A042-D0PF00EZ&s=D9J254516544&v=0".
+    // Both are tried, in that order, so the printers already confirmed working keep working exactly
+    // as before, and newer/other models using the "&mBL=" form are also recognized.
+    private static readonly (string Marker, int Skip)[] BluetoothMacMarkers =
+    [
+        ("&mB=", 4),
+        ("&mBL=", 5),
+    ];
+
     private const int BluetoothMacLength = 12;
 
     private const string SerialMarker = "&s";
@@ -35,7 +44,9 @@ public static class NfcPrinterTagParser
             return null;
         }
 
-        var rawBluetoothMac = ExtractField(ndefPayload, BluetoothMacMarker, BluetoothMacSkip, BluetoothMacLength);
+        var rawBluetoothMac = BluetoothMacMarkers
+            .Select(candidate => ExtractField(ndefPayload, candidate.Marker, candidate.Skip, BluetoothMacLength))
+            .FirstOrDefault(field => field is not null);
         var bluetoothMac = rawBluetoothMac is null ? null : FormatAsColonSeparatedMac(rawBluetoothMac);
         if (bluetoothMac is null)
         {

@@ -76,4 +76,25 @@ public class NfcPrinterTagParserTests
 
         Assert.Null(device);
     }
+
+    [Fact]
+    public void TryParse_ExtractsBluetoothMacAddress_FromMblMarker()
+    {
+        // Reported directly from an on-device NDEF payload dump for a ZD621 (whose tag uses
+        // "&mBL=" rather than the "&mB=" the ZD421/ZQ630 Plus use):
+        const string payload = ".zebra.com/apps/r/nfc?mE=60953260083d&mW=000000000000&mBL=6095325ef47e&c=ZD6A042-D0PF00EZ&s=D9J254516544&v=0";
+
+        var device = NfcPrinterTagParser.TryParse(payload);
+
+        Assert.NotNull(device);
+        Assert.Equal("60:95:32:5E:F4:7E", device!.BluetoothMacAddress);
+    }
+
+    [Fact]
+    public void TryParse_PrefersMbMarker_WhenBothMbAndMblArePresent()
+    {
+        var device = NfcPrinterTagParser.TryParse("&mB=AABBCCDDEEFF&mBL=112233445566");
+
+        Assert.Equal("AA:BB:CC:DD:EE:FF", device!.BluetoothMacAddress);
+    }
 }
