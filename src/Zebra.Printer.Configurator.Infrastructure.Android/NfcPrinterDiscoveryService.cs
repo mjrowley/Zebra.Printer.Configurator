@@ -63,7 +63,8 @@ public sealed class NfcPrinterDiscoveryService(IAppLog appLog) : IPrinterDiscove
         // The tag carries multiple NDEF records (the app-specific data plus a URI fallback for
         // phones without this app), and their order isn't guaranteed, so every record's payload is
         // tried rather than assuming the app data is record[0].
-        foreach (var payload in ExtractNdefPayloads(intent))
+        var payloads = ExtractNdefPayloads(intent).ToList();
+        foreach (var payload in payloads)
         {
             var device = NfcPrinterTagParser.TryParse(payload);
             if (device is not null)
@@ -75,6 +76,27 @@ public sealed class NfcPrinterDiscoveryService(IAppLog appLog) : IPrinterDiscove
         }
 
         appLog.Log("NFC tag did not contain recognizable Zebra printer data.", LogLevel.Warning);
+
+        // Logged so an unfamiliar tag format (e.g. a printer model/firmware whose NFC payload
+        // doesn't match the "&mB="/"&s"/"&mW=" marker layout this parser was built from) can be
+        // diagnosed from the reported content instead of guessed at blindly.
+        if (payloads.Count == 0)
+        {
+            appLog.Log("No NDEF records were found on the tag.", LogLevel.Warning);
+        }
+        else
+        {
+            foreach (var payload in payloads)
+            {
+                appLog.Log($"NDEF record payload: {DescribePayload(payload)}", LogLevel.Warning);
+            }
+        }
+    }
+
+    private static string DescribePayload(string payload)
+    {
+        var sanitized = new string(payload.Select(c => char.IsControl(c) ? '.' : c).ToArray());
+        return sanitized.Length > 300 ? sanitized[..300] + "..." : sanitized;
     }
 
     private void TryEnableDispatch()
