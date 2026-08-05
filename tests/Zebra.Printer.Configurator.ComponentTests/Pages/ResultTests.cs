@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Bunit;
 using NSubstitute;
@@ -29,17 +31,19 @@ public class ResultTests : BunitContext
     private readonly IWifiConnectivityMonitor _wifiMonitor = Substitute.For<IWifiConnectivityMonitor>();
     private readonly PrinterConnectionModeProvider _connectionModeProvider = new();
 
-    private async Task<(PairAndConfigureWorkflow Workflow, PairingSession Session)> RunWorkflowToCompletionAsync(ConnectionTestResult connectivityResult)
+    private async Task<(PairAndConfigureWorkflow Workflow, PairingSession Session)> RunWorkflowToCompletionAsync(
+        ConnectionTestResult connectivityResult, WlanConfiguration? configuration = null)
     {
+        configuration ??= Configuration;
         var configurationService = Substitute.For<IPrinterConfigurationService>();
         var restartService = Substitute.For<IPrinterRestartService>();
         var connectivityTestService = Substitute.For<IPrinterConnectivityTestService>();
-        connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>()).Returns(connectivityResult);
+        connectivityTestService.TestConnectionAsync(Device, configuration, Arg.Any<CancellationToken>()).Returns(connectivityResult);
 
         var workflow = new PairAndConfigureWorkflow(configurationService, restartService, connectivityTestService);
-        await workflow.RunAsync(Device, Configuration);
+        await workflow.RunAsync(Device, configuration);
 
-        var session = new PairingSession { Device = Device, Configuration = Configuration };
+        var session = new PairingSession { Device = Device, Configuration = configuration };
         Services.AddSingleton(workflow);
         Services.AddSingleton(session);
         Services.AddSingleton(_factoryResetService);
@@ -50,6 +54,23 @@ public class ResultTests : BunitContext
         Services.AddSingleton<IPrinterConnectionModeProvider>(_connectionModeProvider);
 
         return (workflow, session);
+    }
+
+    private static TcpListener StartLoopbackListener(out int port)
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        return listener;
+    }
+
+    private static int GetFreeLoopbackPort()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        return port;
     }
 
     [Fact]
@@ -91,14 +112,17 @@ public class ResultTests : BunitContext
     [Fact]
     public async Task ClickingReconfigure_NavigatesToConfigureWithoutResettingSession()
     {
-        var (_, session) = await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
-        var cut = Render<Result>();
+        // A closed loopback port refuses the probe almost instantly, unlike a real unreachable IP
+        // which can take the full probe timeout to fail - keeps this test fast and deterministic.
+        var configuration = Configuration with { StaticIpAddress = "127.0.0.1" };
+        var (_, session) = await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"), configuration);
+        var cut = Render<Result>(p => p.Add(c => c.WifiProbePort, GetFreeLoopbackPort()));
 
-        cut.Find("button").Click(); // "Reconfigure Printer" - first button in the succeeded branch
+        cut.Find("[data-testid='reconfigure-button']").Click();
 
         Assert.Same(Device, session.Device);
         var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
-        Assert.EndsWith("/configure", navigation.Uri);
+        cut.WaitForAssertion(() => Assert.EndsWith("/configure", navigation.Uri), TimeSpan.FromSeconds(5));
     }
 
     [Fact]
@@ -109,7 +133,40 @@ public class ResultTests : BunitContext
 
         cut.Find("[data-testid='factory-reset-button']").Click();
 
-        Assert.True(cut.Find("button").HasAttribute("disabled")); // "Reconfigure Printer" - first button
+        Assert.True(cut.Find("[data-testid='reconfigure-button']").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public async Task ClickingReconfigure_WhenStaticIpIsReachable_SwitchesToWifiAndStartsWifiMonitor()
+    {
+        using var listener = StartLoopbackListener(out var port);
+        var configuration = Configuration with { StaticIpAddress = "127.0.0.1" };
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"), configuration);
+        var cut = Render<Result>(p => p.Add(c => c.WifiProbePort, port));
+
+        cut.Find("[data-testid='reconfigure-button']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(PrinterConnectionMode.Wifi, _connectionModeProvider.Mode);
+            Assert.Equal("127.0.0.1", _connectionModeProvider.WifiIpAddress);
+            Assert.Equal(ConnectionIndicatorState.Disconnected, _connectivityMonitor.Bluetooth);
+            Assert.Equal(ConnectionIndicatorState.Connected, _connectivityMonitor.Wifi);
+        });
+        _wifiMonitor.Received().Start("127.0.0.1");
+    }
+
+    [Fact]
+    public async Task ClickingReconfigure_WhenStaticIpIsUnreachable_FallsBackToBluetooth()
+    {
+        var configuration = Configuration with { StaticIpAddress = "127.0.0.1" };
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"), configuration);
+        var cut = Render<Result>(p => p.Add(c => c.WifiProbePort, GetFreeLoopbackPort()));
+
+        cut.Find("[data-testid='reconfigure-button']").Click();
+
+        cut.WaitForAssertion(() => Assert.Equal(PrinterConnectionMode.Bluetooth, _connectionModeProvider.Mode), TimeSpan.FromSeconds(5));
+        _wifiMonitor.DidNotReceive().Start(Arg.Any<string>());
     }
 
     [Fact]
@@ -171,26 +228,5 @@ public class ResultTests : BunitContext
         Assert.Equal(ConnectionIndicatorState.Disconnected, _connectivityMonitor.Wifi);
         Assert.Equal(PrinterConnectionMode.Bluetooth, _connectionModeProvider.Mode);
         _wifiMonitor.Received().Stop();
-    }
-
-    [Fact]
-    public async Task SucceededWorkflow_WhenBluetoothConnected_ConnectViaWifiButtonIsEnabled()
-    {
-        _connectivityMonitor.SetBluetooth(ConnectionIndicatorState.Connected);
-        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
-
-        var cut = Render<Result>();
-
-        Assert.False(cut.Find("[data-testid='connect-via-wifi-button']").HasAttribute("disabled"));
-    }
-
-    [Fact]
-    public async Task SucceededWorkflow_WhenBluetoothNotConnected_ConnectViaWifiButtonIsDisabled()
-    {
-        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
-
-        var cut = Render<Result>();
-
-        Assert.True(cut.Find("[data-testid='connect-via-wifi-button']").HasAttribute("disabled"));
     }
 }

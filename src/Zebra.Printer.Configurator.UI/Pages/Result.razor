@@ -14,10 +14,15 @@
             The printer is now connected to @Session.Configuration?.Ssid at @Session.Configuration?.StaticIpAddress.
         </p>
         <div class="button-row">
-            <button type="button" class="btn btn-primary" disabled="@_factoryResetActive" @onclick="Reconfigure">Reconfigure Printer</button>
+            <button type="button" class="btn btn-primary" data-testid="reconfigure-button" disabled="@(_factoryResetActive || _checkingNetwork)" @onclick="Reconfigure">
+                @if (_checkingNetwork)
+                {
+                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                }
+                Reconfigure Printer
+            </button>
             <FactoryResetPanel Device="Session.Device!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
             <CheckConfigurationButton Device="Session.Device!" State="_checkConfigState" Disabled="_factoryResetActive" />
-            <ConnectViaWifiButton Device="Session.Device!" Disabled="_factoryResetActive" />
         </div>
     }
     else
@@ -34,7 +39,16 @@
 }
 
 @code {
+    private const int DefaultWifiProbePort = 6101;
+    private static readonly TimeSpan NetworkProbeTimeout = TimeSpan.FromSeconds(3);
+
+    // Overridable (rather than a plain const) so component tests can point the reachability probe
+    // at a local TcpListener on a free port instead of the real, fixed SGD port.
+    [Parameter]
+    public int WifiProbePort { get; set; } = DefaultWifiProbePort;
+
     private bool _factoryResetActive;
+    private bool _checkingNetwork;
     private CheckConfigurationState _checkConfigState = new();
 
     protected override void OnInitialized()
@@ -45,11 +59,37 @@
         }
     }
 
-    private void Reconfigure()
+    // Mirrors Zebra's own Printer Setup Utility's documented connection search order - network
+    // first, Bluetooth after - for reconfiguring a printer this app already successfully configured
+    // and confirmed on WiFi this session, so the static IP it was just given is the obvious thing to
+    // try first rather than reconnecting over Bluetooth by default. First-time pairing (Pairing.razor)
+    // deliberately skips this: a never-configured printer has no WiFi yet, so there's no IP to probe.
+    private async Task Reconfigure()
     {
-        if (_factoryResetActive)
+        if (_factoryResetActive || _checkingNetwork)
         {
             return;
+        }
+
+        var ipAddress = Session.Configuration?.StaticIpAddress;
+        _checkingNetwork = true;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(ipAddress) && await TcpPortProbe.IsReachableAsync(ipAddress, WifiProbePort, NetworkProbeTimeout))
+            {
+                ConnectionModeProvider.UseWifi(ipAddress);
+                ConnectivityMonitor.SetBluetooth(ConnectionIndicatorState.Disconnected);
+                ConnectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
+                WifiMonitor.Start(ipAddress);
+            }
+            else
+            {
+                ConnectionModeProvider.UseBluetooth();
+            }
+        }
+        finally
+        {
+            _checkingNetwork = false;
         }
 
         Navigation.NavigateTo("/configure");

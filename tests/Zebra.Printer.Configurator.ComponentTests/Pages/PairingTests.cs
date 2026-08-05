@@ -192,15 +192,6 @@ public class PairingTests : BunitContext
     }
 
     [Fact]
-    public void ReadyState_ShowsConnectViaWifiButton()
-    {
-        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
-        var cut = RenderWithReadyPrinter(device);
-
-        Assert.NotNull(cut.Find("[data-testid='connect-via-wifi-button']"));
-    }
-
-    [Fact]
     public void WhileFactoryResetIsSelected_ConfigurePrinterButtonIsDisabled()
     {
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
