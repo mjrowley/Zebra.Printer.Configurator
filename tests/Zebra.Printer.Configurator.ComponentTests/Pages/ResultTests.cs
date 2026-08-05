@@ -174,23 +174,23 @@ public class ResultTests : BunitContext
     }
 
     [Fact]
-    public async Task SucceededWorkflow_WhenBluetoothConnected_ShowsConnectViaWifiButton()
+    public async Task SucceededWorkflow_WhenBluetoothConnected_ConnectViaWifiButtonIsEnabled()
     {
         _connectivityMonitor.SetBluetooth(ConnectionIndicatorState.Connected);
         await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
 
         var cut = Render<Result>();
 
-        Assert.NotNull(cut.Find("[data-testid='connect-via-wifi-button']"));
+        Assert.False(cut.Find("[data-testid='connect-via-wifi-button']").HasAttribute("disabled"));
     }
 
     [Fact]
-    public async Task SucceededWorkflow_WhenBluetoothNotConnected_HidesConnectViaWifiButton()
+    public async Task SucceededWorkflow_WhenBluetoothNotConnected_ConnectViaWifiButtonIsDisabled()
     {
         await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
 
         var cut = Render<Result>();
 
-        Assert.Empty(cut.FindAll("[data-testid='connect-via-wifi-button']"));
+        Assert.True(cut.Find("[data-testid='connect-via-wifi-button']").HasAttribute("disabled"));
     }
 }

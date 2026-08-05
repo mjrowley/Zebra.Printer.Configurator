@@ -28,32 +28,32 @@ public class ConnectViaWifiButtonTests : BunitContext
     }
 
     [Fact]
-    public void WhenBluetoothIsNotConnected_ButtonIsHidden()
+    public void WhenBluetoothIsNotConnected_ButtonIsDisabled()
     {
         var cut = Render<ConnectViaWifiButton>(p => p.Add(c => c.Device, Device));
 
-        Assert.Empty(cut.FindAll("[data-testid='connect-via-wifi-button']"));
+        Assert.True(cut.Find("[data-testid='connect-via-wifi-button']").HasAttribute("disabled"));
     }
 
     [Fact]
-    public void WhenBluetoothIsConnected_ButtonIsShown()
+    public void WhenBluetoothIsConnected_ButtonIsEnabled()
     {
         _connectivityMonitor.SetBluetooth(ConnectionIndicatorState.Connected);
 
         var cut = Render<ConnectViaWifiButton>(p => p.Add(c => c.Device, Device));
 
-        Assert.NotNull(cut.Find("[data-testid='connect-via-wifi-button']"));
+        Assert.False(cut.Find("[data-testid='connect-via-wifi-button']").HasAttribute("disabled"));
     }
 
     [Fact]
-    public void WhenAlreadyOnWifi_ButtonIsHidden()
+    public void WhenAlreadyOnWifi_ButtonIsDisabled()
     {
         _connectivityMonitor.SetBluetooth(ConnectionIndicatorState.Connected);
         _connectionModeProvider.UseWifi("192.168.1.50");
 
         var cut = Render<ConnectViaWifiButton>(p => p.Add(c => c.Device, Device));
 
-        Assert.Empty(cut.FindAll("[data-testid='connect-via-wifi-button']"));
+        Assert.True(cut.Find("[data-testid='connect-via-wifi-button']").HasAttribute("disabled"));
     }
 
     [Fact]

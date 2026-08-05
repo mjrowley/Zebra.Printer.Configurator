@@ -1,21 +1,19 @@
-@* Switches the active printer connection from Bluetooth to WiFi. Only ever shown while Bluetooth
-   is actually connected - once switched, the header's Bluetooth indicator goes to Disconnected and
-   this button disappears, since there's nothing left for it to offer at that point. *@
+@* Switches the active printer connection from Bluetooth to WiFi. Always rendered (disabled rather
+   than hidden when Bluetooth isn't actually connected, or once already on WiFi) - once switched,
+   the header's Bluetooth indicator goes to Disconnected and this button greys out, since there's
+   nothing left for it to offer at that point. *@
 @inject IPrinterConfigurationReader ConfigurationReader
 @inject IPrinterConnectionModeProvider ConnectionModeProvider
 @inject PrinterConnectivityMonitor ConnectivityMonitor
 @inject IWifiConnectivityMonitor WifiMonitor
 
-@if (ConnectivityMonitor.Bluetooth == ConnectionIndicatorState.Connected && ConnectionModeProvider.Mode == PrinterConnectionMode.Bluetooth)
-{
-    <button type="button" class="btn btn-outline-primary" data-testid="connect-via-wifi-button" disabled="@(_connecting || Disabled)" @onclick="ConnectViaWifi">
-        @if (_connecting)
-        {
-            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-        }
-        Connect via WiFi
-    </button>
-}
+<button type="button" class="btn btn-outline-primary" data-testid="connect-via-wifi-button" title="@DisabledReason" disabled="@(!CanConnect || _connecting || Disabled)" @onclick="ConnectViaWifi">
+    @if (_connecting)
+    {
+        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+    }
+    Connect via WiFi
+</button>
 
 @if (_errorMessage is not null)
 {
@@ -40,6 +38,12 @@
 
     private bool _connecting;
     private string? _errorMessage;
+
+    private bool CanConnect =>
+        ConnectivityMonitor.Bluetooth == ConnectionIndicatorState.Connected
+        && ConnectionModeProvider.Mode == PrinterConnectionMode.Bluetooth;
+
+    private string? DisabledReason => CanConnect ? null : "Bluetooth must be connected to switch to WiFi.";
 
     private async Task ConnectViaWifi()
     {

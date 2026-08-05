@@ -13,10 +13,12 @@
         <p data-testid="result-success">
             The printer is now connected to @Session.Configuration?.Ssid at @Session.Configuration?.StaticIpAddress.
         </p>
-        <button type="button" class="btn btn-primary" disabled="@_factoryResetActive" @onclick="Reconfigure">Reconfigure Printer</button>
-        <FactoryResetPanel Device="Session.Device!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
-        <CheckConfigurationButton Device="Session.Device!" State="_checkConfigState" Disabled="_factoryResetActive" />
-        <ConnectViaWifiButton Device="Session.Device!" Disabled="_factoryResetActive" />
+        <div class="button-row">
+            <button type="button" class="btn btn-primary" disabled="@_factoryResetActive" @onclick="Reconfigure">Reconfigure Printer</button>
+            <FactoryResetPanel Device="Session.Device!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
+            <CheckConfigurationButton Device="Session.Device!" State="_checkConfigState" Disabled="_factoryResetActive" />
+            <ConnectViaWifiButton Device="Session.Device!" Disabled="_factoryResetActive" />
+        </div>
     }
     else
     {

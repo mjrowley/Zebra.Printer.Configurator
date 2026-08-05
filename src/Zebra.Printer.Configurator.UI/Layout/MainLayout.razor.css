@@ -59,6 +59,29 @@
     border-bottom: 1px solid #ddd;
 }
 
+/* A cluster of action buttons (Configure Printer, Factory Reset, Check Configuration, Connect via
+   WiFi, ...). Buttons keep their natural, fully-readable width (never truncated or shrunk) and pack
+   onto one row while they fit; flex-wrap moves whichever ones don't fit onto additional rows
+   instead of compressing them. Any non-button content a child component renders alongside its
+   button (e.g. FactoryResetPanel's warning/progress text) claims its own full-width row rather than
+   squeezing into the button flow. */
+.function-section ::deep .button-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.function-section ::deep .button-row > .btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.function-section ::deep .button-row > p {
+    flex-basis: 100%;
+    margin: 0.25rem 0;
+}
+
 .log-panel {
     flex: 1 1 25%;
     display: flex;

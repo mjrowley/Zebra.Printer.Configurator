@@ -39,10 +39,12 @@
             <p data-testid="discovered-device">
                 Printer found@(_discoveredDevice?.SerialNumber is not null ? $" (serial {_discoveredDevice.SerialNumber})" : ".")
             </p>
-            <button type="button" class="btn btn-primary" disabled="@_factoryResetActive" @onclick="Continue">Configure Printer</button>
-            <FactoryResetPanel Device="_discoveredDevice!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
-            <CheckConfigurationButton Device="_discoveredDevice!" State="_checkConfigState" Disabled="_factoryResetActive" />
-            <ConnectViaWifiButton Device="_discoveredDevice!" Disabled="_factoryResetActive" />
+            <div class="button-row">
+                <button type="button" class="btn btn-primary" disabled="@_factoryResetActive" @onclick="Continue">Configure Printer</button>
+                <FactoryResetPanel Device="_discoveredDevice!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
+                <CheckConfigurationButton Device="_discoveredDevice!" State="_checkConfigState" Disabled="_factoryResetActive" />
+                <ConnectViaWifiButton Device="_discoveredDevice!" Disabled="_factoryResetActive" />
+            </div>
             break;
 
         case PairingUiState.Failed:
