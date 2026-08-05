@@ -12,8 +12,13 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// </summary>
 internal static class BluetoothConnectionRunner
 {
-    private const int ConnectionAttempts = 3;
-    private static readonly TimeSpan ConnectionRetryDelay = TimeSpan.FromSeconds(2);
+    // Widened from 3 attempts/2s (~4s of retrying) to 5/3s (~12s): confirmed on a real ZD621 that
+    // pressing "Connect via WiFi" immediately after tap-pairing completes reliably fails all 3
+    // original attempts (the Android Bluetooth stack is still settling from the just-finished bond),
+    // while the identical read via "Check Configuration" succeeds when tried a bit later - the
+    // previous budget didn't reliably cover that settling window.
+    private const int ConnectionAttempts = 5;
+    private static readonly TimeSpan ConnectionRetryDelay = TimeSpan.FromSeconds(3);
 
     public static Task RunAsync(string macAddress, Action<Connection> action, IAppLog appLog, CancellationToken cancellationToken) =>
         RunAsync<object?>(macAddress, connection =>
@@ -45,13 +50,23 @@ internal static class BluetoothConnectionRunner
             }
             catch (Exception ex) when (attempt < ConnectionAttempts)
             {
-                appLog.Log($"Bluetooth connection attempt {attempt} of {ConnectionAttempts} failed ({ex.Message}). Retrying...", LogLevel.Warning);
+                appLog.Log($"Bluetooth connection attempt {attempt} of {ConnectionAttempts} failed ({JavaExceptionDescriber.Describe(ex)}). Retrying...", LogLevel.Warning);
                 await Task.Delay(ConnectionRetryDelay, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // Wrapped with the full Java cause chain rather than left as ex.Message alone - the
+                // raw message here is frequently just "Exception of type 'Java.IO.IOException' was
+                // thrown." (the Java side gave no message), which told a user nothing about what
+                // actually failed. The original exception is preserved as InnerException.
+                throw new InvalidOperationException(
+                    $"Bluetooth connection to {macAddress} failed after {ConnectionAttempts} attempts: {JavaExceptionDescriber.Describe(ex)}", ex);
             }
         }
 
-        // Unreachable: the final attempt (attempt == ConnectionAttempts) has no retry filter, so
-        // its exception always propagates out instead of falling through to here.
+        // Unreachable: the final attempt (attempt == ConnectionAttempts) is always caught by the
+        // unconditional catch above, so its exception always propagates out instead of falling
+        // through to here.
         throw new UnreachableException();
     }
 }
