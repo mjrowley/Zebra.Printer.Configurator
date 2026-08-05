@@ -5,6 +5,7 @@
 @inject PairingSession Session
 @inject PrinterConnectivityMonitor ConnectivityMonitor
 @inject IWifiConnectivityMonitor WifiMonitor
+@inject IPrinterConnectionModeProvider ConnectionModeProvider
 @inject NavigationManager Navigation
 
 <div class="section-sticky-header">
@@ -41,6 +42,7 @@
             <button type="button" class="btn btn-primary" disabled="@_factoryResetActive" @onclick="Continue">Configure Printer</button>
             <FactoryResetPanel Device="_discoveredDevice!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
             <CheckConfigurationButton Device="_discoveredDevice!" State="_checkConfigState" Disabled="_factoryResetActive" />
+            <ConnectViaWifiButton Device="_discoveredDevice!" Disabled="_factoryResetActive" />
             break;
 
         case PairingUiState.Failed:
@@ -88,6 +90,7 @@
         Session.Reset();
         ConnectivityMonitor.Reset();
         WifiMonitor.Stop();
+        ConnectionModeProvider.UseBluetooth();
         DiscoveryService.PrinterDiscovered += OnPrinterDiscovered;
         BluetoothPairingService.PairingCodeRequested += OnPairingCodeRequested;
         DiscoveryService.StartListening();
@@ -161,6 +164,7 @@
         _checkConfigState = new CheckConfigurationState();
         ConnectivityMonitor.Reset();
         WifiMonitor.Stop();
+        ConnectionModeProvider.UseBluetooth();
         _state = PairingUiState.WaitingForTap;
     }
 

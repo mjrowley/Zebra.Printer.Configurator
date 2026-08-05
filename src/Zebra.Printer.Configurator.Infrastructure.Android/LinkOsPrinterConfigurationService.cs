@@ -20,7 +20,10 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// prior OS-level bond at all, so skipping bonding avoids provoking that failed negotiation.
 /// Bonding still happens, but earlier and correctly, via BluetoothPairingService/IBluetoothPairingService.
 /// </summary>
-public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionService bluetoothPermissionService, IAppLog appLog)
+public sealed class LinkOsPrinterConfigurationService(
+    IBluetoothPermissionService bluetoothPermissionService,
+    IPrinterConnectionModeProvider connectionModeProvider,
+    IAppLog appLog)
     : IPrinterConfigurationService, IPrinterRestartService, IPrinterFactoryResetService, IPrinterConfigurationReader
 {
     // Logged as-is; every other SGD value is safe to show, but the WiFi password should never
@@ -51,10 +54,10 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
 
     public async Task ApplyAsync(PrinterDevice device, WlanConfiguration configuration, CancellationToken cancellationToken = default)
     {
-        await EnsureBluetoothPermissionAsync(cancellationToken);
+        await EnsureConnectionPermissionAsync(cancellationToken);
 
-        appLog.Log("Connecting to printer to apply WiFi configuration...");
-        await BluetoothConnectionRunner.RunAsync(device.BluetoothMacAddress, connection =>
+        appLog.Log($"Connecting to printer over {connectionModeProvider.Mode} to apply WiFi configuration...");
+        await PrinterConnectionRunner.RunAsync(device, connectionModeProvider, connection =>
         {
             var commands = WlanConfigurationCommandBuilder.BuildSetCommands(configuration);
 
@@ -95,10 +98,10 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
 
     public async Task RestartAsync(PrinterDevice device, CancellationToken cancellationToken = default)
     {
-        await EnsureBluetoothPermissionAsync(cancellationToken);
+        await EnsureConnectionPermissionAsync(cancellationToken);
 
         appLog.Log("Restarting printer...");
-        await BluetoothConnectionRunner.RunAsync(device.BluetoothMacAddress, connection =>
+        await PrinterConnectionRunner.RunAsync(device, connectionModeProvider, connection =>
         {
             // "device.restart" is not a real SGD command - SGD silently no-ops unrecognized
             // command names rather than erroring, which is why this previously appeared to
@@ -112,10 +115,10 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
 
     public async Task ResetToFactoryDefaultsAsync(PrinterDevice device, CancellationToken cancellationToken = default)
     {
-        await EnsureBluetoothPermissionAsync(cancellationToken);
+        await EnsureConnectionPermissionAsync(cancellationToken);
 
         appLog.Log("Sending factory reset command to printer...", LogLevel.Warning);
-        await BluetoothConnectionRunner.RunAsync(device.BluetoothMacAddress, connection =>
+        await PrinterConnectionRunner.RunAsync(device, connectionModeProvider, connection =>
         {
             // "^JUF" ("reload factory settings") is the ZPL Configuration Update command - Zebra's
             // own Programming Guide gives this exact sequence as the way to factory-reset a printer:
@@ -154,10 +157,10 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
 
     public async Task<IReadOnlyList<PrinterConfigurationValue>> ReadConfigurationAsync(PrinterDevice device, CancellationToken cancellationToken = default)
     {
-        await EnsureBluetoothPermissionAsync(cancellationToken);
+        await EnsureConnectionPermissionAsync(cancellationToken);
 
-        appLog.Log("Connecting to printer to check configuration...");
-        var values = await BluetoothConnectionRunner.RunAsync(device.BluetoothMacAddress, connection =>
+        appLog.Log($"Connecting to printer over {connectionModeProvider.Mode} to check configuration...");
+        var values = await PrinterConnectionRunner.RunAsync(device, connectionModeProvider, connection =>
         {
             var results = new List<PrinterConfigurationValue>();
             foreach (var key in WlanDiagnosticKeys.All)
@@ -181,9 +184,16 @@ public sealed class LinkOsPrinterConfigurationService(IBluetoothPermissionServic
     private static string DisplayValue(string key, string? value) =>
         SensitiveKeys.Contains(key) ? $"<redacted, length {value?.Length ?? 0}>" : value ?? "<null>";
 
-    private async Task EnsureBluetoothPermissionAsync(CancellationToken cancellationToken)
+    private async Task EnsureConnectionPermissionAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        // No Bluetooth permission needed at all when the active transport is WiFi - nothing here
+        // touches the Bluetooth stack in that case.
+        if (connectionModeProvider.Mode != PrinterConnectionMode.Bluetooth)
+        {
+            return;
+        }
 
         // Requested/awaited here, on the calling context, rather than inside Task.Run below -
         // showing the system permission dialog needs the Activity, not a background thread-pool thread.

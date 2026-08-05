@@ -1,0 +1,86 @@
+@* Switches the active printer connection from Bluetooth to WiFi. Only ever shown while Bluetooth
+   is actually connected - once switched, the header's Bluetooth indicator goes to Disconnected and
+   this button disappears, since there's nothing left for it to offer at that point. *@
+@inject IPrinterConfigurationReader ConfigurationReader
+@inject IPrinterConnectionModeProvider ConnectionModeProvider
+@inject PrinterConnectivityMonitor ConnectivityMonitor
+@inject IWifiConnectivityMonitor WifiMonitor
+
+@if (ConnectivityMonitor.Bluetooth == ConnectionIndicatorState.Connected && ConnectionModeProvider.Mode == PrinterConnectionMode.Bluetooth)
+{
+    <button type="button" class="btn btn-outline-primary" data-testid="connect-via-wifi-button" disabled="@(_connecting || Disabled)" @onclick="ConnectViaWifi">
+        @if (_connecting)
+        {
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        }
+        Connect via WiFi
+    </button>
+}
+
+@if (_errorMessage is not null)
+{
+    <p class="text-danger" data-testid="connect-via-wifi-error">@_errorMessage</p>
+}
+
+@code {
+    private const int DefaultSgdPort = 6101;
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(3);
+
+    [Parameter, EditorRequired]
+    public PrinterDevice Device { get; set; } = null!;
+
+    /// <summary>Disables the button without hiding it - e.g. while a factory reset is in progress.</summary>
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    // Overridable (rather than a plain const) so component tests can point the reachability probe
+    // at a local TcpListener on a free port instead of the real, fixed SGD port.
+    [Parameter]
+    public int Port { get; set; } = DefaultSgdPort;
+
+    private bool _connecting;
+    private string? _errorMessage;
+
+    private async Task ConnectViaWifi()
+    {
+        _connecting = true;
+        _errorMessage = null;
+
+        try
+        {
+            // Read the printer's current WiFi IP over the still-active Bluetooth connection - the
+            // connection mode hasn't changed yet at this point, so this goes over Bluetooth.
+            var values = await ConfigurationReader.ReadConfigurationAsync(Device);
+            var ipAddress = values.FirstOrDefault(v => v.Key == "wlan.ip.addr")?.Value;
+
+            if (string.IsNullOrWhiteSpace(ipAddress) || ipAddress == "0.0.0.0")
+            {
+                _errorMessage = "Printer does not have a valid WiFi IP address. Reconnected via Bluetooth.";
+                return;
+            }
+
+            // Confirm the printer is actually reachable there before committing to WiFi as the
+            // active transport - Bluetooth stays the active mode until this succeeds, so a failure
+            // here leaves nothing to "reconnect" - the app never left Bluetooth.
+            var reachable = await TcpPortProbe.IsReachableAsync(ipAddress, Port, ProbeTimeout);
+            if (!reachable)
+            {
+                _errorMessage = $"Could not reach the printer at {ipAddress} over WiFi. Reconnected via Bluetooth.";
+                return;
+            }
+
+            ConnectionModeProvider.UseWifi(ipAddress);
+            ConnectivityMonitor.SetBluetooth(ConnectionIndicatorState.Disconnected);
+            ConnectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
+            WifiMonitor.Start(ipAddress);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Could not connect via WiFi: {ex.Message}. Reconnected via Bluetooth.";
+        }
+        finally
+        {
+            _connecting = false;
+        }
+    }
+}

@@ -27,6 +27,7 @@ public class ResultTests : BunitContext
     private readonly IPrinterConfigurationReader _configurationReader = Substitute.For<IPrinterConfigurationReader>();
     private readonly PrinterConnectivityMonitor _connectivityMonitor = new();
     private readonly IWifiConnectivityMonitor _wifiMonitor = Substitute.For<IWifiConnectivityMonitor>();
+    private readonly PrinterConnectionModeProvider _connectionModeProvider = new();
 
     private async Task<(PairAndConfigureWorkflow Workflow, PairingSession Session)> RunWorkflowToCompletionAsync(ConnectionTestResult connectivityResult)
     {
@@ -46,6 +47,7 @@ public class ResultTests : BunitContext
         Services.AddSingleton(_configurationReader);
         Services.AddSingleton(_connectivityMonitor);
         Services.AddSingleton(_wifiMonitor);
+        Services.AddSingleton<IPrinterConnectionModeProvider>(_connectionModeProvider);
 
         return (workflow, session);
     }
@@ -146,6 +148,7 @@ public class ResultTests : BunitContext
         Services.AddSingleton(new PairingSession());
         Services.AddSingleton(_connectivityMonitor);
         Services.AddSingleton(_wifiMonitor);
+        Services.AddSingleton<IPrinterConnectionModeProvider>(_connectionModeProvider);
 
         Render<Result>();
 
@@ -154,10 +157,11 @@ public class ResultTests : BunitContext
     }
 
     [Fact]
-    public async Task ClickingRetry_ResetsConnectivityMonitorAndStopsWifiMonitor()
+    public async Task ClickingRetry_ResetsConnectivityMonitorConnectionModeAndStopsWifiMonitor()
     {
         _connectivityMonitor.SetBluetooth(ConnectionIndicatorState.Connected);
         _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
+        _connectionModeProvider.UseWifi("192.168.1.50");
         await RunWorkflowToCompletionAsync(ConnectionTestResult.Failed("Printer did not respond."));
         var cut = Render<Result>();
 
@@ -165,6 +169,28 @@ public class ResultTests : BunitContext
 
         Assert.Equal(ConnectionIndicatorState.Disconnected, _connectivityMonitor.Bluetooth);
         Assert.Equal(ConnectionIndicatorState.Disconnected, _connectivityMonitor.Wifi);
+        Assert.Equal(PrinterConnectionMode.Bluetooth, _connectionModeProvider.Mode);
         _wifiMonitor.Received().Stop();
+    }
+
+    [Fact]
+    public async Task SucceededWorkflow_WhenBluetoothConnected_ShowsConnectViaWifiButton()
+    {
+        _connectivityMonitor.SetBluetooth(ConnectionIndicatorState.Connected);
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+
+        var cut = Render<Result>();
+
+        Assert.NotNull(cut.Find("[data-testid='connect-via-wifi-button']"));
+    }
+
+    [Fact]
+    public async Task SucceededWorkflow_WhenBluetoothNotConnected_HidesConnectViaWifiButton()
+    {
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+
+        var cut = Render<Result>();
+
+        Assert.Empty(cut.FindAll("[data-testid='connect-via-wifi-button']"));
     }
 }

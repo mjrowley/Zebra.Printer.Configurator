@@ -17,6 +17,7 @@ public class PairingTests : BunitContext
     private readonly IPrinterConfigurationReader _configurationReader = Substitute.For<IPrinterConfigurationReader>();
     private readonly PrinterConnectivityMonitor _connectivityMonitor = new();
     private readonly IWifiConnectivityMonitor _wifiMonitor = Substitute.For<IWifiConnectivityMonitor>();
+    private readonly PrinterConnectionModeProvider _connectionModeProvider = new();
 
     public PairingTests()
     {
@@ -26,6 +27,7 @@ public class PairingTests : BunitContext
         Services.AddSingleton(_configurationReader);
         Services.AddSingleton(_connectivityMonitor);
         Services.AddSingleton(_wifiMonitor);
+        Services.AddSingleton<IPrinterConnectionModeProvider>(_connectionModeProvider);
         Services.AddSingleton(new PairingSession());
     }
 
@@ -190,6 +192,15 @@ public class PairingTests : BunitContext
     }
 
     [Fact]
+    public void ReadyState_ShowsConnectViaWifiButton()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        var cut = RenderWithReadyPrinter(device);
+
+        Assert.NotNull(cut.Find("[data-testid='connect-via-wifi-button']"));
+    }
+
+    [Fact]
     public void WhileFactoryResetIsSelected_ConfigurePrinterButtonIsDisabled()
     {
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
@@ -251,8 +262,9 @@ public class PairingTests : BunitContext
     }
 
     [Fact]
-    public void ClickingTryAgainAfterPairingFailure_ResetsConnectivityMonitorAndStopsWifiMonitor()
+    public void ClickingTryAgainAfterPairingFailure_ResetsConnectivityMonitorAndConnectionModeAndStopsWifiMonitor()
     {
+        _connectionModeProvider.UseWifi("192.168.1.50");
         _pairingService.EnsurePairedHandler = _ => Task.FromResult(false);
         var cut = Render<Pairing>();
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
@@ -262,6 +274,7 @@ public class PairingTests : BunitContext
         cut.Find("button").Click(); // "Try Again"
 
         Assert.Equal(ConnectionIndicatorState.Disconnected, _connectivityMonitor.Bluetooth);
+        Assert.Equal(PrinterConnectionMode.Bluetooth, _connectionModeProvider.Mode);
         _wifiMonitor.Received().Stop();
     }
 
