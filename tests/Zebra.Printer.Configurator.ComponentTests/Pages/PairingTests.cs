@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Bunit;
 using NSubstitute;
@@ -15,6 +17,7 @@ public class PairingTests : BunitContext
     private readonly FakeBluetoothPairingService _pairingService = new();
     private readonly FakePrinterFactoryResetService _factoryResetService = new();
     private readonly IPrinterConfigurationReader _configurationReader = Substitute.For<IPrinterConfigurationReader>();
+    private readonly IAppLog _appLog = Substitute.For<IAppLog>();
     private readonly PrinterConnectivityMonitor _connectivityMonitor = new();
     private readonly IWifiConnectivityMonitor _wifiMonitor = Substitute.For<IWifiConnectivityMonitor>();
     private readonly PrinterConnectionModeProvider _connectionModeProvider = new();
@@ -25,18 +28,45 @@ public class PairingTests : BunitContext
         Services.AddSingleton<IBluetoothPairingService>(_pairingService);
         Services.AddSingleton<IPrinterFactoryResetService>(_factoryResetService);
         Services.AddSingleton(_configurationReader);
+        Services.AddSingleton(_appLog);
         Services.AddSingleton(_connectivityMonitor);
         Services.AddSingleton(_wifiMonitor);
         Services.AddSingleton<IPrinterConnectionModeProvider>(_connectionModeProvider);
         Services.AddSingleton(new PairingSession());
+
+        // Unconfigured, this NSubstitute mock resolves ReadConfigurationAsync's Task with a null
+        // result by default, which the automatic post-pairing WiFi check would then throw on when
+        // reading .FirstOrDefault() from it - most tests here don't care about that check at all, so
+        // give it a harmless empty result unless a specific test overrides this setup itself.
+        _configurationReader.ReadConfigurationAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<PrinterConfigurationValue>());
     }
 
-    private IRenderedComponent<Pairing> RenderWithReadyPrinter(PrinterDevice device)
+    private IRenderedComponent<Pairing> RenderWithReadyPrinter(PrinterDevice device, int? wifiProbePort = null)
     {
-        var cut = Render<Pairing>();
+        var cut = wifiProbePort is { } port
+            ? Render<Pairing>(p => p.Add(c => c.WifiProbePort, port))
+            : Render<Pairing>();
         _discoveryService.RaisePrinterDiscovered(device);
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='discovered-device']")));
         return cut;
+    }
+
+    private static TcpListener StartLoopbackListener(out int port)
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        return listener;
+    }
+
+    private static int GetFreeLoopbackPort()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        return port;
     }
 
     [Fact]
@@ -250,6 +280,48 @@ public class PairingTests : BunitContext
         var cut = RenderWithReadyPrinter(device);
 
         Assert.Contains("Printer Paired", cut.Find("h1").TextContent);
+    }
+
+    [Fact]
+    public void WhenPairingSucceeds_AndPrinterHasNoWifiConfigured_SetsWifiIndicatorToError()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+
+        var cut = RenderWithReadyPrinter(device);
+
+        cut.WaitForAssertion(() => Assert.Equal(ConnectionIndicatorState.Error, _connectivityMonitor.Wifi));
+        _wifiMonitor.DidNotReceive().Start(Arg.Any<string>());
+    }
+
+    [Fact]
+    public void WhenPairingSucceeds_AndPrinterIsReachableOnWifi_SetsWifiIndicatorToConnectedAndStartsMonitor()
+    {
+        using var listener = StartLoopbackListener(out var port);
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        _configurationReader.ReadConfigurationAsync(device, Arg.Any<CancellationToken>())
+            .Returns([new PrinterConfigurationValue("wlan.ip.addr", "127.0.0.1")]);
+
+        var cut = RenderWithReadyPrinter(device, wifiProbePort: port);
+
+        cut.WaitForAssertion(() => Assert.Equal(ConnectionIndicatorState.Connected, _connectivityMonitor.Wifi));
+        _wifiMonitor.Received().Start("127.0.0.1");
+    }
+
+    [Fact]
+    public void WhenPairingSucceeds_AndPrinterIsNotReachableOnWifi_SetsWifiIndicatorToErrorButStillStartsMonitor()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        _configurationReader.ReadConfigurationAsync(device, Arg.Any<CancellationToken>())
+            .Returns([new PrinterConfigurationValue("wlan.ip.addr", "127.0.0.1")]);
+
+        // A closed loopback port refuses the probe almost instantly, unlike a real unreachable IP
+        // which can take the full probe timeout to fail - keeps this test fast and deterministic.
+        var cut = RenderWithReadyPrinter(device, wifiProbePort: GetFreeLoopbackPort());
+
+        cut.WaitForAssertion(() => Assert.Equal(ConnectionIndicatorState.Error, _connectivityMonitor.Wifi), TimeSpan.FromSeconds(5));
+        // Still started so the indicator keeps reflecting live reachability afterward - the printer
+        // may still be finishing its own WiFi association right after a reboot/re-tap.
+        _wifiMonitor.Received().Start("127.0.0.1");
     }
 
     [Fact]

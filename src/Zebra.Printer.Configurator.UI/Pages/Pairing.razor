@@ -2,6 +2,8 @@
 @implements IDisposable
 @inject IPrinterDiscoveryService DiscoveryService
 @inject IBluetoothPairingService BluetoothPairingService
+@inject IPrinterConfigurationReader ConfigurationReader
+@inject IAppLog AppLog
 @inject PairingSession Session
 @inject PrinterConnectivityMonitor ConnectivityMonitor
 @inject IWifiConnectivityMonitor WifiMonitor
@@ -68,6 +70,14 @@
         Failed,
     }
 
+    private const int DefaultWifiProbePort = 6101;
+    private static readonly TimeSpan WifiProbeTimeout = TimeSpan.FromSeconds(3);
+
+    // Overridable (rather than a plain const) so component tests can point the reachability probe
+    // at a local TcpListener on a free port instead of the real, fixed SGD port.
+    [Parameter]
+    public int WifiProbePort { get; set; } = DefaultWifiProbePort;
+
     private PairingUiState _state = PairingUiState.WaitingForTap;
     private PrinterDevice? _discoveredDevice;
     private string? _pairingCode;
@@ -115,7 +125,56 @@
                 ? null
                 : "Could not pair with the printer. Make sure it's powered on and in range, then try again.";
             StateHasChanged();
+
+            if (paired)
+            {
+                await CheckWifiConnectivityAsync(device);
+            }
         });
+    }
+
+    // Runs automatically whenever a tap either freshly pairs or finds a printer already bonded -
+    // covers both a brand-new printer and re-tapping one that was already configured on WiFi in an
+    // earlier session, where Bluetooth pairing alone gives no indication of WiFi reachability at all.
+    // Uses the Bluetooth link that's already just been confirmed to ask the printer for its own
+    // wlan.ip.addr, rather than requiring the user to press "Check Configuration" first.
+    private async Task CheckWifiConnectivityAsync(PrinterDevice device)
+    {
+        ConnectivityMonitor.SetWifi(ConnectionIndicatorState.Connecting);
+        StateHasChanged();
+
+        try
+        {
+            var values = await ConfigurationReader.ReadConfigurationAsync(device);
+            var ipAddress = values.FirstOrDefault(v => v.Key == "wlan.ip.addr")?.Value;
+
+            if (string.IsNullOrWhiteSpace(ipAddress) || ipAddress == "0.0.0.0")
+            {
+                AppLog.Log("Printer does not have a WiFi connection configured.", LogLevel.Warning);
+                ConnectivityMonitor.SetWifi(ConnectionIndicatorState.Error);
+                StateHasChanged();
+                return;
+            }
+
+            var reachable = await TcpPortProbe.IsReachableAsync(ipAddress, WifiProbePort, WifiProbeTimeout);
+            AppLog.Log(
+                reachable
+                    ? $"Printer is reachable via WiFi at {ipAddress}."
+                    : $"Printer is not currently reachable via WiFi at {ipAddress}.",
+                reachable ? LogLevel.Success : LogLevel.Warning);
+            ConnectivityMonitor.SetWifi(reachable ? ConnectionIndicatorState.Connected : ConnectionIndicatorState.Error);
+            StateHasChanged();
+
+            // Keeps the indicator live afterward regardless of this first result - the printer may
+            // still be finishing its own WiFi association right after a reboot/re-tap.
+            WifiMonitor.Start(ipAddress);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Log($"Could not check WiFi connectivity: {ex.Message}", LogLevel.Warning);
+            ConnectivityMonitor.SetWifi(ConnectionIndicatorState.Error);
+            StateHasChanged();
+        }
     }
 
     private void OnPairingCodeRequested(object? sender, PairingCodeRequestedEventArgs args)
