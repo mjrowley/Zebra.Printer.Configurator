@@ -109,29 +109,17 @@ public sealed class NfcPrinterDiscoveryService(IAppLog appLog) : IPrinterDiscove
         var intent = new Intent(_activity, _activity.GetType()).AddFlags(ActivityFlags.SingleTop);
         var pendingIntent = PendingIntent.GetActivity(_activity, 0, intent, PendingIntentFlags.Mutable);
 
-        var filters = new[]
-        {
-            new IntentFilter(NfcAdapter.ActionTagDiscovered),
-            new IntentFilter(NfcAdapter.ActionNdefDiscovered),
-            CreateViewIntentFilter(),
-        };
-
-        _adapter.EnableForegroundDispatch(_activity, pendingIntent, filters, null);
+        // Passing null for the IntentFilter array (per NfcAdapter.EnableForegroundDispatch's own
+        // documented contract: "or null to always dispatch") makes every NFC-derived intent route
+        // here unconditionally while this Activity is foregrounded, regardless of which NDEF record
+        // type/action Android's tag-dispatch algorithm would otherwise classify it as. An earlier
+        // attempt at this instead enumerated specific filters (TAG_DISCOVERED/NDEF_DISCOVERED/a
+        // VIEW filter for http/https, added after on-device testing showed a URI record on the tag
+        // triggering ACTION_VIEW straight to a browser chooser) - that still left a gap for whatever
+        // NDEF record layout the next printer/tag combination uses. Unconditional dispatch removes
+        // that whole class of bug instead of chasing each new tag layout with another filter.
+        _adapter.EnableForegroundDispatch(_activity, pendingIntent, null, null);
         _dispatchEnabled = true;
-    }
-
-    private static IntentFilter CreateViewIntentFilter()
-    {
-        // The printer's NFC tag also carries a URI record (Zebra's support page) as a fallback for
-        // phones without this app installed. When an NDEF message's leading record is a well-known
-        // URI type, Android's NFC dispatcher routes the tag as ACTION_VIEW instead of
-        // ACTION_NDEF_DISCOVERED - without this filter that intent falls outside foreground
-        // dispatch entirely and the OS shows its own app-chooser dialog for it instead of handing
-        // the tag to this app.
-        var filter = new IntentFilter(Intent.ActionView);
-        filter.AddDataScheme("http");
-        filter.AddDataScheme("https");
-        return filter;
     }
 
     private void TryDisableDispatch()
