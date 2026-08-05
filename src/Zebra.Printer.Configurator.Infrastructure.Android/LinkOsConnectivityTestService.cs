@@ -18,7 +18,7 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// LinkOsPrinterConfigurationService applied didn't actually stick, rather than continuing to guess
 /// from the outside.
 /// </summary>
-public sealed class LinkOsConnectivityTestService(IAppLog appLog) : IPrinterConnectivityTestService
+public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnectivityMonitor connectivityMonitor) : IPrinterConnectivityTestService
 {
     private const int SgdPort = 6101;
     private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(45);
@@ -27,6 +27,7 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog) : IPrinterConn
 
     public async Task<ConnectionTestResult> TestConnectionAsync(PrinterDevice device, WlanConfiguration configuration, CancellationToken cancellationToken = default)
     {
+        connectivityMonitor.SetWifi(ConnectionIndicatorState.Connecting);
         appLog.Log($"Waiting for printer to rejoin WiFi at {configuration.StaticIpAddress} (up to {PollTimeout.TotalSeconds:N0}s)...");
 
         var reachable = await RetryPoller.PollUntilAsync(
@@ -39,6 +40,7 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog) : IPrinterConn
         {
             var failure = $"Printer did not respond on {configuration.StaticIpAddress}:{SgdPort} within {PollTimeout.TotalSeconds:N0}s after restart.";
             appLog.Log(failure, LogLevel.Error);
+            connectivityMonitor.SetWifi(ConnectionIndicatorState.Error);
             await LogPrinterWlanSettingsAsync(device, cancellationToken);
             return ConnectionTestResult.Failed($"{failure} Check the activity log for the printer's actual WLAN settings.");
         }
@@ -56,10 +58,12 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog) : IPrinterConn
                 if (string.IsNullOrWhiteSpace(wlanState))
                 {
                     appLog.Log("Printer responded on the network but wlan.state was empty.", LogLevel.Error);
+                    connectivityMonitor.SetWifi(ConnectionIndicatorState.Error);
                     return ConnectionTestResult.Failed("Printer responded on the network but wlan.state was empty.");
                 }
 
                 appLog.Log($"WiFi state: {wlanState}", LogLevel.Success);
+                connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
                 return ConnectionTestResult.Succeeded(wlanState);
             }
             finally

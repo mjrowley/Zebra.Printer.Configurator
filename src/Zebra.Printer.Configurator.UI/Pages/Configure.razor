@@ -3,45 +3,47 @@
 @inject IHostNetworkInfoService HostNetworkInfoService
 @inject NavigationManager Navigation
 
-<h1>WiFi Configuration</h1>
+<div class="section-sticky-header">
+    <h1>WiFi Configuration</h1>
 
-@if (_loadingHostNetwork)
-{
-    <p data-testid="host-network-loading">
-        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-        Detecting your current WiFi network&hellip;
-    </p>
-}
-else if (_hostNetworkError is not null)
-{
-    <p class="text-danger" data-testid="host-network-error">@_hostNetworkError</p>
-}
-else
-{
-    <EditForm Model="_model" OnValidSubmit="Submit">
-        <DataAnnotationsValidator />
+    @if (_loadingHostNetwork)
+    {
+        <p data-testid="host-network-loading">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            Detecting your current WiFi network&hellip;
+        </p>
+    }
+    else if (_hostNetworkError is not null)
+    {
+        <p class="text-danger" data-testid="host-network-error">@_hostNetworkError</p>
+    }
+    else
+    {
+        <EditForm Model="_model" OnValidSubmit="Submit">
+            <DataAnnotationsValidator />
 
-        <div class="mb-3">
-            <label for="ssid">WiFi SSID</label>
-            <InputText id="ssid" class="form-control" @bind-Value="_model.Ssid" />
-            <ValidationMessage For="() => _model.Ssid" />
-        </div>
+            <div class="mb-3">
+                <label for="ssid">WiFi SSID</label>
+                <InputText id="ssid" class="form-control" @bind-Value="_model.Ssid" />
+                <ValidationMessage For="() => _model.Ssid" />
+            </div>
 
-        <div class="mb-3">
-            <label for="password">WiFi Password</label>
-            <InputText id="password" type="password" class="form-control" @bind-Value="_model.Password" />
-            <ValidationMessage For="() => _model.Password" />
-        </div>
+            <div class="mb-3">
+                <label for="password">WiFi Password</label>
+                <InputText id="password" type="password" class="form-control" @bind-Value="_model.Password" />
+                <ValidationMessage For="() => _model.Password" />
+            </div>
 
-        <div class="mb-3">
-            <label for="ip-octet-1">Printer Static IP Address</label>
-            <IpAddressInput @bind-Value="_model.StaticIpAddress" />
-            <ValidationMessage For="() => _model.StaticIpAddress" />
-        </div>
+            <div class="mb-3">
+                <label for="ip-octet-1">Printer Static IP Address</label>
+                <IpAddressInput @bind-Value="_model.StaticIpAddress" />
+                <ValidationMessage For="() => _model.StaticIpAddress" />
+            </div>
 
-        <button type="submit" class="btn btn-primary">Continue</button>
-    </EditForm>
-}
+            <button type="submit" class="btn btn-primary">Continue</button>
+        </EditForm>
+    }
+</div>
 
 @code {
     private readonly ConfigureFormModel _model = new();

@@ -1,0 +1,35 @@
+@* Colored status glyph for the header's Bluetooth/WiFi connectivity indicators. Color communicates
+   state (grey/orange/red/green) rather than the icon shape, so both icons use the same 4 CSS
+   classes - see ConnectivityIndicator.razor.css. *@
+
+<span class="connectivity-indicator @StateClass" title="@Title" data-testid="@TestId">
+    @if (Kind == IndicatorKind.Bluetooth)
+    {
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M7 7l10 10-5 5V2l5 5L7 17" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+    }
+    else
+    {
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M2 8.5a15 15 0 0 1 20 0" stroke-linecap="round" />
+            <path d="M5.5 12a10 10 0 0 1 13 0" stroke-linecap="round" />
+            <path d="M9 15.5a5 5 0 0 1 6 0" stroke-linecap="round" />
+            <circle cx="12" cy="19" r="1.3" fill="currentColor" stroke="none" />
+        </svg>
+    }
+</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public IndicatorKind Kind { get; set; }
+
+    [Parameter, EditorRequired]
+    public ConnectionIndicatorState State { get; set; }
+
+    private string StateClass => $"state-{State.ToString().ToLowerInvariant()}";
+
+    private string Title => $"{(Kind == IndicatorKind.Bluetooth ? "Bluetooth" : "WiFi")}: {State}";
+
+    private string TestId => Kind == IndicatorKind.Bluetooth ? "bluetooth-indicator" : "wifi-indicator";
+}

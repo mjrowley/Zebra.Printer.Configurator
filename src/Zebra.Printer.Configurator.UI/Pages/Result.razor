@@ -1,27 +1,37 @@
 @page "/result"
 @inject PairAndConfigureWorkflow Workflow
 @inject PairingSession Session
+@inject PrinterConnectivityMonitor ConnectivityMonitor
+@inject IWifiConnectivityMonitor WifiMonitor
 @inject NavigationManager Navigation
+
+<div class="section-sticky-header">
+    @if (Workflow.State == PairingWorkflowState.Succeeded)
+    {
+        <h1>Success</h1>
+        <p data-testid="result-success">
+            The printer is now connected to @Session.Configuration?.Ssid at @Session.Configuration?.StaticIpAddress.
+        </p>
+        <button type="button" class="btn btn-primary" disabled="@_factoryResetActive" @onclick="Reconfigure">Reconfigure Printer</button>
+        <FactoryResetPanel Device="Session.Device!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
+        <CheckConfigurationButton Device="Session.Device!" State="_checkConfigState" Disabled="_factoryResetActive" />
+    }
+    else
+    {
+        <h1>Configuration Failed</h1>
+        <p data-testid="result-failure">@(Workflow.FailureReason ?? "An unknown error occurred.")</p>
+        <button type="button" class="btn btn-primary" @onclick="Retry">Retry</button>
+    }
+</div>
 
 @if (Workflow.State == PairingWorkflowState.Succeeded)
 {
-    <h1>Success</h1>
-    <p data-testid="result-success">
-        The printer is now connected to @Session.Configuration?.Ssid at @Session.Configuration?.StaticIpAddress.
-    </p>
-    <button type="button" class="btn btn-primary" disabled="@_factoryResetActive" @onclick="Reconfigure">Reconfigure Printer</button>
-    <FactoryResetPanel Device="Session.Device!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
-    <CheckConfigurationPanel Device="Session.Device!" Disabled="_factoryResetActive" />
-}
-else
-{
-    <h1>Configuration Failed</h1>
-    <p data-testid="result-failure">@(Workflow.FailureReason ?? "An unknown error occurred.")</p>
-    <button type="button" class="btn btn-primary" @onclick="Retry">Retry</button>
+    <CheckConfigurationResults State="_checkConfigState" />
 }
 
 @code {
     private bool _factoryResetActive;
+    private CheckConfigurationState _checkConfigState = new();
 
     protected override void OnInitialized()
     {
@@ -46,6 +56,8 @@ else
     private void Retry()
     {
         Session.Reset();
+        ConnectivityMonitor.Reset();
+        WifiMonitor.Stop();
         Navigation.NavigateTo("/", replace: true);
     }
 }

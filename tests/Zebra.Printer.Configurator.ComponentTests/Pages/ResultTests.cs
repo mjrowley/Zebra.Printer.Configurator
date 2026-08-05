@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Bunit;
 using NSubstitute;
 using Zebra.Printer.Configurator.Core.Abstractions;
+using Zebra.Printer.Configurator.Core.Connectivity;
 using Zebra.Printer.Configurator.Core.Models;
 using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Printer.Configurator.UI.Pages;
@@ -24,6 +25,8 @@ public class ResultTests : BunitContext
     private readonly IPrinterFactoryResetService _factoryResetService = Substitute.For<IPrinterFactoryResetService>();
     private readonly IBluetoothPairingService _pairingService = Substitute.For<IBluetoothPairingService>();
     private readonly IPrinterConfigurationReader _configurationReader = Substitute.For<IPrinterConfigurationReader>();
+    private readonly PrinterConnectivityMonitor _connectivityMonitor = new();
+    private readonly IWifiConnectivityMonitor _wifiMonitor = Substitute.For<IWifiConnectivityMonitor>();
 
     private async Task<(PairAndConfigureWorkflow Workflow, PairingSession Session)> RunWorkflowToCompletionAsync(ConnectionTestResult connectivityResult)
     {
@@ -41,6 +44,8 @@ public class ResultTests : BunitContext
         Services.AddSingleton(_factoryResetService);
         Services.AddSingleton(_pairingService);
         Services.AddSingleton(_configurationReader);
+        Services.AddSingleton(_connectivityMonitor);
+        Services.AddSingleton(_wifiMonitor);
 
         return (workflow, session);
     }
@@ -139,10 +144,27 @@ public class ResultTests : BunitContext
         var workflow = new PairAndConfigureWorkflow(configurationService, restartService, connectivityTestService);
         Services.AddSingleton(workflow);
         Services.AddSingleton(new PairingSession());
+        Services.AddSingleton(_connectivityMonitor);
+        Services.AddSingleton(_wifiMonitor);
 
         Render<Result>();
 
         var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
         Assert.EndsWith("/", navigation.Uri);
+    }
+
+    [Fact]
+    public async Task ClickingRetry_ResetsConnectivityMonitorAndStopsWifiMonitor()
+    {
+        _connectivityMonitor.SetBluetooth(ConnectionIndicatorState.Connected);
+        _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Failed("Printer did not respond."));
+        var cut = Render<Result>();
+
+        cut.Find("button").Click();
+
+        Assert.Equal(ConnectionIndicatorState.Disconnected, _connectivityMonitor.Bluetooth);
+        Assert.Equal(ConnectionIndicatorState.Disconnected, _connectivityMonitor.Wifi);
+        _wifiMonitor.Received().Stop();
     }
 }

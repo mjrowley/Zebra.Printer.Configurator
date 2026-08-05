@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Bunit;
 using Zebra.Printer.Configurator.Core.Abstractions;
+using Zebra.Printer.Configurator.Core.Connectivity;
 using Zebra.Printer.Configurator.Core.Logging;
 using Zebra.Printer.Configurator.UI.Layout;
 
@@ -10,11 +11,13 @@ public class MainLayoutTests : BunitContext
 {
     private readonly AppLog _appLog = new();
     private readonly FakeAppVersionProvider _appVersionProvider = new();
+    private readonly PrinterConnectivityMonitor _connectivityMonitor = new();
 
     public MainLayoutTests()
     {
         Services.AddSingleton<IAppLog>(_appLog);
         Services.AddSingleton<IAppVersionProvider>(_appVersionProvider);
+        Services.AddSingleton(_connectivityMonitor);
     }
 
     [Fact]
@@ -26,11 +29,43 @@ public class MainLayoutTests : BunitContext
     }
 
     [Fact]
+    public void InitialRender_ShowsAppName()
+    {
+        var cut = Render<MainLayout>();
+
+        Assert.Contains("Zebra Printer Configurator", cut.Find("[data-testid='app-header']").TextContent);
+    }
+
+    [Fact]
     public void InitialRender_ShowsAppVersion()
     {
         var cut = Render<MainLayout>();
 
         Assert.Equal("v1.2 (3)", cut.Find("[data-testid='app-version']").TextContent);
+    }
+
+    [Fact]
+    public void InitialRender_ShowsBothIndicatorsDisconnected()
+    {
+        var cut = Render<MainLayout>();
+
+        Assert.Contains("state-disconnected", cut.Find("[data-testid='bluetooth-indicator']").ClassList);
+        Assert.Contains("state-disconnected", cut.Find("[data-testid='wifi-indicator']").ClassList);
+    }
+
+    [Fact]
+    public void WhenConnectivityMonitorChanges_IndicatorsUpdate()
+    {
+        var cut = Render<MainLayout>();
+
+        _connectivityMonitor.SetBluetooth(ConnectionIndicatorState.Connected);
+        _connectivityMonitor.SetWifi(ConnectionIndicatorState.Error);
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("state-connected", cut.Find("[data-testid='bluetooth-indicator']").ClassList);
+            Assert.Contains("state-error", cut.Find("[data-testid='wifi-indicator']").ClassList);
+        });
     }
 
     [Fact]

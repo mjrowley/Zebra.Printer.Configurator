@@ -2,13 +2,21 @@
 @implements IDisposable
 @inject IAppLog AppLog
 @inject IAppVersionProvider AppVersionProvider
+@inject PrinterConnectivityMonitor ConnectivityMonitor
 
 <div class="app-layout">
-    <span class="app-version" data-testid="app-version">@AppVersionProvider.VersionLabel</span>
+    <header class="app-header" data-testid="app-header">
+        <span class="app-name">Zebra Printer Configurator</span>
+        <span class="app-version" data-testid="app-version">@AppVersionProvider.VersionLabel</span>
+        <span class="header-indicators">
+            <ConnectivityIndicator Kind="IndicatorKind.Bluetooth" State="ConnectivityMonitor.Bluetooth" />
+            <ConnectivityIndicator Kind="IndicatorKind.Wifi" State="ConnectivityMonitor.Wifi" />
+        </span>
+    </header>
 
-    <article class="content">
+    <section class="function-section" data-testid="function-section">
         @Body
-    </article>
+    </section>
 
     <section class="log-panel" data-testid="log-panel">
         <h2>Activity Log</h2>
@@ -35,12 +43,16 @@
     protected override void OnInitialized()
     {
         AppLog.EntryLogged += OnEntryLogged;
+        ConnectivityMonitor.Changed += OnConnectivityChanged;
     }
 
     private void OnEntryLogged(object? sender, LogEntry entry) => InvokeAsync(StateHasChanged);
 
+    private void OnConnectivityChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
     public void Dispose()
     {
         AppLog.EntryLogged -= OnEntryLogged;
+        ConnectivityMonitor.Changed -= OnConnectivityChanged;
     }
 }

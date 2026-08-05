@@ -1,23 +1,62 @@
 .app-layout {
-    position: relative;
     display: flex;
     flex-direction: column;
     height: 100%;
 }
 
-.app-version {
-    position: absolute;
-    top: 0.5rem;
-    right: 0.75rem;
-    font-size: 0.75rem;
-    color: #888;
-    z-index: 10;
+.app-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 2px solid #444;
+    background: #1e1e1e;
+    color: #fff;
 }
 
-.content {
+.app-name {
+    font-weight: 600;
+    font-size: 1rem;
+    flex: 1 1 auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.app-version {
+    font-size: 0.75rem;
+    color: #999;
+    flex-shrink: 0;
+}
+
+.header-indicators {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.function-section {
     flex: 1 1 50%;
     overflow-y: auto;
-    padding: 1.5rem 1rem;
+    min-height: 0;
+    padding: 1rem;
+    position: relative;
+}
+
+/* The function name/buttons a page renders at the top of its own markup - pinned to the top of
+   this scrolling section while any longer content (e.g. a results table) scrolls beneath it.
+   ::deep reaches into the routed page/child components, which own the actual .section-sticky-header
+   element. */
+.function-section ::deep .section-sticky-header {
+    position: sticky;
+    top: -1rem;
+    z-index: 2;
+    margin: -1rem -1rem 1rem;
+    padding: 1rem 1rem 0.75rem;
+    background: var(--bs-body-bg, #fff);
+    border-bottom: 1px solid #ddd;
 }
 
 .log-panel {

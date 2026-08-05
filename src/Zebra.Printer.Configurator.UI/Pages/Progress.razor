@@ -2,36 +2,47 @@
 @implements IDisposable
 @inject PairAndConfigureWorkflow Workflow
 @inject PairingSession Session
+@inject IWifiConnectivityMonitor WifiMonitor
 @inject NavigationManager Navigation
 
-<h1>Configuring Printer</h1>
+<div class="section-sticky-header">
+    <h1>@FunctionName</h1>
 
-<ul class="list-group" data-testid="progress-steps">
-    <li class="list-group-item @StepClass(PairingWorkflowState.ApplyingConfiguration)" data-testid="step-applying-configuration">
-        @if (Workflow.State == PairingWorkflowState.ApplyingConfiguration)
-        {
-            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-        }
-        Connecting and applying configuration
-    </li>
-    <li class="list-group-item @StepClass(PairingWorkflowState.Restarting)" data-testid="step-restarting">
-        @if (Workflow.State == PairingWorkflowState.Restarting)
-        {
-            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-        }
-        Restarting printer
-    </li>
-    <li class="list-group-item @StepClass(PairingWorkflowState.TestingConnection)" data-testid="step-testing-connection">
-        @if (Workflow.State == PairingWorkflowState.TestingConnection)
-        {
-            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-        }
-        Waiting for printer to rejoin WiFi
-    </li>
-</ul>
+    <ul class="list-group" data-testid="progress-steps">
+        <li class="list-group-item @StepClass(PairingWorkflowState.ApplyingConfiguration)" data-testid="step-applying-configuration">
+            @if (Workflow.State == PairingWorkflowState.ApplyingConfiguration)
+            {
+                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+            }
+            Connecting and applying configuration
+        </li>
+        <li class="list-group-item @StepClass(PairingWorkflowState.Restarting)" data-testid="step-restarting">
+            @if (Workflow.State == PairingWorkflowState.Restarting)
+            {
+                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+            }
+            Restarting printer
+        </li>
+        <li class="list-group-item @StepClass(PairingWorkflowState.TestingConnection)" data-testid="step-testing-connection">
+            @if (Workflow.State == PairingWorkflowState.TestingConnection)
+            {
+                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+            }
+            Waiting for printer to rejoin WiFi
+        </li>
+    </ul>
+</div>
 
 @code {
     private readonly HashSet<PairingWorkflowState> _observedStates = [];
+
+    private string FunctionName => Workflow.State switch
+    {
+        PairingWorkflowState.ApplyingConfiguration => "Configuring",
+        PairingWorkflowState.Restarting => "Rebooting",
+        PairingWorkflowState.TestingConnection => "Testing Connection",
+        _ => "Configuring Printer",
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -44,6 +55,12 @@
         Workflow.StateChanged += OnWorkflowStateChanged;
 
         await Workflow.RunAsync(Session.Device, Session.Configuration);
+
+        // Keeps re-checking the printer's WiFi reachability in the background beyond this one-shot
+        // workflow run, for as long as this pairing attempt's target IP is known - covers the
+        // Result screen (and anywhere else) too, without those pages needing to own the polling
+        // loop themselves.
+        WifiMonitor.Start(Session.Configuration.StaticIpAddress);
 
         Navigation.NavigateTo("/result", replace: true);
     }

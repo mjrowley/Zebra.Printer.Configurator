@@ -24,6 +24,12 @@ public class ProgressTests : BunitContext
     private readonly IPrinterConfigurationService _configurationService = Substitute.For<IPrinterConfigurationService>();
     private readonly IPrinterRestartService _restartService = Substitute.For<IPrinterRestartService>();
     private readonly IPrinterConnectivityTestService _connectivityTestService = Substitute.For<IPrinterConnectivityTestService>();
+    private readonly IWifiConnectivityMonitor _wifiMonitor = Substitute.For<IWifiConnectivityMonitor>();
+
+    public ProgressTests()
+    {
+        Services.AddSingleton(_wifiMonitor);
+    }
 
     [Fact]
     public void OnSuccessfulRun_NavigatesToResult()
@@ -42,6 +48,7 @@ public class ProgressTests : BunitContext
             Assert.EndsWith("/result", navigation.Uri);
         });
         Assert.Equal(PairingWorkflowState.Succeeded, workflow.State);
+        _wifiMonitor.Received().Start(Configuration.StaticIpAddress);
     }
 
     [Fact]

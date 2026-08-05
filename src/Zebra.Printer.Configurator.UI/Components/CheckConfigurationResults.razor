@@ -1,0 +1,61 @@
+@* Renders whatever CheckConfigurationButton (sharing the same CheckConfigurationState) most
+   recently produced. Kept as a separate component from the button so a page can place this in its
+   scrollable content area while the button stays in the sticky header - see CheckConfigurationState
+   for why. *@
+@implements IDisposable
+
+@if (State.ErrorMessage is not null)
+{
+    <p class="text-danger" data-testid="check-configuration-error">@State.ErrorMessage</p>
+}
+
+@if (State.Values is not null)
+{
+    <table class="table table-sm" data-testid="check-configuration-results">
+        <tbody>
+            @foreach (var value in State.Values)
+            {
+                <tr>
+                    <td>@value.Key</td>
+                    <td>@value.Value</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public CheckConfigurationState State { get; set; } = null!;
+
+    private CheckConfigurationState? _subscribedState;
+
+    protected override void OnParametersSet()
+    {
+        // A page hands this a brand new CheckConfigurationState instance whenever it resets (e.g.
+        // Pairing.Retry(), a fresh device discovery) - re-subscribing on change means stale results
+        // from a previous printer/attempt can't linger after that reset.
+        if (ReferenceEquals(_subscribedState, State))
+        {
+            return;
+        }
+
+        if (_subscribedState is not null)
+        {
+            _subscribedState.Changed -= OnChanged;
+        }
+
+        State.Changed += OnChanged;
+        _subscribedState = State;
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        if (_subscribedState is not null)
+        {
+            _subscribedState.Changed -= OnChanged;
+        }
+    }
+}

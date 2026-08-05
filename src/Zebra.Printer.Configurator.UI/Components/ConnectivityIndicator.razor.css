@@ -1,0 +1,21 @@
+.connectivity-indicator {
+    display: inline-flex;
+    align-items: center;
+    line-height: 0;
+}
+
+.connectivity-indicator.state-disconnected {
+    color: #888;
+}
+
+.connectivity-indicator.state-connecting {
+    color: #ffb300;
+}
+
+.connectivity-indicator.state-error {
+    color: #ff5252;
+}
+
+.connectivity-indicator.state-connected {
+    color: #4caf50;
+}

@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Bunit;
 using NSubstitute;
 using Zebra.Printer.Configurator.Core.Abstractions;
+using Zebra.Printer.Configurator.Core.Connectivity;
 using Zebra.Printer.Configurator.Core.Models;
 using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Printer.Configurator.UI.Pages;
@@ -14,6 +15,8 @@ public class PairingTests : BunitContext
     private readonly FakeBluetoothPairingService _pairingService = new();
     private readonly FakePrinterFactoryResetService _factoryResetService = new();
     private readonly IPrinterConfigurationReader _configurationReader = Substitute.For<IPrinterConfigurationReader>();
+    private readonly PrinterConnectivityMonitor _connectivityMonitor = new();
+    private readonly IWifiConnectivityMonitor _wifiMonitor = Substitute.For<IWifiConnectivityMonitor>();
 
     public PairingTests()
     {
@@ -21,6 +24,8 @@ public class PairingTests : BunitContext
         Services.AddSingleton<IBluetoothPairingService>(_pairingService);
         Services.AddSingleton<IPrinterFactoryResetService>(_factoryResetService);
         Services.AddSingleton(_configurationReader);
+        Services.AddSingleton(_connectivityMonitor);
+        Services.AddSingleton(_wifiMonitor);
         Services.AddSingleton(new PairingSession());
     }
 
@@ -39,6 +44,46 @@ public class PairingTests : BunitContext
 
         Assert.Contains("Tap your Zebra printer", cut.Markup);
         Assert.Equal(1, _discoveryService.StartListeningCallCount);
+    }
+
+    [Fact]
+    public void InitialRender_ShowsPairAPrinterFunctionName()
+    {
+        var cut = Render<Pairing>();
+
+        Assert.Contains("Pair a Printer", cut.Find("h1").TextContent);
+    }
+
+    [Fact]
+    public void WhenPrinterDiscovered_ShowsNfcBtPairingFunctionNameAndSetsBluetoothConnecting()
+    {
+        var pairingTcs = new TaskCompletionSource<bool>();
+        _pairingService.EnsurePairedHandler = _ => pairingTcs.Task;
+        var cut = Render<Pairing>();
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+
+        _discoveryService.RaisePrinterDiscovered(device);
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("NFC/BT Pairing", cut.Find("h1").TextContent);
+            Assert.Equal(ConnectionIndicatorState.Connecting, _connectivityMonitor.Bluetooth);
+        });
+
+        pairingTcs.SetResult(true);
+        cut.WaitForAssertion(() => Assert.Equal(ConnectionIndicatorState.Connected, _connectivityMonitor.Bluetooth));
+    }
+
+    [Fact]
+    public void WhenPairingFails_SetsBluetoothError()
+    {
+        _pairingService.EnsurePairedHandler = _ => Task.FromResult(false);
+        var cut = Render<Pairing>();
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+
+        _discoveryService.RaisePrinterDiscovered(device);
+
+        cut.WaitForAssertion(() => Assert.Equal(ConnectionIndicatorState.Error, _connectivityMonitor.Bluetooth));
     }
 
     [Fact]
@@ -194,6 +239,30 @@ public class PairingTests : BunitContext
 
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='factory-reset-error']")));
         Assert.Null(_pairingService.LastRemovedBondMacAddress);
+    }
+
+    [Fact]
+    public void ReadyState_ShowsPrinterPairedFunctionName()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        var cut = RenderWithReadyPrinter(device);
+
+        Assert.Contains("Printer Paired", cut.Find("h1").TextContent);
+    }
+
+    [Fact]
+    public void ClickingTryAgainAfterPairingFailure_ResetsConnectivityMonitorAndStopsWifiMonitor()
+    {
+        _pairingService.EnsurePairedHandler = _ => Task.FromResult(false);
+        var cut = Render<Pairing>();
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        _discoveryService.RaisePrinterDiscovered(device);
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='pairing-error']")));
+
+        cut.Find("button").Click(); // "Try Again"
+
+        Assert.Equal(ConnectionIndicatorState.Disconnected, _connectivityMonitor.Bluetooth);
+        _wifiMonitor.Received().Stop();
     }
 
     [Fact]

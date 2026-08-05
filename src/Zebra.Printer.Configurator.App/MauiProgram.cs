@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using Zebra.Printer.Configurator.Core.Abstractions;
+using Zebra.Printer.Configurator.Core.Connectivity;
 using Zebra.Printer.Configurator.Core.Logging;
 using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Printer.Configurator.Infrastructure.Android;
@@ -22,6 +23,11 @@ public static class MauiProgram
 
 		builder.Services.AddSingleton<IAppLog, AppLog>();
 		builder.Services.AddSingleton<IAppVersionProvider, AppVersionProvider>();
+
+		// Both singletons: single-window app, one target printer's connectivity display tracked at
+		// a time, backing the header's Bluetooth/WiFi indicators.
+		builder.Services.AddSingleton<PrinterConnectivityMonitor>();
+		builder.Services.AddSingleton<IWifiConnectivityMonitor, WifiConnectivityMonitor>();
 
 		// Single instance backs both interfaces: IPrinterDiscoveryService is what the UI/workflow
 		// depends on, INfcForegroundDispatch is what MainActivity forwards Activity lifecycle/intents to.
