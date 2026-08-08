@@ -1,0 +1,192 @@
+@* Automatically checks a newly-paired printer's Link-OS/firmware versions against the bundled
+   baseline for its model, and blocks "Configure Printer" (via BlockingChanged) until the situation
+   is resolved - either the printer is already up to date/newer, a firmware update completes, or the
+   user explicitly Skips (unsupported model) or Cancels (returns to waiting for a different tap).
+   Self-contained like FactoryResetPanel: owns its own service calls and internal state rather than
+   splitting state out, since (unlike CheckConfigurationButton/Results) everything here renders in
+   one place. *@
+@implements IDisposable
+@inject IPrinterVersionCheckService VersionCheckService
+@inject IPrinterFirmwareUpdateService FirmwareUpdateService
+@inject IPrinterConnectionModeProvider ConnectionModeProvider
+@inject PrinterConnectivityMonitor ConnectivityMonitor
+
+@if (_loading)
+{
+    <p data-testid="version-check-loading">
+        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        Checking printer firmware version&hellip;
+    </p>
+}
+else if (_result is not null)
+{
+    switch (_result.Outcome)
+    {
+        case PrinterVersionOutcome.NewerThanExpected:
+            <p class="text-warning" data-testid="version-check-newer">@NewerThanExpectedMessage</p>
+            break;
+
+        case PrinterVersionOutcome.NeedsUpdate:
+            <p class="text-danger" data-testid="version-check-needs-update">@NeedsUpdateMessage</p>
+            <button type="button" class="btn btn-primary" data-testid="update-firmware-button"
+                    title="@UpdateDisabledReason" disabled="@(_updating || UpdateDisabledReason is not null)" @onclick="UpdateFirmware">
+                @if (_updating)
+                {
+                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                }
+                Update Firmware
+            </button>
+            @if (_updating)
+            {
+                <p data-testid="update-firmware-progress">@UpdateProgressText</p>
+            }
+            @if (_updateError is not null)
+            {
+                <p class="text-danger" data-testid="update-firmware-error">@_updateError</p>
+            }
+            break;
+
+        case PrinterVersionOutcome.Unsupported:
+            <p class="text-danger" data-testid="version-check-unsupported">@UnsupportedMessage</p>
+            <button type="button" class="btn btn-secondary" data-testid="version-check-skip" @onclick="Skip">Skip</button>
+            <button type="button" class="btn btn-outline-secondary" data-testid="version-check-cancel" @onclick="Cancel">Cancel</button>
+            break;
+
+        case PrinterVersionOutcome.UpToDate:
+            // Deliberately renders nothing - "up to date" is confirmed via the Activity Log entry
+            // LinkOsPrinterVersionCheckService already logs, not a persistent banner.
+            break;
+    }
+}
+
+@code {
+    private const string ExpectedLinkOsVersion = "7.6.2";
+    private const string ExpectedFirmwareVersion = "V93.21.49Z";
+
+    [Parameter, EditorRequired]
+    public PrinterDevice Device { get; set; } = null!;
+
+    /// <summary>
+    /// The printer's WiFi IP address, if the automatic post-pairing WiFi check (Pairing.razor)
+    /// already discovered and confirmed one - reused here to avoid a second Bluetooth round-trip
+    /// just to ask the printer the same question again before switching transport for the update.
+    /// </summary>
+    [Parameter]
+    public string? WifiIpAddress { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> BlockingChanged { get; set; }
+
+    /// <summary>Raised when the user presses Cancel on an unsupported-model result.</summary>
+    [Parameter]
+    public EventCallback OnCancelled { get; set; }
+
+    private bool _loading = true;
+    private PrinterVersionCheckResult? _result;
+    private bool _skipped;
+    private bool _updating;
+    private FirmwareUpdateProgress? _updateProgress;
+    private string? _updateError;
+
+    private bool Blocking =>
+        !_skipped && _result is { Outcome: PrinterVersionOutcome.NeedsUpdate or PrinterVersionOutcome.Unsupported };
+
+    private string? UpdateDisabledReason =>
+        ConnectivityMonitor.Wifi == ConnectionIndicatorState.Connected && !string.IsNullOrWhiteSpace(WifiIpAddress)
+            ? null
+            : "A WiFi connection to the printer is required to update firmware.";
+
+    private string NewerThanExpectedMessage =>
+        $"Connected printer has a higher firmware version than expected. Expected Link-OS version: {ExpectedLinkOsVersion} - printer version: {_result!.LinkOsVersionFound}. Expected firmware version: {ExpectedFirmwareVersion} - printer version: {_result!.FirmwareVersionFound}";
+
+    private string NeedsUpdateMessage =>
+        $"Connected printer requires a firmware update. Press 'Update Firmware' to update. Expected Link-OS version: {ExpectedLinkOsVersion} - printer version: {_result!.LinkOsVersionFound}. Expected firmware version: {ExpectedFirmwareVersion} - printer version: {_result!.FirmwareVersionFound}";
+
+    private const string UnsupportedMessage =
+        "Connected printer is an unsupported model for firmware update. Press 'Skip' to continue to printer configuration or 'Cancel' to connect to a different printer.";
+
+    private string UpdateProgressText => _updateProgress switch
+    {
+        { Stage: FirmwareUpdateStage.Downloading, BytesWritten: { } written, TotalBytes: { } total } and { TotalBytes: > 0 } =>
+            $"Sending firmware to printer... {written * 100L / total}%",
+        { Stage: FirmwareUpdateStage.Downloading } => "Sending firmware to printer...",
+        { Stage: FirmwareUpdateStage.AwaitingReboot } => "Firmware sent - printer is flashing and rebooting...",
+        { Stage: FirmwareUpdateStage.Complete } => "Printer is back online.",
+        _ => "Starting firmware update...",
+    };
+
+    protected override void OnInitialized() => ConnectivityMonitor.Changed += OnConnectivityChanged;
+
+    // The "Update Firmware" button's enabled state depends on ConnectivityMonitor.Wifi, a shared
+    // singleton this component reads directly rather than receiving as a parameter - nothing else
+    // triggers a re-render when that changes externally (e.g. Pairing.razor's own WiFi check
+    // completing after this component has already mounted), so this subscribes the same way
+    // MainLayout does for the header indicators.
+    private void OnConnectivityChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        _result = await VersionCheckService.CheckAsync(Device);
+        _loading = false;
+        await NotifyBlockingChanged();
+    }
+
+    private async Task UpdateFirmware()
+    {
+        if (_result?.Bundle is not { } bundle || UpdateDisabledReason is not null)
+        {
+            return;
+        }
+
+        _updating = true;
+        _updateError = null;
+        _updateProgress = null;
+        StateHasChanged();
+
+        try
+        {
+            if (ConnectionModeProvider.Mode != PrinterConnectionMode.Wifi)
+            {
+                ConnectionModeProvider.UseWifi(WifiIpAddress!);
+            }
+
+            var progress = new Progress<FirmwareUpdateProgress>(p =>
+            {
+                _updateProgress = p;
+                StateHasChanged();
+            });
+
+            await FirmwareUpdateService.UpdateFirmwareAsync(Device, bundle, progress);
+
+            // Re-checked rather than assumed - confirms the update actually took before unblocking.
+            _result = await VersionCheckService.CheckAsync(Device);
+            await NotifyBlockingChanged();
+        }
+        catch (Exception ex)
+        {
+            _updateError = $"Firmware update failed: {ex.Message}";
+        }
+        finally
+        {
+            _updating = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task Skip()
+    {
+        _skipped = true;
+        await NotifyBlockingChanged();
+    }
+
+    private async Task Cancel() => await OnCancelled.InvokeAsync();
+
+    private async Task NotifyBlockingChanged()
+    {
+        StateHasChanged();
+        await BlockingChanged.InvokeAsync(Blocking);
+    }
+
+    public void Dispose() => ConnectivityMonitor.Changed -= OnConnectivityChanged;
+}

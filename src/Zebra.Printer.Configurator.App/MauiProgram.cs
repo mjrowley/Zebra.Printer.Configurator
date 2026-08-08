@@ -49,6 +49,8 @@ public static class MauiProgram
 		builder.Services.AddSingleton<IPrinterFactoryResetService>(sp => sp.GetRequiredService<LinkOsPrinterConfigurationService>());
 		builder.Services.AddSingleton<IPrinterConfigurationReader>(sp => sp.GetRequiredService<LinkOsPrinterConfigurationService>());
 		builder.Services.AddSingleton<IPrinterConnectivityTestService, LinkOsConnectivityTestService>();
+		builder.Services.AddSingleton<IPrinterVersionCheckService, LinkOsPrinterVersionCheckService>();
+		builder.Services.AddSingleton<IPrinterFirmwareUpdateService, LinkOsFirmwareUpdateService>();
 
 		// Both singletons: single-window app, one pairing attempt in flight at a time.
 		builder.Services.AddSingleton<PairingSession>();

@@ -21,6 +21,8 @@ public class PairingTests : BunitContext
     private readonly PrinterConnectivityMonitor _connectivityMonitor = new();
     private readonly IWifiConnectivityMonitor _wifiMonitor = Substitute.For<IWifiConnectivityMonitor>();
     private readonly PrinterConnectionModeProvider _connectionModeProvider = new();
+    private readonly IPrinterVersionCheckService _versionCheckService = Substitute.For<IPrinterVersionCheckService>();
+    private readonly IPrinterFirmwareUpdateService _firmwareUpdateService = Substitute.For<IPrinterFirmwareUpdateService>();
 
     public PairingTests()
     {
@@ -32,6 +34,8 @@ public class PairingTests : BunitContext
         Services.AddSingleton(_connectivityMonitor);
         Services.AddSingleton(_wifiMonitor);
         Services.AddSingleton<IPrinterConnectionModeProvider>(_connectionModeProvider);
+        Services.AddSingleton(_versionCheckService);
+        Services.AddSingleton(_firmwareUpdateService);
         Services.AddSingleton(new PairingSession());
 
         // Unconfigured, this NSubstitute mock resolves ReadConfigurationAsync's Task with a null
@@ -40,6 +44,12 @@ public class PairingTests : BunitContext
         // give it a harmless empty result unless a specific test overrides this setup itself.
         _configurationReader.ReadConfigurationAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
             .Returns(Array.Empty<PrinterConfigurationValue>());
+
+        // Defaults to "up to date" (never blocks Configure Printer) - most tests here don't care
+        // about the firmware/version check at all, so this keeps them unaffected unless a specific
+        // test overrides it.
+        _versionCheckService.CheckAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
+            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.UpToDate });
     }
 
     private IRenderedComponent<Pairing> RenderWithReadyPrinter(PrinterDevice device, int? wifiProbePort = null)
@@ -131,7 +141,7 @@ public class PairingTests : BunitContext
             var testIdElement = cut.Find("[data-testid='discovered-device']");
             Assert.Contains("12345", testIdElement.TextContent);
         });
-        Assert.NotNull(cut.Find("button"));
+        Assert.NotNull(cut.Find("[data-testid='configure-printer-button']"));
     }
 
     [Fact]
@@ -179,7 +189,7 @@ public class PairingTests : BunitContext
         _discoveryService.RaisePrinterDiscovered(device);
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='discovered-device']")));
 
-        cut.Find("button").Click();
+        cut.Find("[data-testid='configure-printer-button']").Click();
 
         var session = Services.GetRequiredService<PairingSession>();
         Assert.Same(device, session.Device);
@@ -229,7 +239,7 @@ public class PairingTests : BunitContext
 
         cut.Find("[data-testid='factory-reset-button']").Click();
 
-        Assert.True(cut.Find("button").HasAttribute("disabled")); // "Configure Printer" - first button
+        Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled"));
         Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled"));
     }
 
@@ -242,7 +252,7 @@ public class PairingTests : BunitContext
 
         cut.Find("[data-testid='factory-reset-cancel']").Click();
 
-        Assert.False(cut.Find("button").HasAttribute("disabled"));
+        Assert.False(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled"));
     }
 
     [Fact]
@@ -322,6 +332,56 @@ public class PairingTests : BunitContext
         // Still started so the indicator keeps reflecting live reachability afterward - the printer
         // may still be finishing its own WiFi association right after a reboot/re-tap.
         _wifiMonitor.Received().Start("127.0.0.1");
+    }
+
+    [Fact]
+    public void WhenVersionCheckIsUpToDate_ConfigurePrinterButtonIsEnabled()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+
+        var cut = RenderWithReadyPrinter(device);
+
+        Assert.False(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void WhenVersionCheckNeedsUpdate_ConfigurePrinterButtonIsDisabled()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        _versionCheckService.CheckAsync(device, Arg.Any<CancellationToken>())
+            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
+
+        var cut = RenderWithReadyPrinter(device);
+
+        cut.WaitForAssertion(() => Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled")));
+    }
+
+    [Fact]
+    public void WhenVersionCheckIsUnsupported_ConfigurePrinterButtonIsDisabled_UntilSkipped()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        _versionCheckService.CheckAsync(device, Arg.Any<CancellationToken>())
+            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.Unsupported });
+        var cut = RenderWithReadyPrinter(device);
+        cut.WaitForAssertion(() => Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled")));
+
+        cut.Find("[data-testid='version-check-skip']").Click();
+
+        cut.WaitForAssertion(() => Assert.False(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled")));
+    }
+
+    [Fact]
+    public void WhenVersionCheckIsUnsupported_ClickingCancel_ReturnsToWaitingForTap()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        _versionCheckService.CheckAsync(device, Arg.Any<CancellationToken>())
+            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.Unsupported });
+        var cut = RenderWithReadyPrinter(device);
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='version-check-cancel']")));
+
+        cut.Find("[data-testid='version-check-cancel']").Click();
+
+        Assert.Contains("Tap your Zebra printer", cut.Markup);
     }
 
     [Fact]

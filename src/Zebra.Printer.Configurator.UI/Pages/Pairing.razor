@@ -42,7 +42,8 @@
                 Printer found@(_discoveredDevice?.SerialNumber is not null ? $" (serial {_discoveredDevice.SerialNumber})" : ".")
             </p>
             <div class="button-row">
-                <button type="button" class="btn btn-primary" disabled="@_factoryResetActive" @onclick="Continue">Configure Printer</button>
+                <PrinterVersionAlert Device="_discoveredDevice!" WifiIpAddress="_wifiIpAddress" BlockingChanged="OnVersionCheckBlockingChanged" OnCancelled="Retry" />
+                <button type="button" class="btn btn-primary" data-testid="configure-printer-button" disabled="@(_factoryResetActive || _versionCheckBlocking)" @onclick="Continue">Configure Printer</button>
                 <FactoryResetPanel Device="_discoveredDevice!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
                 <CheckConfigurationButton Device="_discoveredDevice!" State="_checkConfigState" Disabled="_factoryResetActive" />
             </div>
@@ -84,6 +85,8 @@
     private string? _errorMessage;
     private PairingCodeRequestedEventArgs? _pendingPairingRequest;
     private bool _factoryResetActive;
+    private bool _versionCheckBlocking;
+    private string? _wifiIpAddress;
     private CheckConfigurationState _checkConfigState = new();
 
     private string FunctionName => _state switch
@@ -156,6 +159,7 @@
                 return;
             }
 
+            _wifiIpAddress = ipAddress;
             var reachable = await TcpPortProbe.IsReachableAsync(ipAddress, WifiProbePort, WifiProbeTimeout);
             AppLog.Log(
                 reachable
@@ -216,11 +220,15 @@
 
     private void OnFactoryResetActiveChanged(bool active) => _factoryResetActive = active;
 
+    private void OnVersionCheckBlockingChanged(bool blocking) => _versionCheckBlocking = blocking;
+
     private void Retry()
     {
         _discoveredDevice = null;
         _errorMessage = null;
         _factoryResetActive = false;
+        _versionCheckBlocking = false;
+        _wifiIpAddress = null;
         _checkConfigState = new CheckConfigurationState();
         ConnectivityMonitor.Reset();
         WifiMonitor.Stop();
