@@ -363,6 +363,41 @@ public class PairingTests : BunitContext
     }
 
     [Fact]
+    public void ClickingUpdateFirmware_PassesTheRealDiscoveredWifiIpAddress_NotALiteralFieldName()
+    {
+        // Regression test for a real bug: PrinterVersionAlert's WifiIpAddress="_wifiIpAddress" (no
+        // @ prefix) bound the literal text "_wifiIpAddress" instead of the field's value, since a
+        // string literal is itself a valid value for a string-typed component parameter - it
+        // compiled and looked fine, but sent that literal text to the Zebra SDK's TcpConnection,
+        // which then failed to resolve it as a host ("hostname nor servname provided"). This only
+        // renders the full page (not the isolated component via the test-harness parameter API,
+        // which bypasses Razor attribute parsing entirely and would never have caught this).
+        using var listener = StartLoopbackListener(out var port);
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        _configurationReader.ReadConfigurationAsync(device, Arg.Any<CancellationToken>())
+            .Returns([new PrinterConfigurationValue("wlan.ip.addr", "127.0.0.1")]);
+        var bundle = new Zebra.Printer.Configurator.Core.Firmware.FirmwareBundle
+        {
+            ModelName = "ZD421",
+            ExpectedLinkOsVersion = new Zebra.Printer.Configurator.Core.Firmware.LinkOsVersion(7, 6, 2),
+            ExpectedFirmwareVersion = "V93.21.49Z",
+            FirmwareAssetLogicalPath = "ZD421_Firmware/V93.21.49Z.zpl",
+        };
+        _versionCheckService.CheckAsync(device, Arg.Any<CancellationToken>())
+            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, Bundle = bundle, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
+        _firmwareUpdateService.UpdateFirmwareAsync(device, bundle, Arg.Any<string>(), Arg.Any<IProgress<FirmwareUpdateProgress>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        var cut = RenderWithReadyPrinter(device, wifiProbePort: port);
+        cut.WaitForAssertion(() => Assert.False(cut.Find("[data-testid='update-firmware-button']").HasAttribute("disabled")));
+
+        cut.Find("[data-testid='update-firmware-button']").Click();
+
+        cut.WaitForAssertion(() =>
+            _ = _firmwareUpdateService.Received(1).UpdateFirmwareAsync(device, bundle, "127.0.0.1", Arg.Any<IProgress<FirmwareUpdateProgress>>(), Arg.Any<CancellationToken>()));
+        _ = _firmwareUpdateService.DidNotReceive().UpdateFirmwareAsync(device, bundle, "_wifiIpAddress", Arg.Any<IProgress<FirmwareUpdateProgress>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public void WhenVersionCheckNeedsUpdate_AndNoWifiIsConfiguredYet_ConfigurePrinterButtonStaysEnabled()
     {
         // A never-configured printer has no WiFi yet, and "Configure Printer" is exactly what gives

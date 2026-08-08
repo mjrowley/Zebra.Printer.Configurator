@@ -18,7 +18,7 @@
                just verified by the workflow's own connectivity test) - re-surfaces the same version
                check/update offer here, since Pairing.razor's earlier check may have let a NeedsUpdate
                result through unblocked if WiFi wasn't available yet at that point. *@
-            <PrinterVersionAlert Device="Session.Device!" WifiIpAddress="Session.Configuration?.StaticIpAddress" OnCancelled="Retry" />
+            <PrinterVersionAlert Device="Session.Device!" WifiIpAddress="@Session.Configuration?.StaticIpAddress" OnCancelled="Retry" />
             <button type="button" class="btn btn-primary" data-testid="reconfigure-button" disabled="@(_factoryResetActive || _checkingNetwork)" @onclick="Reconfigure">
                 @if (_checkingNetwork)
                 {

@@ -42,7 +42,7 @@
                 Printer found@(_discoveredDevice?.SerialNumber is not null ? $" (serial {_discoveredDevice.SerialNumber})" : ".")
             </p>
             <div class="button-row">
-                <PrinterVersionAlert Device="_discoveredDevice!" WifiIpAddress="_wifiIpAddress" BlockingChanged="OnVersionCheckBlockingChanged" OnCancelled="Retry" />
+                <PrinterVersionAlert Device="_discoveredDevice!" WifiIpAddress="@_wifiIpAddress" BlockingChanged="OnVersionCheckBlockingChanged" OnCancelled="Retry" />
                 <button type="button" class="btn btn-primary" data-testid="configure-printer-button" disabled="@(_factoryResetActive || _versionCheckBlocking)" @onclick="Continue">Configure Printer</button>
                 <FactoryResetPanel Device="_discoveredDevice!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
                 <CheckConfigurationButton Device="_discoveredDevice!" State="_checkConfigState" Disabled="_factoryResetActive" />

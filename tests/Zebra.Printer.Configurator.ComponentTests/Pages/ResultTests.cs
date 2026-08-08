@@ -116,6 +116,37 @@ public class ResultTests : BunitContext
     }
 
     [Fact]
+    public async Task ClickingUpdateFirmware_PassesTheRealConfirmedStaticIp_NotALiteralFieldName()
+    {
+        // Regression test for a real bug: PrinterVersionAlert's WifiIpAddress bound without an @
+        // prefix (WifiIpAddress="Session.Configuration?.StaticIpAddress") passed that literal text
+        // instead of its value, since a string literal is itself valid for a string-typed component
+        // parameter - it compiled fine but sent garbage to the SDK's TcpConnection. Only rendering
+        // the full page (not the isolated component via the test-harness parameter API) exercises
+        // the actual Razor markup that had the bug.
+        _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+        var bundle = new Zebra.Printer.Configurator.Core.Firmware.FirmwareBundle
+        {
+            ModelName = "ZD421",
+            ExpectedLinkOsVersion = new Zebra.Printer.Configurator.Core.Firmware.LinkOsVersion(7, 6, 2),
+            ExpectedFirmwareVersion = "V93.21.49Z",
+            FirmwareAssetLogicalPath = "ZD421_Firmware/V93.21.49Z.zpl",
+        };
+        _versionCheckService.CheckAsync(Device, Arg.Any<CancellationToken>())
+            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, Bundle = bundle, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
+        _firmwareUpdateService.UpdateFirmwareAsync(Device, bundle, Arg.Any<string>(), Arg.Any<IProgress<FirmwareUpdateProgress>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        var cut = Render<Result>();
+        cut.WaitForAssertion(() => Assert.False(cut.Find("[data-testid='update-firmware-button']").HasAttribute("disabled")));
+
+        cut.Find("[data-testid='update-firmware-button']").Click();
+
+        cut.WaitForAssertion(() =>
+            _ = _firmwareUpdateService.Received(1).UpdateFirmwareAsync(Device, bundle, "192.168.1.50", Arg.Any<IProgress<FirmwareUpdateProgress>>(), Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
     public async Task FailedWorkflow_ShowsFailureReasonAndRetryButton()
     {
         await RunWorkflowToCompletionAsync(ConnectionTestResult.Failed("Printer did not respond."));
