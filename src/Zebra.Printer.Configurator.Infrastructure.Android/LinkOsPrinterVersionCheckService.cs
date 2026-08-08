@@ -18,11 +18,14 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// back to "device.firmware_version" if that comes back empty, mirroring the same
 /// multi-candidate-marker resilience already used in NfcPrinterTagParser.BluetoothMacMarkers.
 ///
-/// Link-OS version is read directly via the "appl.link_os_version" SGD key rather than the SDK's
-/// ZebraPrinterLinkOs.LinkOsInformation wrapper - confirmed on-device that LinkOsInformation reported
-/// a stale Link-OS version (7.6.0) after a firmware update that Zebra Setup Utilities (reading the
-/// printer directly) confirmed had actually landed at 7.6.2. Reading the raw SGD value directly
-/// avoids whatever caching/staleness the SDK wrapper has.
+/// Link-OS version is read directly via the "appl.link_os_version_full" SGD key rather than the
+/// SDK's ZebraPrinterLinkOs.LinkOsInformation wrapper - confirmed on-device that LinkOsInformation
+/// reported a stale Link-OS version (7.6.0) after a firmware update that Zebra Setup Utilities
+/// (reading the printer directly) confirmed had actually landed at 7.6.2. Deliberately "_full", not
+/// plain "appl.link_os_version" - confirmed via Zebra Setup Utilities on-device that the plain key
+/// only returns a two-part "major.minor" string (e.g. "7.6"), which fails LinkOsVersion.TryParse's
+/// major.minor.micro format and was silently surfacing as PrinterVersionOutcome.Unsupported instead
+/// of a real comparison; "_full" returns the complete three-part version (e.g. "7.6.2").
 /// </summary>
 public sealed class LinkOsPrinterVersionCheckService(IPrinterConnectionModeProvider connectionModeProvider, IAppLog appLog) : IPrinterVersionCheckService
 {
@@ -46,7 +49,7 @@ public sealed class LinkOsPrinterVersionCheckService(IPrinterConnectionModeProvi
                 firmwareVersionFound = SGD.GET("device.firmware_version", connection);
             }
 
-            var linkOsVersionFound = SGD.GET("appl.link_os_version", connection);
+            var linkOsVersionFound = SGD.GET("appl.link_os_version_full", connection);
 
             return PrinterVersionEvaluator.Evaluate(bundle, linkOsVersionFound, firmwareVersionFound);
         }, appLog, cancellationToken);
