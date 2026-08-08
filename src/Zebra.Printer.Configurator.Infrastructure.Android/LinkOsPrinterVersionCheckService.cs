@@ -17,6 +17,12 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// documentation alone - "appl.name" (the conventional Zebra sample key) is tried first, falling
 /// back to "device.firmware_version" if that comes back empty, mirroring the same
 /// multi-candidate-marker resilience already used in NfcPrinterTagParser.BluetoothMacMarkers.
+///
+/// Link-OS version is read directly via the "appl.link_os_version" SGD key rather than the SDK's
+/// ZebraPrinterLinkOs.LinkOsInformation wrapper - confirmed on-device that LinkOsInformation reported
+/// a stale Link-OS version (7.6.0) after a firmware update that Zebra Setup Utilities (reading the
+/// printer directly) confirmed had actually landed at 7.6.2. Reading the raw SGD value directly
+/// avoids whatever caching/staleness the SDK wrapper has.
 /// </summary>
 public sealed class LinkOsPrinterVersionCheckService(IPrinterConnectionModeProvider connectionModeProvider, IAppLog appLog) : IPrinterVersionCheckService
 {
@@ -40,8 +46,7 @@ public sealed class LinkOsPrinterVersionCheckService(IPrinterConnectionModeProvi
                 firmwareVersionFound = SGD.GET("device.firmware_version", connection);
             }
 
-            var linkOsInformation = ZebraPrinterFactory.GetLinkOsPrinter(connection).LinkOsInformation;
-            var linkOsVersionFound = $"{linkOsInformation.Major}.{linkOsInformation.Minor}.{linkOsInformation.Micro}";
+            var linkOsVersionFound = SGD.GET("appl.link_os_version", connection);
 
             return PrinterVersionEvaluator.Evaluate(bundle, linkOsVersionFound, firmwareVersionFound);
         }, appLog, cancellationToken);
