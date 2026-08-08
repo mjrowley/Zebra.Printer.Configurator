@@ -1,8 +1,11 @@
+using Android.Content;
+using Android.OS;
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Firmware;
 using Zebra.Printer.Configurator.Core.Models;
 using Zebra.Sdk.Comm;
 using Zebra.Sdk.Printer;
+using Application = Android.App.Application;
 
 namespace Zebra.Printer.Configurator.Infrastructure.Android;
 
@@ -31,9 +34,18 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// Requires WiFi - the caller passes the printer's already-confirmed-reachable WiFi IP explicitly
 /// (a 41MB Bluetooth Classic transfer would take several minutes, per the earlier decision to
 /// require WiFi for updates).
+///
+/// Holds a partial WakeLock for the duration of the transfer - with no wake lock, the CPU can
+/// suspend once the screen locks (timeout or power button), stalling or killing the background
+/// thread mid-upload. A partial wake lock keeps the CPU running without also forcing the screen to
+/// stay on, which is all a background network transfer actually needs. Given a timeout of its own
+/// (longer than UpdateFirmwareUnconditionally's own 10-minute default) as a safety net in case the
+/// finally block is somehow never reached, on top of the explicit Release() below.
 /// </summary>
 public sealed class LinkOsFirmwareUpdateService(IAppLog appLog) : IPrinterFirmwareUpdateService
 {
+    private static readonly TimeSpan WakeLockTimeout = TimeSpan.FromMinutes(20);
+
     public async Task UpdateFirmwareAsync(PrinterDevice device, FirmwareBundle bundle, string wifiIpAddress, IProgress<FirmwareUpdateProgress> progress, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(wifiIpAddress))
@@ -43,28 +55,41 @@ public sealed class LinkOsFirmwareUpdateService(IAppLog appLog) : IPrinterFirmwa
 
         var ipAddress = wifiIpAddress;
 
-        appLog.Log($"Preparing firmware file ({bundle.ExpectedFirmwareVersion})...");
-        var firmwareFilePath = await FirmwareAssetProvider.GetLocalFilePathAsync(bundle.FirmwareAssetLogicalPath, cancellationToken);
-
-        appLog.Log($"Sending firmware update to printer at {ipAddress}...");
-        cancellationToken.ThrowIfCancellationRequested();
-
-        await Task.Run(() =>
+        var powerManager = (PowerManager)Application.Context.GetSystemService(Context.PowerService)!;
+        using var wakeLock = powerManager.NewWakeLock(WakeLockFlags.Partial, "ZebraPrinterConfigurator:FirmwareUpdate")!;
+        wakeLock.Acquire((long)WakeLockTimeout.TotalMilliseconds);
+        try
         {
-            Connection connection = new TcpConnection(ipAddress, TcpConnection.DEFAULT_ZPL_TCP_PORT);
-            connection.Open();
-            try
-            {
-                var printer = ZebraPrinterFactory.GetLinkOsPrinter(connection);
-                printer.UpdateFirmwareUnconditionally(firmwareFilePath, new FirmwareUpdateProgressHandler(progress, appLog));
-            }
-            finally
-            {
-                connection.Close();
-            }
-        }, cancellationToken);
+            appLog.Log($"Preparing firmware file ({bundle.ExpectedFirmwareVersion})...");
+            var firmwareFilePath = await FirmwareAssetProvider.GetLocalFilePathAsync(bundle.FirmwareAssetLogicalPath, cancellationToken);
 
-        appLog.Log("Firmware update complete.", LogLevel.Success);
+            appLog.Log($"Sending firmware update to printer at {ipAddress}...");
+            cancellationToken.ThrowIfCancellationRequested();
+
+            await Task.Run(() =>
+            {
+                Connection connection = new TcpConnection(ipAddress, TcpConnection.DEFAULT_ZPL_TCP_PORT);
+                connection.Open();
+                try
+                {
+                    var printer = ZebraPrinterFactory.GetLinkOsPrinter(connection);
+                    printer.UpdateFirmwareUnconditionally(firmwareFilePath, new FirmwareUpdateProgressHandler(progress, appLog));
+                }
+                finally
+                {
+                    connection.Close();
+                }
+            }, cancellationToken);
+
+            appLog.Log("Firmware update complete.", LogLevel.Success);
+        }
+        finally
+        {
+            if (wakeLock.IsHeld)
+            {
+                wakeLock.Release();
+            }
+        }
     }
 
     private sealed class FirmwareUpdateProgressHandler(IProgress<FirmwareUpdateProgress> progress, IAppLog appLog) : FirmwareUpdateHandler

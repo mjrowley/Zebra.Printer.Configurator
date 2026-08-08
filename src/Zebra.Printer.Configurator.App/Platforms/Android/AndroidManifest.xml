@@ -21,4 +21,8 @@
          location permission - used solely to default the WiFi Configuration form's SSID field to
          the network the phone is already on. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- Held only for the duration of a firmware transfer (LinkOsFirmwareUpdateService), so the
+         ~41MB WiFi upload isn't interrupted if the screen locks partway through. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 </manifest>
