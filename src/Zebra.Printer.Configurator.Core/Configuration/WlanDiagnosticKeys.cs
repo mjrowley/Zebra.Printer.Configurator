@@ -1,9 +1,12 @@
 namespace Zebra.Printer.Configurator.Core.Configuration;
 
 /// <summary>
-/// The WLAN-related SGD keys read back for diagnostics - shared between the post-restart
-/// connectivity-test failure path (LinkOsConnectivityTestService) and the on-demand "Check
-/// Configuration" UI action (IPrinterConfigurationReader), so both surface the same set of values.
+/// The SGD keys read back for diagnostics - shared between the post-restart connectivity-test
+/// failure path (LinkOsConnectivityTestService) and the on-demand "Check Configuration" UI action
+/// (IPrinterConfigurationReader), so both surface the same set of values. Despite the name (kept for
+/// the WLAN keys that were here first), this now also covers non-WLAN keys this app configures or
+/// cares about - apl.enable (PDF Direct) and the fixed ZD421 printer defaults from
+/// PrinterDefaultsCommandBuilder.
 /// </summary>
 public static class WlanDiagnosticKeys
 {
@@ -22,5 +25,10 @@ public static class WlanDiagnosticKeys
         "wlan.ip.gateway",
         "wlan.state",
         "apl.enable",
+        "media.printmode",
+        "device.friendly_name",
+        "ezpl.media_type",
+        "ezpl.print_method",
+        "ezpl.print_width",
     ];
 }

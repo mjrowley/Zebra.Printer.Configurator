@@ -59,7 +59,9 @@ public sealed class LinkOsPrinterConfigurationService(
         appLog.Log($"Connecting to printer over {connectionModeProvider.Mode} to apply WiFi configuration...");
         await PrinterConnectionRunner.RunAsync(device, connectionModeProvider, connection =>
         {
-            var commands = WlanConfigurationCommandBuilder.BuildSetCommands(configuration);
+            var commands = WlanConfigurationCommandBuilder.BuildSetCommands(configuration)
+                .Concat(PrinterDefaultsCommandBuilder.BuildSetCommands())
+                .ToList();
 
             foreach (var (key, value) in commands)
             {
