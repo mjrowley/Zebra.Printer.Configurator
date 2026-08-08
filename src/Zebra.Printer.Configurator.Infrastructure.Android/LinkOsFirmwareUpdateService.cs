@@ -16,16 +16,20 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// flashing and reconnected, so it runs on a background thread via Task.Run, matching how every other
 /// blocking SDK call in this app (BluetoothConnectionRunner, PrinterConnectionRunner) is wrapped.
 ///
-/// Requires WiFi - the caller is expected to have already confirmed/switched
-/// IPrinterConnectionModeProvider to WiFi before calling this (a 41MB Bluetooth Classic transfer
-/// would take several minutes, per the earlier decision to require WiFi for updates).
+/// Requires WiFi - the caller passes the printer's already-confirmed-reachable WiFi IP explicitly
+/// (a 41MB Bluetooth Classic transfer would take several minutes, per the earlier decision to
+/// require WiFi for updates).
 /// </summary>
-public sealed class LinkOsFirmwareUpdateService(IPrinterConnectionModeProvider connectionModeProvider, IAppLog appLog) : IPrinterFirmwareUpdateService
+public sealed class LinkOsFirmwareUpdateService(IAppLog appLog) : IPrinterFirmwareUpdateService
 {
-    public async Task UpdateFirmwareAsync(PrinterDevice device, FirmwareBundle bundle, IProgress<FirmwareUpdateProgress> progress, CancellationToken cancellationToken = default)
+    public async Task UpdateFirmwareAsync(PrinterDevice device, FirmwareBundle bundle, string wifiIpAddress, IProgress<FirmwareUpdateProgress> progress, CancellationToken cancellationToken = default)
     {
-        var ipAddress = connectionModeProvider.WifiIpAddress
-            ?? throw new InvalidOperationException("Firmware updates require an active WiFi connection to the printer.");
+        if (string.IsNullOrWhiteSpace(wifiIpAddress))
+        {
+            throw new ArgumentException("A WiFi IP address is required to update firmware.", nameof(wifiIpAddress));
+        }
+
+        var ipAddress = wifiIpAddress;
 
         appLog.Log($"Preparing firmware file ({bundle.ExpectedFirmwareVersion})...");
         var firmwareFilePath = await FirmwareAssetProvider.GetLocalFilePathAsync(bundle.FirmwareAssetLogicalPath, cancellationToken);

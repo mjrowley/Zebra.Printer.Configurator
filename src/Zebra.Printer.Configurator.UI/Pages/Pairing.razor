@@ -122,7 +122,6 @@
 
             var paired = await BluetoothPairingService.EnsurePairedAsync(device.BluetoothMacAddress);
 
-            _state = paired ? PairingUiState.Ready : PairingUiState.Failed;
             ConnectivityMonitor.SetBluetooth(paired ? ConnectionIndicatorState.Connected : ConnectionIndicatorState.Error);
             _errorMessage = paired
                 ? null
@@ -131,8 +130,17 @@
 
             if (paired)
             {
+                // Runs before entering Ready - which is when PrinterVersionAlert mounts and starts
+                // its own Bluetooth connection to check firmware versions. Bluetooth Classic only
+                // reliably supports one active connection to this printer at a time, so this and
+                // that check must not run concurrently (confirmed on-device: running them in
+                // parallel produced a corrupted/empty WiFi IP address that then broke the firmware
+                // update's TcpConnection with a cryptic "hostname nor servname provided" error).
                 await CheckWifiConnectivityAsync(device);
             }
+
+            _state = paired ? PairingUiState.Ready : PairingUiState.Failed;
+            StateHasChanged();
         });
     }
 

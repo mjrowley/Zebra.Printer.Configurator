@@ -143,7 +143,7 @@ public class PrinterVersionAlertTests : BunitContext
             .Returns(
                 new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, Bundle = Bundle, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" },
                 new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.UpToDate, Bundle = Bundle, LinkOsVersionFound = "7.6.2", FirmwareVersionFound = "V93.21.49Z" });
-        _firmwareUpdateService.UpdateFirmwareAsync(Device, Bundle, Arg.Any<IProgress<FirmwareUpdateProgress>>(), Arg.Any<CancellationToken>())
+        _firmwareUpdateService.UpdateFirmwareAsync(Device, Bundle, "192.168.1.50", Arg.Any<IProgress<FirmwareUpdateProgress>>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
         var blockingValues = new List<bool>();
         var cut = Render<PrinterVersionAlert>(p => p
@@ -156,7 +156,7 @@ public class PrinterVersionAlertTests : BunitContext
         cut.Find("[data-testid='update-firmware-button']").Click();
 
         cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[data-testid='version-check-needs-update']")));
-        _ = _firmwareUpdateService.Received(1).UpdateFirmwareAsync(Device, Bundle, Arg.Any<IProgress<FirmwareUpdateProgress>>(), Arg.Any<CancellationToken>());
+        _ = _firmwareUpdateService.Received(1).UpdateFirmwareAsync(Device, Bundle, "192.168.1.50", Arg.Any<IProgress<FirmwareUpdateProgress>>(), Arg.Any<CancellationToken>());
         Assert.Equal(PrinterConnectionMode.Wifi, _connectionModeProvider.Mode);
         Assert.Contains(false, blockingValues);
     }
@@ -166,7 +166,7 @@ public class PrinterVersionAlertTests : BunitContext
     {
         _versionCheckService.CheckAsync(Device, Arg.Any<CancellationToken>())
             .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, Bundle = Bundle, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
-        _firmwareUpdateService.UpdateFirmwareAsync(Device, Bundle, Arg.Any<IProgress<FirmwareUpdateProgress>>(), Arg.Any<CancellationToken>())
+        _firmwareUpdateService.UpdateFirmwareAsync(Device, Bundle, "192.168.1.50", Arg.Any<IProgress<FirmwareUpdateProgress>>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("simulated update failure")));
         var cut = RenderAlert(wifiIpAddress: "192.168.1.50", wifiConnected: true);
         cut.WaitForAssertion(() => Assert.False(cut.Find("[data-testid='update-firmware-button']").HasAttribute("disabled")));

@@ -157,7 +157,7 @@ else if (_result is not null)
                 StateHasChanged();
             });
 
-            await FirmwareUpdateService.UpdateFirmwareAsync(Device, bundle, progress);
+            await FirmwareUpdateService.UpdateFirmwareAsync(Device, bundle, WifiIpAddress!, progress);
 
             // Re-checked rather than assumed - confirms the update actually took before unblocking.
             _result = await VersionCheckService.CheckAsync(Device);

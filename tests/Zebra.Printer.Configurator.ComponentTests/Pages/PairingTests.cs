@@ -58,7 +58,10 @@ public class PairingTests : BunitContext
             ? Render<Pairing>(p => p.Add(c => c.WifiProbePort, port))
             : Render<Pairing>();
         _discoveryService.RaisePrinterDiscovered(device);
-        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='discovered-device']")));
+        // Ready (and everything gated on it, including this testid) only renders after the
+        // automatic WiFi check fully resolves, which can take up to its own probe timeout for an
+        // unreachable-port scenario - longer than bUnit's default wait window covers.
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='discovered-device']")), TimeSpan.FromSeconds(5));
         return cut;
     }
 
