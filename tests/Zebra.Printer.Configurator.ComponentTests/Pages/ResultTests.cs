@@ -30,6 +30,8 @@ public class ResultTests : BunitContext
     private readonly PrinterConnectivityMonitor _connectivityMonitor = new();
     private readonly IWifiConnectivityMonitor _wifiMonitor = Substitute.For<IWifiConnectivityMonitor>();
     private readonly PrinterConnectionModeProvider _connectionModeProvider = new();
+    private readonly IPrinterVersionCheckService _versionCheckService = Substitute.For<IPrinterVersionCheckService>();
+    private readonly IPrinterFirmwareUpdateService _firmwareUpdateService = Substitute.For<IPrinterFirmwareUpdateService>();
 
     private async Task<(PairAndConfigureWorkflow Workflow, PairingSession Session)> RunWorkflowToCompletionAsync(
         ConnectionTestResult connectivityResult, WlanConfiguration? configuration = null)
@@ -52,6 +54,14 @@ public class ResultTests : BunitContext
         Services.AddSingleton(_connectivityMonitor);
         Services.AddSingleton(_wifiMonitor);
         Services.AddSingleton<IPrinterConnectionModeProvider>(_connectionModeProvider);
+        Services.AddSingleton(_versionCheckService);
+        Services.AddSingleton(_firmwareUpdateService);
+
+        // Defaults to "up to date" (renders nothing) - most tests here don't care about the
+        // firmware/version check at all, so this keeps them unaffected unless a specific test
+        // overrides it.
+        _versionCheckService.CheckAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
+            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.UpToDate });
 
         return (workflow, session);
     }
@@ -83,6 +93,26 @@ public class ResultTests : BunitContext
         var successElement = cut.Find("[data-testid='result-success']");
         Assert.Contains("Warehouse-WiFi", successElement.TextContent);
         Assert.Contains("192.168.1.50", successElement.TextContent);
+    }
+
+    [Fact]
+    public async Task SucceededWorkflow_WhenFirmwareNeedsUpdate_ShowsAlertWithUpdateFirmwareEnabled()
+    {
+        // Confirms the deadlock-fix path: Pairing.razor may have let NeedsUpdate through unblocked
+        // if WiFi wasn't available at that point - Result.razor re-runs the same check here, where
+        // the printer's WiFi has just been confirmed working by the workflow itself, so the update
+        // is actually offered for real this time.
+        _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+        // Configured after RunWorkflowToCompletionAsync, whose own setup would otherwise overwrite
+        // this with the default "up to date" response for the same (device, token) call signature.
+        _versionCheckService.CheckAsync(Device, Arg.Any<CancellationToken>())
+            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
+
+        var cut = Render<Result>();
+
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='version-check-needs-update']")));
+        Assert.False(cut.Find("[data-testid='update-firmware-button']").HasAttribute("disabled"));
     }
 
     [Fact]

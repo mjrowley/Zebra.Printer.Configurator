@@ -348,15 +348,34 @@ public class PairingTests : BunitContext
     }
 
     [Fact]
-    public void WhenVersionCheckNeedsUpdate_ConfigurePrinterButtonIsDisabled()
+    public void WhenVersionCheckNeedsUpdate_AndWifiIsAvailable_ConfigurePrinterButtonIsDisabled()
     {
+        using var listener = StartLoopbackListener(out var port);
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        _configurationReader.ReadConfigurationAsync(device, Arg.Any<CancellationToken>())
+            .Returns([new PrinterConfigurationValue("wlan.ip.addr", "127.0.0.1")]);
+        _versionCheckService.CheckAsync(device, Arg.Any<CancellationToken>())
+            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
+
+        var cut = RenderWithReadyPrinter(device, wifiProbePort: port);
+
+        cut.WaitForAssertion(() => Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled")));
+    }
+
+    [Fact]
+    public void WhenVersionCheckNeedsUpdate_AndNoWifiIsConfiguredYet_ConfigurePrinterButtonStaysEnabled()
+    {
+        // A never-configured printer has no WiFi yet, and "Configure Printer" is exactly what gives
+        // it one - blocking here would deadlock (Configure blocked pending an update that itself
+        // requires WiFi Configure hasn't set up yet). Result.razor re-surfaces this same check once
+        // the printer actually has WiFi, after a successful configuration.
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
         _versionCheckService.CheckAsync(device, Arg.Any<CancellationToken>())
             .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
 
         var cut = RenderWithReadyPrinter(device);
 
-        cut.WaitForAssertion(() => Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled")));
+        Assert.False(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled"));
     }
 
     [Fact]

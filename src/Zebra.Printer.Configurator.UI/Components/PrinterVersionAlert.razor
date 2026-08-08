@@ -2,6 +2,14 @@
    baseline for its model, and blocks "Configure Printer" (via BlockingChanged) until the situation
    is resolved - either the printer is already up to date/newer, a firmware update completes, or the
    user explicitly Skips (unsupported model) or Cancels (returns to waiting for a different tap).
+
+   NeedsUpdate only blocks when an update is actually possible right now (WiFi reachable) - a
+   never-configured printer has no WiFi yet, and "Configure Printer" is exactly what gives it one, so
+   refusing to let that proceed here would deadlock: Configure blocked pending an update that itself
+   requires WiFi Configure hasn't set up yet. When WiFi isn't available the alert still shows (so the
+   need is visible) but doesn't block - callers are expected to re-render this component once WiFi
+   might exist (e.g. Result.razor, after a successful configuration) to actually enforce/offer it.
+
    Self-contained like FactoryResetPanel: owns its own service calls and internal state rather than
    splitting state out, since (unlike CheckConfigurationButton/Results) everything here renders in
    one place. *@
@@ -88,13 +96,20 @@ else if (_result is not null)
     private FirmwareUpdateProgress? _updateProgress;
     private string? _updateError;
 
-    private bool Blocking =>
-        !_skipped && _result is { Outcome: PrinterVersionOutcome.NeedsUpdate or PrinterVersionOutcome.Unsupported };
+    private bool CanUpdateFirmware =>
+        ConnectivityMonitor.Wifi == ConnectionIndicatorState.Connected && !string.IsNullOrWhiteSpace(WifiIpAddress);
+
+    private bool Blocking => _result switch
+    {
+        { Outcome: PrinterVersionOutcome.Unsupported } => !_skipped,
+        // Only blocks when an update could actually be performed right now - see the WiFi/deadlock
+        // note above.
+        { Outcome: PrinterVersionOutcome.NeedsUpdate } => CanUpdateFirmware,
+        _ => false,
+    };
 
     private string? UpdateDisabledReason =>
-        ConnectivityMonitor.Wifi == ConnectionIndicatorState.Connected && !string.IsNullOrWhiteSpace(WifiIpAddress)
-            ? null
-            : "A WiFi connection to the printer is required to update firmware.";
+        CanUpdateFirmware ? null : "A WiFi connection to the printer is required to update firmware.";
 
     private string NewerThanExpectedMessage =>
         $"Connected printer has a higher firmware version than expected. Expected Link-OS version: {ExpectedLinkOsVersion} - printer version: {_result!.LinkOsVersionFound}. Expected firmware version: {ExpectedFirmwareVersion} - printer version: {_result!.FirmwareVersionFound}";
@@ -117,12 +132,12 @@ else if (_result is not null)
 
     protected override void OnInitialized() => ConnectivityMonitor.Changed += OnConnectivityChanged;
 
-    // The "Update Firmware" button's enabled state depends on ConnectivityMonitor.Wifi, a shared
-    // singleton this component reads directly rather than receiving as a parameter - nothing else
-    // triggers a re-render when that changes externally (e.g. Pairing.razor's own WiFi check
-    // completing after this component has already mounted), so this subscribes the same way
-    // MainLayout does for the header indicators.
-    private void OnConnectivityChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+    // The "Update Firmware" button's enabled state - and now Blocking itself - depends on
+    // ConnectivityMonitor.Wifi, a shared singleton this component reads directly rather than
+    // receiving as a parameter - nothing else triggers a re-render/re-notification when that changes
+    // externally (e.g. WiFi dropping mid-session), so this subscribes the same way MainLayout does
+    // for the header indicators, and re-notifies BlockingChanged in case that flips too.
+    private void OnConnectivityChanged(object? sender, EventArgs e) => InvokeAsync(NotifyBlockingChanged);
 
     protected override async Task OnInitializedAsync()
     {

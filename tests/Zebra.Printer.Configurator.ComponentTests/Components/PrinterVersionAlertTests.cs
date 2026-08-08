@@ -90,7 +90,7 @@ public class PrinterVersionAlertTests : BunitContext
     }
 
     [Fact]
-    public void NeedsUpdate_ShowsExactMessage_AndBlocks()
+    public void NeedsUpdate_WhenWifiAvailable_ShowsExactMessage_AndBlocks()
     {
         _versionCheckService.CheckAsync(Device, Arg.Any<CancellationToken>())
             .Returns(new PrinterVersionCheckResult
@@ -100,9 +100,11 @@ public class PrinterVersionAlertTests : BunitContext
                 LinkOsVersionFound = "7.5.0",
                 FirmwareVersionFound = "V93.21.06Z",
             });
+        _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
         var blockingValues = new List<bool>();
         var cut = Render<PrinterVersionAlert>(p => p
             .Add(c => c.Device, Device)
+            .Add(c => c.WifiIpAddress, "192.168.1.50")
             .Add(c => c.BlockingChanged, EventCallback.Factory.Create<bool>(this, b => blockingValues.Add(b))));
 
         cut.WaitForAssertion(() =>
@@ -124,6 +126,25 @@ public class PrinterVersionAlertTests : BunitContext
         var cut = RenderAlert(wifiIpAddress: null, wifiConnected: false);
 
         cut.WaitForAssertion(() => Assert.True(cut.Find("[data-testid='update-firmware-button']").HasAttribute("disabled")));
+    }
+
+    [Fact]
+    public void NeedsUpdate_WhenWifiNotAvailable_ShowsMessageButDoesNotBlock()
+    {
+        // A never-configured printer has no WiFi yet, and "Configure Printer" is exactly what gives
+        // it one - blocking here would deadlock (Configure blocked pending an update that itself
+        // requires WiFi Configure hasn't set up yet). The alert still shows, and Result.razor
+        // re-surfaces this same check once the printer actually has WiFi.
+        _versionCheckService.CheckAsync(Device, Arg.Any<CancellationToken>())
+            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, Bundle = Bundle, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
+        var blockingValues = new List<bool>();
+        var cut = Render<PrinterVersionAlert>(p => p
+            .Add(c => c.Device, Device)
+            .Add(c => c.BlockingChanged, EventCallback.Factory.Create<bool>(this, b => blockingValues.Add(b))));
+
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='version-check-needs-update']")));
+        Assert.DoesNotContain(true, blockingValues);
+        Assert.True(cut.Find("[data-testid='update-firmware-button']").HasAttribute("disabled"));
     }
 
     [Fact]
