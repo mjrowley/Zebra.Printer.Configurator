@@ -21,5 +21,6 @@ public static class WlanDiagnosticKeys
         "wlan.ip.netmask",
         "wlan.ip.gateway",
         "wlan.state",
+        "apl.enable",
     ];
 }

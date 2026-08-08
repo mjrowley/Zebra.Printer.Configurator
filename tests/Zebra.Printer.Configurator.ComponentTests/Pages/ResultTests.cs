@@ -40,11 +40,12 @@ public class ResultTests : BunitContext
     {
         configuration ??= Configuration;
         var configurationService = Substitute.For<IPrinterConfigurationService>();
+        var pdfDirectService = Substitute.For<IPdfDirectService>();
         var restartService = Substitute.For<IPrinterRestartService>();
         var connectivityTestService = Substitute.For<IPrinterConnectivityTestService>();
         connectivityTestService.TestConnectionAsync(Device, configuration, Arg.Any<CancellationToken>()).Returns(connectivityResult);
 
-        var workflow = new PairAndConfigureWorkflow(configurationService, restartService, connectivityTestService);
+        var workflow = new PairAndConfigureWorkflow(configurationService, pdfDirectService, restartService, connectivityTestService);
         await workflow.RunAsync(Device, configuration);
 
         var session = new PairingSession { Device = Device, Configuration = configuration };
@@ -262,9 +263,10 @@ public class ResultTests : BunitContext
     public void WhenWorkflowHasNotFinished_RedirectsToPairing()
     {
         var configurationService = Substitute.For<IPrinterConfigurationService>();
+        var pdfDirectService = Substitute.For<IPdfDirectService>();
         var restartService = Substitute.For<IPrinterRestartService>();
         var connectivityTestService = Substitute.For<IPrinterConnectivityTestService>();
-        var workflow = new PairAndConfigureWorkflow(configurationService, restartService, connectivityTestService);
+        var workflow = new PairAndConfigureWorkflow(configurationService, pdfDirectService, restartService, connectivityTestService);
         Services.AddSingleton(workflow);
         Services.AddSingleton(new PairingSession());
         Services.AddSingleton(_connectivityMonitor);

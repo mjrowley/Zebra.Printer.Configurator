@@ -10,6 +10,7 @@ namespace Zebra.Printer.Configurator.Core.Workflow;
 /// </summary>
 public sealed class PairAndConfigureWorkflow(
     IPrinterConfigurationService configurationService,
+    IPdfDirectService pdfDirectService,
     IPrinterRestartService restartService,
     IPrinterConnectivityTestService connectivityTestService)
 {
@@ -30,6 +31,9 @@ public sealed class PairAndConfigureWorkflow(
         {
             SetState(PairingWorkflowState.ApplyingConfiguration);
             await configurationService.ApplyAsync(device, configuration, cancellationToken).ConfigureAwait(false);
+
+            SetState(PairingWorkflowState.EnablingPdfDirect);
+            await pdfDirectService.EnsureEnabledAsync(device, cancellationToken).ConfigureAwait(false);
 
             SetState(PairingWorkflowState.Restarting);
             await restartService.RestartAsync(device, cancellationToken).ConfigureAwait(false);

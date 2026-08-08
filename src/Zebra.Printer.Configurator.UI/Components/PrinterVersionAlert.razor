@@ -68,8 +68,7 @@ else if (_result is not null)
             break;
 
         case PrinterVersionOutcome.UpToDate:
-            // Deliberately renders nothing - "up to date" is confirmed via the Activity Log entry
-            // LinkOsPrinterVersionCheckService already logs, not a persistent banner.
+            <p class="text-success" data-testid="version-check-up-to-date">Printer firmware is up to date.</p>
             break;
     }
 }

@@ -16,6 +16,13 @@
             }
             Connecting and applying configuration
         </li>
+        <li class="list-group-item @StepClass(PairingWorkflowState.EnablingPdfDirect)" data-testid="step-enabling-pdf-direct">
+            @if (Workflow.State == PairingWorkflowState.EnablingPdfDirect)
+            {
+                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+            }
+            Enabling PDF Direct
+        </li>
         <li class="list-group-item @StepClass(PairingWorkflowState.Restarting)" data-testid="step-restarting">
             @if (Workflow.State == PairingWorkflowState.Restarting)
             {
@@ -39,6 +46,7 @@
     private string FunctionName => Workflow.State switch
     {
         PairingWorkflowState.ApplyingConfiguration => "Configuring",
+        PairingWorkflowState.EnablingPdfDirect => "Enabling PDF Direct",
         PairingWorkflowState.Restarting => "Rebooting",
         PairingWorkflowState.TestingConnection => "Testing Connection",
         _ => "Configuring Printer",

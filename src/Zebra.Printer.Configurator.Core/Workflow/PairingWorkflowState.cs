@@ -10,6 +10,7 @@ public enum PairingWorkflowState
 {
     NotStarted,
     ApplyingConfiguration,
+    EnablingPdfDirect,
     Restarting,
     TestingConnection,
     Succeeded,

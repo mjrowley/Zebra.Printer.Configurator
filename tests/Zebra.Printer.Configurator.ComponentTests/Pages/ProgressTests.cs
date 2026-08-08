@@ -22,6 +22,7 @@ public class ProgressTests : BunitContext
     };
 
     private readonly IPrinterConfigurationService _configurationService = Substitute.For<IPrinterConfigurationService>();
+    private readonly IPdfDirectService _pdfDirectService = Substitute.For<IPdfDirectService>();
     private readonly IPrinterRestartService _restartService = Substitute.For<IPrinterRestartService>();
     private readonly IPrinterConnectivityTestService _connectivityTestService = Substitute.For<IPrinterConnectivityTestService>();
     private readonly IWifiConnectivityMonitor _wifiMonitor = Substitute.For<IWifiConnectivityMonitor>();
@@ -36,7 +37,7 @@ public class ProgressTests : BunitContext
     {
         _connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
             .Returns(ConnectionTestResult.Succeeded("CONNECTED"));
-        var workflow = new PairAndConfigureWorkflow(_configurationService, _restartService, _connectivityTestService);
+        var workflow = new PairAndConfigureWorkflow(_configurationService, _pdfDirectService, _restartService, _connectivityTestService);
         Services.AddSingleton(workflow);
         Services.AddSingleton(new PairingSession { Device = Device, Configuration = Configuration });
 
@@ -56,7 +57,7 @@ public class ProgressTests : BunitContext
     {
         _connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
             .Returns(ConnectionTestResult.Failed("Printer did not respond."));
-        var workflow = new PairAndConfigureWorkflow(_configurationService, _restartService, _connectivityTestService);
+        var workflow = new PairAndConfigureWorkflow(_configurationService, _pdfDirectService, _restartService, _connectivityTestService);
         Services.AddSingleton(workflow);
         Services.AddSingleton(new PairingSession { Device = Device, Configuration = Configuration });
 
@@ -74,7 +75,7 @@ public class ProgressTests : BunitContext
     [Fact]
     public void WhenSessionIncomplete_RedirectsToPairingWithoutRunningWorkflow()
     {
-        var workflow = new PairAndConfigureWorkflow(_configurationService, _restartService, _connectivityTestService);
+        var workflow = new PairAndConfigureWorkflow(_configurationService, _pdfDirectService, _restartService, _connectivityTestService);
         Services.AddSingleton(workflow);
         Services.AddSingleton(new PairingSession());
 

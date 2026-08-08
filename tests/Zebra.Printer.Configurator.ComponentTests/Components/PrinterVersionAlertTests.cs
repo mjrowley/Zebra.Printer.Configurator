@@ -50,7 +50,7 @@ public class PrinterVersionAlertTests : BunitContext
     }
 
     [Fact]
-    public void UpToDate_RendersNothingAndIsNotBlocking()
+    public void UpToDate_ShowsConfirmationMessage_AndIsNotBlocking()
     {
         _versionCheckService.CheckAsync(Device, Arg.Any<CancellationToken>())
             .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.UpToDate, Bundle = Bundle });
@@ -60,6 +60,7 @@ public class PrinterVersionAlertTests : BunitContext
             .Add(c => c.BlockingChanged, EventCallback.Factory.Create<bool>(this, b => blockingValues.Add(b))));
 
         cut.WaitForAssertion(() => Assert.Contains(false, blockingValues));
+        cut.WaitForAssertion(() => Assert.Equal("Printer firmware is up to date.", cut.Find("[data-testid='version-check-up-to-date']").TextContent));
         Assert.Empty(cut.FindAll("[data-testid='version-check-newer']"));
         Assert.Empty(cut.FindAll("[data-testid='version-check-needs-update']"));
         Assert.Empty(cut.FindAll("[data-testid='version-check-unsupported']"));

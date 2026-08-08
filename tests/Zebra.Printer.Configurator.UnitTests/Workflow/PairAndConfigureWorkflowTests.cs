@@ -20,22 +20,24 @@ public class PairAndConfigureWorkflowTests
 
     private static (
         IPrinterConfigurationService Configuration,
+        IPdfDirectService PdfDirect,
         IPrinterRestartService Restart,
         IPrinterConnectivityTestService ConnectivityTest,
         PairAndConfigureWorkflow Workflow) CreateWorkflow()
     {
         var configurationService = Substitute.For<IPrinterConfigurationService>();
+        var pdfDirectService = Substitute.For<IPdfDirectService>();
         var restartService = Substitute.For<IPrinterRestartService>();
         var connectivityTestService = Substitute.For<IPrinterConnectivityTestService>();
-        var workflow = new PairAndConfigureWorkflow(configurationService, restartService, connectivityTestService);
+        var workflow = new PairAndConfigureWorkflow(configurationService, pdfDirectService, restartService, connectivityTestService);
 
-        return (configurationService, restartService, connectivityTestService, workflow);
+        return (configurationService, pdfDirectService, restartService, connectivityTestService, workflow);
     }
 
     [Fact]
     public async Task RunAsync_TransitionsThroughExpectedStates_OnSuccess()
     {
-        var (_, _, connectivityTestService, workflow) = CreateWorkflow();
+        var (_, _, _, connectivityTestService, workflow) = CreateWorkflow();
         connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
             .Returns(ConnectionTestResult.Succeeded("CONNECTED"));
 
@@ -47,6 +49,7 @@ public class PairAndConfigureWorkflowTests
         Assert.Equal(
         [
             PairingWorkflowState.ApplyingConfiguration,
+            PairingWorkflowState.EnablingPdfDirect,
             PairingWorkflowState.Restarting,
             PairingWorkflowState.TestingConnection,
             PairingWorkflowState.Succeeded,
@@ -59,7 +62,7 @@ public class PairAndConfigureWorkflowTests
     [Fact]
     public async Task RunAsync_CallsServicesInOrder()
     {
-        var (configurationService, restartService, connectivityTestService, workflow) = CreateWorkflow();
+        var (configurationService, pdfDirectService, restartService, connectivityTestService, workflow) = CreateWorkflow();
         connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
             .Returns(ConnectionTestResult.Succeeded("CONNECTED"));
 
@@ -68,6 +71,7 @@ public class PairAndConfigureWorkflowTests
         Received.InOrder(() =>
         {
             configurationService.ApplyAsync(Device, Configuration, Arg.Any<CancellationToken>());
+            pdfDirectService.EnsureEnabledAsync(Device, Arg.Any<CancellationToken>());
             restartService.RestartAsync(Device, Arg.Any<CancellationToken>());
             connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>());
         });
@@ -76,7 +80,7 @@ public class PairAndConfigureWorkflowTests
     [Fact]
     public async Task RunAsync_EndsInFailed_WhenConnectivityTestFails()
     {
-        var (_, _, connectivityTestService, workflow) = CreateWorkflow();
+        var (_, _, _, connectivityTestService, workflow) = CreateWorkflow();
         connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
             .Returns(ConnectionTestResult.Failed("Printer did not respond."));
 
@@ -90,7 +94,7 @@ public class PairAndConfigureWorkflowTests
     [Fact]
     public async Task RunAsync_EndsInFailed_WhenApplyThrows()
     {
-        var (configurationService, restartService, connectivityTestService, workflow) = CreateWorkflow();
+        var (configurationService, pdfDirectService, restartService, connectivityTestService, workflow) = CreateWorkflow();
         configurationService.ApplyAsync(Device, Configuration, Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("Bluetooth connection failed.")));
 
@@ -98,6 +102,22 @@ public class PairAndConfigureWorkflowTests
 
         Assert.Equal(PairingWorkflowState.Failed, workflow.State);
         Assert.Equal("Bluetooth connection failed.", workflow.FailureReason);
+        await pdfDirectService.DidNotReceive().EnsureEnabledAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>());
+        await restartService.DidNotReceive().RestartAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>());
+        await connectivityTestService.DidNotReceive().TestConnectionAsync(Arg.Any<PrinterDevice>(), Arg.Any<WlanConfiguration>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_EndsInFailed_WhenPdfDirectThrows()
+    {
+        var (_, pdfDirectService, restartService, connectivityTestService, workflow) = CreateWorkflow();
+        pdfDirectService.EnsureEnabledAsync(Device, Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("PDF Direct did not enable.")));
+
+        await workflow.RunAsync(Device, Configuration);
+
+        Assert.Equal(PairingWorkflowState.Failed, workflow.State);
+        Assert.Equal("PDF Direct did not enable.", workflow.FailureReason);
         await restartService.DidNotReceive().RestartAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>());
         await connectivityTestService.DidNotReceive().TestConnectionAsync(Arg.Any<PrinterDevice>(), Arg.Any<WlanConfiguration>(), Arg.Any<CancellationToken>());
     }
@@ -105,7 +125,7 @@ public class PairAndConfigureWorkflowTests
     [Fact]
     public async Task RunAsync_ResetsPreviousResultAndFailureReason_OnRetry()
     {
-        var (_, _, connectivityTestService, workflow) = CreateWorkflow();
+        var (_, _, _, connectivityTestService, workflow) = CreateWorkflow();
         connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
             .Returns(ConnectionTestResult.Failed("first failure"), ConnectionTestResult.Succeeded("CONNECTED"));
 
