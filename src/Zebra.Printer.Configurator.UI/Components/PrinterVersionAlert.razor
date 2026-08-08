@@ -10,12 +10,20 @@
    need is visible) but doesn't block - callers are expected to re-render this component once WiFi
    might exist (e.g. Result.razor, after a successful configuration) to actually enforce/offer it.
 
+   The actual transfer runs in FirmwareUpdateForegroundService (Android), not an inline awaited call
+   here - a plain awaited Task tied to this component's lifecycle would be abandoned if the user
+   navigates away, and wouldn't survive the screen locking either way. This component only asks
+   IFirmwareUpdateLauncher to start it, then reflects progress/outcome via FirmwareUpdateStatusMonitor
+   (a shared singleton the service also updates) - the notification and this in-app UI are two views
+   onto the same state, not two disconnected mechanisms.
+
    Self-contained like FactoryResetPanel: owns its own service calls and internal state rather than
    splitting state out, since (unlike CheckConfigurationButton/Results) everything here renders in
    one place. *@
 @implements IDisposable
 @inject IPrinterVersionCheckService VersionCheckService
-@inject IPrinterFirmwareUpdateService FirmwareUpdateService
+@inject IFirmwareUpdateLauncher FirmwareUpdateLauncher
+@inject FirmwareUpdateStatusMonitor UpdateStatus
 @inject IPrinterConnectionModeProvider ConnectionModeProvider
 @inject PrinterConnectivityMonitor ConnectivityMonitor
 
@@ -24,6 +32,13 @@
     <p data-testid="version-check-loading">
         <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
         Checking printer firmware version&hellip;
+    </p>
+}
+else if (_updating)
+{
+    <p data-testid="update-firmware-progress">
+        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        @UpdateProgressText
     </p>
 }
 else if (_result is not null)
@@ -37,17 +52,9 @@ else if (_result is not null)
         case PrinterVersionOutcome.NeedsUpdate:
             <p class="text-danger" data-testid="version-check-needs-update">@NeedsUpdateMessage</p>
             <button type="button" class="btn btn-primary" data-testid="update-firmware-button"
-                    title="@UpdateDisabledReason" disabled="@(_updating || UpdateDisabledReason is not null)" @onclick="UpdateFirmware">
-                @if (_updating)
-                {
-                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                }
+                    title="@UpdateDisabledReason" disabled="@(UpdateDisabledReason is not null)" @onclick="UpdateFirmware">
                 Update Firmware
             </button>
-            @if (_updating)
-            {
-                <p data-testid="update-firmware-progress">@UpdateProgressText</p>
-            }
             @if (_updateError is not null)
             {
                 <p class="text-danger" data-testid="update-firmware-error">@_updateError</p>
@@ -99,7 +106,7 @@ else if (_result is not null)
     private bool CanUpdateFirmware =>
         ConnectivityMonitor.Wifi == ConnectionIndicatorState.Connected && !string.IsNullOrWhiteSpace(WifiIpAddress);
 
-    private bool Blocking => _result switch
+    private bool Blocking => _updating || _result switch
     {
         { Outcome: PrinterVersionOutcome.Unsupported } => !_skipped,
         // Only blocks when an update could actually be performed right now - see the WiFi/deadlock
@@ -130,7 +137,11 @@ else if (_result is not null)
         _ => "Starting firmware update...",
     };
 
-    protected override void OnInitialized() => ConnectivityMonitor.Changed += OnConnectivityChanged;
+    protected override void OnInitialized()
+    {
+        ConnectivityMonitor.Changed += OnConnectivityChanged;
+        UpdateStatus.Changed += OnUpdateStatusChanged;
+    }
 
     // The "Update Firmware" button's enabled state - and now Blocking itself - depends on
     // ConnectivityMonitor.Wifi, a shared singleton this component reads directly rather than
@@ -139,12 +150,56 @@ else if (_result is not null)
     // for the header indicators, and re-notifies BlockingChanged in case that flips too.
     private void OnConnectivityChanged(object? sender, EventArgs e) => InvokeAsync(NotifyBlockingChanged);
 
+    private void OnUpdateStatusChanged(object? sender, EventArgs e) => InvokeAsync(HandleUpdateStatusChanged);
+
     protected override async Task OnInitializedAsync()
     {
+        if (UpdateStatus.State == FirmwareUpdateRunState.Running)
+        {
+            // An update is already in flight (e.g. the user reopened the app mid-transfer) - reflect
+            // that directly rather than kicking off a fresh Bluetooth version check, which would race
+            // FirmwareUpdateForegroundService's own connection to the same printer (the same class of
+            // concurrent-Bluetooth-connection bug fixed earlier for the WiFi/version checks).
+            _loading = false;
+            _updating = true;
+            _updateProgress = UpdateStatus.Progress;
+            await NotifyBlockingChanged();
+            return;
+        }
+
         _loading = true;
         _result = await VersionCheckService.CheckAsync(Device);
         _loading = false;
         await NotifyBlockingChanged();
+    }
+
+    private async Task HandleUpdateStatusChanged()
+    {
+        switch (UpdateStatus.State)
+        {
+            case FirmwareUpdateRunState.Running:
+                _updating = true;
+                _updateProgress = UpdateStatus.Progress;
+                _updateError = null;
+                await NotifyBlockingChanged();
+                break;
+
+            case FirmwareUpdateRunState.Succeeded:
+                _updating = false;
+                // Re-checked rather than assumed - confirms the update actually took before unblocking.
+                _result = await VersionCheckService.CheckAsync(Device);
+                await NotifyBlockingChanged();
+                break;
+
+            case FirmwareUpdateRunState.Failed:
+                _updating = false;
+                _updateError = $"Firmware update failed: {UpdateStatus.ErrorMessage}";
+                await NotifyBlockingChanged();
+                break;
+
+            case FirmwareUpdateRunState.Idle:
+                break;
+        }
     }
 
     private async Task UpdateFirmware()
@@ -159,34 +214,15 @@ else if (_result is not null)
         _updateProgress = null;
         StateHasChanged();
 
-        try
+        if (ConnectionModeProvider.Mode != PrinterConnectionMode.Wifi)
         {
-            if (ConnectionModeProvider.Mode != PrinterConnectionMode.Wifi)
-            {
-                ConnectionModeProvider.UseWifi(WifiIpAddress!);
-            }
-
-            var progress = new Progress<FirmwareUpdateProgress>(p =>
-            {
-                _updateProgress = p;
-                StateHasChanged();
-            });
-
-            await FirmwareUpdateService.UpdateFirmwareAsync(Device, bundle, WifiIpAddress!, progress);
-
-            // Re-checked rather than assumed - confirms the update actually took before unblocking.
-            _result = await VersionCheckService.CheckAsync(Device);
-            await NotifyBlockingChanged();
+            ConnectionModeProvider.UseWifi(WifiIpAddress!);
         }
-        catch (Exception ex)
-        {
-            _updateError = $"Firmware update failed: {ex.Message}";
-        }
-        finally
-        {
-            _updating = false;
-            StateHasChanged();
-        }
+
+        // Only starts the foreground service - FirmwareUpdateStatusMonitor.Changed (raised via
+        // SetRunning()/SetProgress()/SetSucceeded()/SetFailed() from within the service) drives
+        // everything from here, not this call's own completion.
+        await FirmwareUpdateLauncher.StartAsync(Device, bundle, WifiIpAddress!);
     }
 
     private async Task Skip()
@@ -203,5 +239,9 @@ else if (_result is not null)
         await BlockingChanged.InvokeAsync(Blocking);
     }
 
-    public void Dispose() => ConnectivityMonitor.Changed -= OnConnectivityChanged;
+    public void Dispose()
+    {
+        ConnectivityMonitor.Changed -= OnConnectivityChanged;
+        UpdateStatus.Changed -= OnUpdateStatusChanged;
+    }
 }

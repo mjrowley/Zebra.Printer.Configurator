@@ -5,6 +5,7 @@ using Bunit;
 using NSubstitute;
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Connectivity;
+using Zebra.Printer.Configurator.Core.Firmware;
 using Zebra.Printer.Configurator.Core.Models;
 using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Printer.Configurator.UI.Pages;
@@ -31,7 +32,8 @@ public class ResultTests : BunitContext
     private readonly IWifiConnectivityMonitor _wifiMonitor = Substitute.For<IWifiConnectivityMonitor>();
     private readonly PrinterConnectionModeProvider _connectionModeProvider = new();
     private readonly IPrinterVersionCheckService _versionCheckService = Substitute.For<IPrinterVersionCheckService>();
-    private readonly IPrinterFirmwareUpdateService _firmwareUpdateService = Substitute.For<IPrinterFirmwareUpdateService>();
+    private readonly IFirmwareUpdateLauncher _firmwareUpdateLauncher = Substitute.For<IFirmwareUpdateLauncher>();
+    private readonly FirmwareUpdateStatusMonitor _updateStatusMonitor = new();
 
     private async Task<(PairAndConfigureWorkflow Workflow, PairingSession Session)> RunWorkflowToCompletionAsync(
         ConnectionTestResult connectivityResult, WlanConfiguration? configuration = null)
@@ -55,7 +57,8 @@ public class ResultTests : BunitContext
         Services.AddSingleton(_wifiMonitor);
         Services.AddSingleton<IPrinterConnectionModeProvider>(_connectionModeProvider);
         Services.AddSingleton(_versionCheckService);
-        Services.AddSingleton(_firmwareUpdateService);
+        Services.AddSingleton(_firmwareUpdateLauncher);
+        Services.AddSingleton(_updateStatusMonitor);
 
         // Defaults to "up to date" (renders nothing) - most tests here don't care about the
         // firmware/version check at all, so this keeps them unaffected unless a specific test
@@ -126,16 +129,16 @@ public class ResultTests : BunitContext
         // the actual Razor markup that had the bug.
         _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
         await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
-        var bundle = new Zebra.Printer.Configurator.Core.Firmware.FirmwareBundle
+        var bundle = new FirmwareBundle
         {
             ModelName = "ZD421",
-            ExpectedLinkOsVersion = new Zebra.Printer.Configurator.Core.Firmware.LinkOsVersion(7, 6, 2),
+            ExpectedLinkOsVersion = new LinkOsVersion(7, 6, 2),
             ExpectedFirmwareVersion = "V93.21.49Z",
             FirmwareAssetLogicalPath = "ZD421_Firmware/V93.21.49Z.zpl",
         };
         _versionCheckService.CheckAsync(Device, Arg.Any<CancellationToken>())
             .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, Bundle = bundle, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
-        _firmwareUpdateService.UpdateFirmwareAsync(Device, bundle, Arg.Any<string>(), Arg.Any<IProgress<FirmwareUpdateProgress>>(), Arg.Any<CancellationToken>())
+        _firmwareUpdateLauncher.StartAsync(Device, bundle, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
         var cut = Render<Result>();
         cut.WaitForAssertion(() => Assert.False(cut.Find("[data-testid='update-firmware-button']").HasAttribute("disabled")));
@@ -143,7 +146,7 @@ public class ResultTests : BunitContext
         cut.Find("[data-testid='update-firmware-button']").Click();
 
         cut.WaitForAssertion(() =>
-            _ = _firmwareUpdateService.Received(1).UpdateFirmwareAsync(Device, bundle, "192.168.1.50", Arg.Any<IProgress<FirmwareUpdateProgress>>(), Arg.Any<CancellationToken>()));
+            _ = _firmwareUpdateLauncher.Received(1).StartAsync(Device, bundle, "192.168.1.50", Arg.Any<CancellationToken>()));
     }
 
     [Fact]

@@ -25,4 +25,16 @@
     <!-- Held only for the duration of a firmware transfer (LinkOsFirmwareUpdateService), so the
          ~41MB WiFi upload isn't interrupted if the screen locks partway through. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- FirmwareUpdateForegroundService: a wake lock alone doesn't exempt the app from Doze/App
+         Standby's *network* throttling for a backgrounded app (confirmed on-device: a firmware
+         transfer was aborted mid-write after several minutes with the screen locked, even with the
+         wake lock held) - a foreground service of type "dataSync" is required for that. Android 14+
+         requires the FOREGROUND_SERVICE_DATA_SYNC permission in addition to the base one whenever a
+         service declares that type. POST_NOTIFICATIONS is required on Android 13+ to show the
+         progress/completion notifications at all - requested at runtime (FirmwareUpdateLauncher),
+         same pattern as Bluetooth's runtime permission request. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

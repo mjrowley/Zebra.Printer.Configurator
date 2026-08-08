@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Connectivity;
+using Zebra.Printer.Configurator.Core.Firmware;
 using Zebra.Printer.Configurator.Core.Logging;
 using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Printer.Configurator.Infrastructure.Android;
@@ -51,6 +52,8 @@ public static class MauiProgram
 		builder.Services.AddSingleton<IPrinterConnectivityTestService, LinkOsConnectivityTestService>();
 		builder.Services.AddSingleton<IPrinterVersionCheckService, LinkOsPrinterVersionCheckService>();
 		builder.Services.AddSingleton<IPrinterFirmwareUpdateService, LinkOsFirmwareUpdateService>();
+		builder.Services.AddSingleton<FirmwareUpdateStatusMonitor>();
+		builder.Services.AddSingleton<IFirmwareUpdateLauncher, FirmwareUpdateLauncher>();
 
 		// Both singletons: single-window app, one pairing attempt in flight at a time.
 		builder.Services.AddSingleton<PairingSession>();
@@ -61,6 +64,13 @@ public static class MauiProgram
 		builder.Logging.AddDebug();
 #endif
 
-		return builder.Build();
+		var app = builder.Build();
+
+		// FirmwareUpdateForegroundService is instantiated directly by Android (started via an
+		// Intent, not through this container), so it needs a way to reach these same registered
+		// services - see FirmwareUpdateServiceLocator's own doc comment for why.
+		FirmwareUpdateServiceLocator.Services = app.Services;
+
+		return app;
 	}
 }

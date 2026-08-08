@@ -5,6 +5,7 @@ using Bunit;
 using NSubstitute;
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Connectivity;
+using Zebra.Printer.Configurator.Core.Firmware;
 using Zebra.Printer.Configurator.Core.Models;
 using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Printer.Configurator.UI.Pages;
@@ -22,7 +23,8 @@ public class PairingTests : BunitContext
     private readonly IWifiConnectivityMonitor _wifiMonitor = Substitute.For<IWifiConnectivityMonitor>();
     private readonly PrinterConnectionModeProvider _connectionModeProvider = new();
     private readonly IPrinterVersionCheckService _versionCheckService = Substitute.For<IPrinterVersionCheckService>();
-    private readonly IPrinterFirmwareUpdateService _firmwareUpdateService = Substitute.For<IPrinterFirmwareUpdateService>();
+    private readonly IFirmwareUpdateLauncher _firmwareUpdateLauncher = Substitute.For<IFirmwareUpdateLauncher>();
+    private readonly FirmwareUpdateStatusMonitor _updateStatusMonitor = new();
 
     public PairingTests()
     {
@@ -35,7 +37,8 @@ public class PairingTests : BunitContext
         Services.AddSingleton(_wifiMonitor);
         Services.AddSingleton<IPrinterConnectionModeProvider>(_connectionModeProvider);
         Services.AddSingleton(_versionCheckService);
-        Services.AddSingleton(_firmwareUpdateService);
+        Services.AddSingleton(_firmwareUpdateLauncher);
+        Services.AddSingleton(_updateStatusMonitor);
         Services.AddSingleton(new PairingSession());
 
         // Unconfigured, this NSubstitute mock resolves ReadConfigurationAsync's Task with a null
@@ -376,16 +379,16 @@ public class PairingTests : BunitContext
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
         _configurationReader.ReadConfigurationAsync(device, Arg.Any<CancellationToken>())
             .Returns([new PrinterConfigurationValue("wlan.ip.addr", "127.0.0.1")]);
-        var bundle = new Zebra.Printer.Configurator.Core.Firmware.FirmwareBundle
+        var bundle = new FirmwareBundle
         {
             ModelName = "ZD421",
-            ExpectedLinkOsVersion = new Zebra.Printer.Configurator.Core.Firmware.LinkOsVersion(7, 6, 2),
+            ExpectedLinkOsVersion = new LinkOsVersion(7, 6, 2),
             ExpectedFirmwareVersion = "V93.21.49Z",
             FirmwareAssetLogicalPath = "ZD421_Firmware/V93.21.49Z.zpl",
         };
         _versionCheckService.CheckAsync(device, Arg.Any<CancellationToken>())
             .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, Bundle = bundle, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
-        _firmwareUpdateService.UpdateFirmwareAsync(device, bundle, Arg.Any<string>(), Arg.Any<IProgress<FirmwareUpdateProgress>>(), Arg.Any<CancellationToken>())
+        _firmwareUpdateLauncher.StartAsync(device, bundle, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
         var cut = RenderWithReadyPrinter(device, wifiProbePort: port);
         cut.WaitForAssertion(() => Assert.False(cut.Find("[data-testid='update-firmware-button']").HasAttribute("disabled")));
@@ -393,8 +396,8 @@ public class PairingTests : BunitContext
         cut.Find("[data-testid='update-firmware-button']").Click();
 
         cut.WaitForAssertion(() =>
-            _ = _firmwareUpdateService.Received(1).UpdateFirmwareAsync(device, bundle, "127.0.0.1", Arg.Any<IProgress<FirmwareUpdateProgress>>(), Arg.Any<CancellationToken>()));
-        _ = _firmwareUpdateService.DidNotReceive().UpdateFirmwareAsync(device, bundle, "_wifiIpAddress", Arg.Any<IProgress<FirmwareUpdateProgress>>(), Arg.Any<CancellationToken>());
+            _ = _firmwareUpdateLauncher.Received(1).StartAsync(device, bundle, "127.0.0.1", Arg.Any<CancellationToken>()));
+        _ = _firmwareUpdateLauncher.DidNotReceive().StartAsync(device, bundle, "_wifiIpAddress", Arg.Any<CancellationToken>());
     }
 
     [Fact]
