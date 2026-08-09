@@ -94,9 +94,19 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
         var bondCompletion = new TaskCompletionSource<bool>();
         using var bondReceiver = new BondStateReceiver(device.Address!, bondCompletion, appLog);
 
-        Application.Context.RegisterReceiver(bondReceiver, new IntentFilter(BluetoothDevice.ActionBondStateChanged), ReceiverFlags.NotExported);
+        var stickyIntent = Application.Context.RegisterReceiver(bondReceiver, new IntentFilter(BluetoothDevice.ActionBondStateChanged), ReceiverFlags.NotExported);
+        // Diagnostic: confirms RegisterReceiver actually returned rather than throwing or hanging -
+        // if this line is missing from the log, registration itself never completed, which would
+        // point upstream of BondStateReceiver even having a chance to run at all.
+        appLog.Log($"BondStateReceiver registered for {device.Address} (RegisterReceiver returned {(stickyIntent is null ? "no sticky intent" : $"sticky intent action={stickyIntent.Action}")}).");
 
         CurrentPairingTargetAddress = device.Address;
+        using var pollingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        // Diagnostic: an independent, broadcast-free way of detecting the bond completing - if this
+        // detects Bonded while BondStateReceiver stays completely silent, that's conclusive proof
+        // the ACTION_BOND_STATE_CHANGED broadcast itself never reaches this app's process, rather
+        // than this app listening for the wrong thing.
+        _ = PollBondStateAsync(device, bondCompletion, appLog, pollingCts.Token);
         try
         {
             if (!device.CreateBond())
@@ -123,8 +133,47 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
         }
         finally
         {
+            pollingCts.Cancel();
             CurrentPairingTargetAddress = null;
             Application.Context.UnregisterReceiver(bondReceiver);
+        }
+    }
+
+    // Diagnostic only - polls device.BondState directly, with no broadcast involved at all, purely
+    // to determine whether BondStateReceiver's silence means the broadcast never arrives versus this
+    // app listening for the wrong thing. Never throws out of this method (caught below) since it's
+    // fire-and-forget from the caller's perspective.
+    private static async Task PollBondStateAsync(BluetoothDevice device, TaskCompletionSource<bool> completion, IAppLog appLog, CancellationToken cancellationToken)
+    {
+        var lastState = device.BondState;
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+                var currentState = device.BondState;
+                if (currentState != lastState)
+                {
+                    appLog.Log($"[Polling] device.BondState changed: {lastState} -> {currentState}.", LogLevel.Warning);
+                    lastState = currentState;
+                }
+
+                if (currentState == Bond.Bonded)
+                {
+                    appLog.Log("[Polling] Detected Bonded via direct polling - independent of BondStateReceiver.", LogLevel.Success);
+                    completion.TrySetResult(true);
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected once the broadcast-based wait resolves first (this loop's token is cancelled
+            // alongside it) or the caller's own cancellationToken fires.
+        }
+        catch (Exception ex)
+        {
+            appLog.Log($"[Polling] Unexpected error while polling device.BondState: {ex.Message}", LogLevel.Warning);
         }
     }
 
