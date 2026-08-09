@@ -29,14 +29,6 @@
             </p>
             break;
 
-        case PairingUiState.ConfirmingCode:
-            <p data-testid="pairing-code">
-                Confirm this code matches the code shown on the printer: <strong>@_pairingCode</strong>
-            </p>
-            <button type="button" class="btn btn-primary" @onclick="ConfirmPairingCode">Pair</button>
-            <button type="button" class="btn btn-secondary" @onclick="RejectPairingCode">Cancel</button>
-            break;
-
         case PairingUiState.Ready:
             <p data-testid="discovered-device">
                 Printer found@(_discoveredDevice?.SerialNumber is not null ? $" (serial {_discoveredDevice.SerialNumber})" : ".")
@@ -66,7 +58,6 @@
     {
         WaitingForTap,
         Pairing,
-        ConfirmingCode,
         Ready,
         Failed,
     }
@@ -81,9 +72,7 @@
 
     private PairingUiState _state = PairingUiState.WaitingForTap;
     private PrinterDevice? _discoveredDevice;
-    private string? _pairingCode;
     private string? _errorMessage;
-    private PairingCodeRequestedEventArgs? _pendingPairingRequest;
     private bool _factoryResetActive;
     private bool _versionCheckBlocking;
     private string? _wifiIpAddress;
@@ -93,7 +82,6 @@
     {
         PairingUiState.WaitingForTap => "Pair a Printer",
         PairingUiState.Pairing => "NFC/BT Pairing",
-        PairingUiState.ConfirmingCode => "Confirm Pairing Code",
         PairingUiState.Ready => "Printer Paired",
         PairingUiState.Failed => "Pairing Failed",
         _ => "Pair a Printer",
@@ -106,7 +94,6 @@
         WifiMonitor.Stop();
         ConnectionModeProvider.UseBluetooth();
         DiscoveryService.PrinterDiscovered += OnPrinterDiscovered;
-        BluetoothPairingService.PairingCodeRequested += OnPairingCodeRequested;
         DiscoveryService.StartListening();
     }
 
@@ -205,32 +192,6 @@
         }
     }
 
-    private void OnPairingCodeRequested(object? sender, PairingCodeRequestedEventArgs args)
-    {
-        InvokeAsync(() =>
-        {
-            _pendingPairingRequest = args;
-            _pairingCode = args.PairingCode;
-            _state = PairingUiState.ConfirmingCode;
-            StateHasChanged();
-        });
-    }
-
-    private void ConfirmPairingCode() => RespondToPairingCode(accepted: true);
-
-    private void RejectPairingCode() => RespondToPairingCode(accepted: false);
-
-    private void RespondToPairingCode(bool accepted)
-    {
-        // Set state before resolving Response: TrySetResult can run the awaiter's continuation
-        // (which advances _state again, e.g. to Ready/Failed) synchronously, so nothing here should
-        // run after it that could stomp on that.
-        var request = _pendingPairingRequest;
-        _pendingPairingRequest = null;
-        _state = PairingUiState.Pairing;
-        request?.Response.TrySetResult(accepted);
-    }
-
     private void Continue()
     {
         if (_discoveredDevice is null || _factoryResetActive)
@@ -263,7 +224,6 @@
     public void Dispose()
     {
         DiscoveryService.PrinterDiscovered -= OnPrinterDiscovered;
-        BluetoothPairingService.PairingCodeRequested -= OnPairingCodeRequested;
         DiscoveryService.StopListening();
     }
 }

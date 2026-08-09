@@ -69,10 +69,11 @@ public static class MauiProgram
 
 		var app = builder.Build();
 
-		// FirmwareUpdateForegroundService is instantiated directly by Android (started via an
-		// Intent, not through this container), so it needs a way to reach these same registered
-		// services - see FirmwareUpdateServiceLocator's own doc comment for why.
-		FirmwareUpdateServiceLocator.Services = app.Services;
+		// FirmwareUpdateForegroundService and BluetoothPairingReceiver are both instantiated
+		// directly by Android (a started Service, a manifest-declared BroadcastReceiver), not
+		// through this container, so they need a way to reach these same registered services -
+		// see AppServiceLocator's own doc comment for why.
+		AppServiceLocator.Services = app.Services;
 
 		return app;
 	}

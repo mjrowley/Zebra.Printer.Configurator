@@ -17,7 +17,7 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// mid-write, "Software caused connection abort", after several minutes with the screen locked).
 ///
 /// The actual SDK work is unchanged - this class is Android lifecycle/notification plumbing around
-/// the existing IPrinterFirmwareUpdateService, resolved via FirmwareUpdateServiceLocator since a
+/// the existing IPrinterFirmwareUpdateService, resolved via AppServiceLocator since a
 /// Service is instantiated directly by Android, not through the app's normal DI-constructed graph.
 /// Progress/outcome are published to FirmwareUpdateStatusMonitor (observed by PrinterVersionAlert.razor
 /// if the app is open) and to the notification (visible either way).
@@ -83,9 +83,9 @@ public sealed class FirmwareUpdateForegroundService : Service
 
     private async Task RunUpdateAsync(PrinterDevice device, FirmwareBundle bundle, string wifiIpAddress, int startId)
     {
-        var updateService = FirmwareUpdateServiceLocator.GetRequiredService<IPrinterFirmwareUpdateService>();
-        var statusMonitor = FirmwareUpdateServiceLocator.GetRequiredService<FirmwareUpdateStatusMonitor>();
-        var appLog = FirmwareUpdateServiceLocator.GetRequiredService<IAppLog>();
+        var updateService = AppServiceLocator.GetRequiredService<IPrinterFirmwareUpdateService>();
+        var statusMonitor = AppServiceLocator.GetRequiredService<FirmwareUpdateStatusMonitor>();
+        var appLog = AppServiceLocator.GetRequiredService<IAppLog>();
 
         statusMonitor.SetRunning();
 

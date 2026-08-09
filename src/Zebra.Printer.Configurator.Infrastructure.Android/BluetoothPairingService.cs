@@ -6,11 +6,13 @@ using Application = Android.App.Application;
 namespace Zebra.Printer.Configurator.Infrastructure.Android;
 
 /// <summary>
-/// Establishes an OS-level Bluetooth bond matching Zebra's own "Tap &amp; Pair" UX (see
-/// zebra.com/.../tap-pair-instructions.html): the printer displays a numeric code, the phone must
-/// show the same code, and the user confirms they match. Intercepts ACTION_PAIRING_REQUEST ahead of
-/// Android's default Bluetooth Settings handling (via a high-priority ordered-broadcast receiver
-/// plus AbortBroadcast) so the code is shown in this app's own UI instead of a system dialog.
+/// Establishes an OS-level Bluetooth bond with the printer, matching Zebra's "Tap &amp; Pair" numeric
+/// SSP flow (see zebra.com/.../tap-pair-instructions.html) but accepted automatically rather than
+/// shown to the user for visual comparison - BluetoothPairingReceiver (a manifest-declared, always-
+/// active BroadcastReceiver, not something this class registers itself) intercepts
+/// ACTION_PAIRING_REQUEST and calls SetPairingConfirmation(true) directly. This class tracks
+/// <see cref="CurrentPairingTargetAddress"/> so that receiver only ever acts on the device this call
+/// itself just asked to bond with, never an unrelated Bluetooth device.
 ///
 /// An earlier version of Bluetooth pairing in this app just called CreateBond() and let Android
 /// handle confirmation on its own, which on-device testing showed sometimes fell back to a failing
@@ -32,14 +34,16 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
     // Confirmed on-device: connecting again immediately after a freshly-completed bond can exhaust
     // enough of BluetoothConnectionRunner's own Classic retry budget to fall back to Bluetooth LE -
     // which, unlike Classic, has never been bonded for this device, so opening it silently triggers
-    // a second, entirely separate OS pairing negotiation (visible as a second "Pair again" system
-    // dialog with a different code, which this app's own PairingRequestReceiver never sees since
-    // it's only registered for the duration of this method). Only applied after a bond this call
-    // itself just completed - the "already paired" fast path above returns before any settling is
-    // needed.
+    // a second, entirely separate OS pairing negotiation. Only applied after a bond this call itself
+    // just completed - the "already paired" fast path above returns before any settling is needed.
     private static readonly TimeSpan PostBondSettlingDelay = TimeSpan.FromSeconds(2);
 
-    public event EventHandler<PairingCodeRequestedEventArgs>? PairingCodeRequested;
+    /// <summary>
+    /// The device address this call is currently trying to bond with, if any - checked by
+    /// BluetoothPairingReceiver before it silently accepts a pairing request, so an always-active
+    /// receiver never acts on some unrelated Bluetooth device's pairing request.
+    /// </summary>
+    internal static string? CurrentPairingTargetAddress { get; private set; }
 
     public async Task<bool> EnsurePairedAsync(string macAddress, CancellationToken cancellationToken = default)
     {
@@ -66,13 +70,10 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
 
         var bondCompletion = new TaskCompletionSource<bool>();
         using var bondReceiver = new BondStateReceiver(device.Address!, bondCompletion);
-        using var pairingRequestReceiver = new PairingRequestReceiver(device.Address!, this);
 
         Application.Context.RegisterReceiver(bondReceiver, new IntentFilter(BluetoothDevice.ActionBondStateChanged), ReceiverFlags.NotExported);
 
-        var pairingFilter = new IntentFilter(BluetoothDevice.ActionPairingRequest) { Priority = 999 };
-        Application.Context.RegisterReceiver(pairingRequestReceiver, pairingFilter, ReceiverFlags.NotExported);
-
+        CurrentPairingTargetAddress = device.Address;
         try
         {
             if (!device.CreateBond())
@@ -99,8 +100,8 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
         }
         finally
         {
+            CurrentPairingTargetAddress = null;
             Application.Context.UnregisterReceiver(bondReceiver);
-            Application.Context.UnregisterReceiver(pairingRequestReceiver);
         }
     }
 
@@ -170,10 +171,6 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
         }
     }
 
-    private void RaisePairingCodeRequested(PairingCodeRequestedEventArgs args) => PairingCodeRequested?.Invoke(this, args);
-
-    private void Log(string message, LogLevel level = LogLevel.Info) => appLog.Log(message, level);
-
     private sealed class BondStateReceiver(string targetAddress, TaskCompletionSource<bool> completionSource) : BroadcastReceiver
     {
         public override void OnReceive(Context? context, Intent? intent)
@@ -196,64 +193,11 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
         }
     }
 
-    private sealed class PairingRequestReceiver(string targetAddress, BluetoothPairingService owner) : BroadcastReceiver
-    {
-        public override void OnReceive(Context? context, Intent? intent)
-        {
-            // Logged unconditionally, before the filter below - if a pairing attempt fails with no
-            // "pairing request" line at all in the log, this receiver either never ran (broadcast
-            // priority/registration problem) or ran with an address that didn't match targetAddress
-            // (visible here either way, rather than silently dropping out).
-            var receivedAddress = intent is not null ? GetDeviceExtra(intent)?.Address : null;
-            owner.Log($"PairingRequestReceiver.OnReceive: action={intent?.Action}, device={receivedAddress}, expected={targetAddress}");
-
-            if (intent?.Action != BluetoothDevice.ActionPairingRequest || !MatchesTarget(intent, targetAddress))
-            {
-                return;
-            }
-
-            var device = GetDeviceExtra(intent);
-            var variant = intent.GetIntExtra(BluetoothDevice.ExtraPairingVariant, -1);
-            owner.Log($"Printer sent a pairing request (variant {variant}).");
-
-            if (variant == BluetoothDevice.PairingVariantPasskeyConfirmation)
-            {
-                // Take over from Android's default Settings-app dialog so the code is shown in
-                // this app's own UI, matching the printer's "compare the code on both devices" flow.
-                InvokeAbortBroadcast();
-                var passkey = intent.GetIntExtra(BluetoothDevice.ExtraPairingKey, -1);
-                var args = new PairingCodeRequestedEventArgs(passkey.ToString("D6"));
-                owner.Log($"Printer is requesting pairing confirmation. Code: {args.PairingCode}");
-                owner.RaisePairingCodeRequested(args);
-
-                args.Response.Task.ContinueWith(
-                    t =>
-                    {
-                        var accepted = !t.IsFaulted && !t.IsCanceled && t.Result;
-                        owner.Log(
-                            accepted ? "User confirmed the pairing code." : "User rejected the pairing code.",
-                            accepted ? LogLevel.Info : LogLevel.Warning);
-                        device?.SetPairingConfirmation(accepted);
-                    },
-                    TaskScheduler.Default);
-            }
-            else
-            {
-                // Not the SSP numeric-comparison flow this app is built around - most likely the
-                // printer fell back to legacy PIN pairing (e.g. after a factory reset reverted its
-                // Bluetooth security settings). Left unhandled deliberately: Android's own Settings
-                // dialog still gets this broadcast since it isn't aborted here, but logging it means
-                // a "PIN error" on the printer now shows up here instead of vanishing silently.
-                owner.Log(
-                    $"Printer requested an unsupported pairing variant ({variant}) - expected SSP numeric comparison ({BluetoothDevice.PairingVariantPasskeyConfirmation}). This usually means the printer's Bluetooth security mode isn't set up for Tap & Pair.",
-                    LogLevel.Warning);
-            }
-        }
-    }
-
     private static bool MatchesTarget(Intent intent, string targetAddress) =>
         string.Equals(GetDeviceExtra(intent)?.Address, targetAddress, StringComparison.OrdinalIgnoreCase);
 
-    private static BluetoothDevice? GetDeviceExtra(Intent intent) =>
+    // Internal (not private) - BluetoothPairingReceiver, a separate top-level class handling the
+    // actual pairing-confirmation broadcast, reuses this rather than duplicating the extraction.
+    internal static BluetoothDevice? GetDeviceExtra(Intent intent) =>
         intent.GetParcelableExtra(BluetoothDevice.ExtraDevice, Java.Lang.Class.FromType(typeof(BluetoothDevice))) as BluetoothDevice;
 }

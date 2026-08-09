@@ -177,27 +177,6 @@ public class PairingTests : BunitContext
     }
 
     [Fact]
-    public void WhenPairingRequiresCodeConfirmation_ShowsCodeAndConfirmingItProceedsToReady()
-    {
-        _pairingService.EnsurePairedHandler = async _ =>
-        {
-            var args = new PairingCodeRequestedEventArgs("123456");
-            _pairingService.RaisePairingCodeRequested(args);
-            return await args.Response.Task;
-        };
-        var cut = Render<Pairing>();
-        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
-
-        _discoveryService.RaisePrinterDiscovered(device);
-
-        cut.WaitForAssertion(() => Assert.Contains("123456", cut.Find("[data-testid='pairing-code']").TextContent));
-
-        cut.Find("button").Click(); // "Pair"
-
-        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='discovered-device']")));
-    }
-
-    [Fact]
     public void WhenPairingFails_ShowsErrorWithRetry()
     {
         _pairingService.EnsurePairedHandler = _ => Task.FromResult(false);
@@ -518,8 +497,6 @@ public class PairingTests : BunitContext
 
         public string? LastRemovedBondMacAddress { get; private set; }
 
-        public event EventHandler<PairingCodeRequestedEventArgs>? PairingCodeRequested;
-
         public Task<bool> EnsurePairedAsync(string macAddress, CancellationToken cancellationToken = default) =>
             EnsurePairedHandler(macAddress);
 
@@ -528,8 +505,6 @@ public class PairingTests : BunitContext
             LastRemovedBondMacAddress = macAddress;
             return Task.CompletedTask;
         }
-
-        public void RaisePairingCodeRequested(PairingCodeRequestedEventArgs args) => PairingCodeRequested?.Invoke(this, args);
     }
 
     private sealed class FakePrinterFactoryResetService : IPrinterFactoryResetService
