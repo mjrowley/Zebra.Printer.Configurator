@@ -16,6 +16,12 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// "pdf" if already loaded and enabled, empty otherwise, per Zebra's own documented behavior) so a
 /// printer that already has it doesn't re-transfer the file on every configuration run.
 ///
+/// If not already enabled, a plain apl.enable "pdf" setvar is tried before pushing the file at
+/// all - apl.enable can end up reset (e.g. by a factory reset or firmware update) while the
+/// virtual device file itself is still resident on the printer from an earlier run, in which case
+/// enabling alone succeeds and the (multi-second) file transfer is skipped entirely. The file is
+/// only pushed if that attempt doesn't actually take effect.
+///
 /// The asset is extracted to a local file before this runs, not inside the session's RunAsync
 /// delegate - that delegate is synchronous (run inside its own Task.Run), so the async file copy
 /// can't happen partway through it.
@@ -41,7 +47,16 @@ public sealed class LinkOsPdfDirectService(IAppLog appLog) : IPdfDirectService
                 return;
             }
 
-            appLog.Log("PDF Direct is not enabled - loading virtual device file...");
+            appLog.Log("PDF Direct is not enabled - checking whether it can be enabled without reloading the virtual device file...");
+            SGD.SET("apl.enable", EnabledValue, connection);
+            var afterEnableAttempt = SGD.GET("apl.enable", connection)?.Trim();
+            if (string.Equals(afterEnableAttempt, EnabledValue, StringComparison.OrdinalIgnoreCase))
+            {
+                appLog.Log("PDF Direct enabled - the virtual device file was already installed.", LogLevel.Success);
+                return;
+            }
+
+            appLog.Log("PDF Direct virtual device file is not installed - loading it...");
             ZebraPrinterFactory.GetInstance(connection).SendFileContents(localFilePath);
 
             appLog.Log("Enabling PDF Direct...");
