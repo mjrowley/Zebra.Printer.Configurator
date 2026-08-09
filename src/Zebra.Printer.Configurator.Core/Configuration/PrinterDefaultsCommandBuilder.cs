@@ -17,5 +17,6 @@ public static class PrinterDefaultsCommandBuilder
         ("ezpl.media_type", "gap/notch"),
         ("ezpl.print_method", "direct thermal"),
         ("ezpl.print_width", "812"),
+        ("ezpl.label_length_max", "7"),
     ];
 }

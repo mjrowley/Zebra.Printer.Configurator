@@ -30,5 +30,6 @@ public static class WlanDiagnosticKeys
         "ezpl.media_type",
         "ezpl.print_method",
         "ezpl.print_width",
+        "ezpl.label_length_max",
     ];
 }

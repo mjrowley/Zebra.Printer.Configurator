@@ -14,6 +14,7 @@ public class PrinterDefaultsCommandBuilderTests
         Assert.Contains(("ezpl.media_type", "gap/notch"), commands);
         Assert.Contains(("ezpl.print_method", "direct thermal"), commands);
         Assert.Contains(("ezpl.print_width", "812"), commands);
+        Assert.Contains(("ezpl.label_length_max", "7"), commands);
     }
 
     [Fact]
@@ -21,6 +22,6 @@ public class PrinterDefaultsCommandBuilderTests
     {
         var commands = PrinterDefaultsCommandBuilder.BuildSetCommands();
 
-        Assert.Equal(5, commands.Count);
+        Assert.Equal(6, commands.Count);
     }
 }
