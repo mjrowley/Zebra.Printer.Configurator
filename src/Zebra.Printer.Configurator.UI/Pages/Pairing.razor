@@ -2,7 +2,6 @@
 @implements IDisposable
 @inject IPrinterDiscoveryService DiscoveryService
 @inject IBluetoothPairingService BluetoothPairingService
-@inject IBluetoothProfileDiagnostics ProfileDiagnostics
 @inject IPrinterConfigurationReader ConfigurationReader
 @inject IAppLog AppLog
 @inject PairingSession Session
@@ -121,11 +120,6 @@
             ConnectivityMonitor.SetBluetooth(ConnectionIndicatorState.Connecting);
             StateHasChanged();
 
-            // Temporary - see BluetoothProfileDiagnostics' own doc comment. Started here (before
-            // bonding even begins) rather than only after pairing succeeds, so it can't miss an
-            // early profile-connection attempt Android makes right as the bond forms.
-            ProfileDiagnostics.Start(device.BluetoothMacAddress);
-
             var paired = await BluetoothPairingService.EnsurePairedAsync(device.BluetoothMacAddress);
 
             ConnectivityMonitor.SetBluetooth(paired ? ConnectionIndicatorState.Connected : ConnectionIndicatorState.Error);
@@ -224,7 +218,6 @@
         ConnectivityMonitor.Reset();
         WifiMonitor.Stop();
         ConnectionModeProvider.UseBluetooth();
-        ProfileDiagnostics.Stop();
         _state = PairingUiState.WaitingForTap;
     }
 
@@ -232,6 +225,5 @@
     {
         DiscoveryService.PrinterDiscovered -= OnPrinterDiscovered;
         DiscoveryService.StopListening();
-        ProfileDiagnostics.Stop();
     }
 }
