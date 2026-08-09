@@ -21,7 +21,7 @@ public class ConfigureTests : BunitContext
         // Host network detection now happens on page load rather than at submit time, so every test
         // needs a default happy-path stub unless it's specifically exercising the error/prefill case.
         _hostNetworkInfoService.GetCurrentAsync(Arg.Any<CancellationToken>())
-            .Returns(new HostNetworkInfo { Netmask = "255.255.255.0", Gateway = "192.168.1.1" });
+            .Returns(new HostNetworkInfo { HostIpAddress = "192.168.1.42", Netmask = "255.255.255.0", Gateway = "192.168.1.1" });
     }
 
     private static void FillIp(IRenderedComponent<Configure> cut, string ip)
@@ -94,7 +94,7 @@ public class ConfigureTests : BunitContext
     public void WhenHostNetworkHasSsid_PrefillsSsidField()
     {
         _hostNetworkInfoService.GetCurrentAsync(Arg.Any<CancellationToken>())
-            .Returns(new HostNetworkInfo { Netmask = "255.255.255.0", Gateway = "192.168.1.1", Ssid = "Warehouse-WiFi" });
+            .Returns(new HostNetworkInfo { HostIpAddress = "192.168.1.42", Netmask = "255.255.255.0", Gateway = "192.168.1.1", Ssid = "Warehouse-WiFi" });
 
         var cut = Render<Configure>();
 
@@ -112,10 +112,35 @@ public class ConfigureTests : BunitContext
     }
 
     [Fact]
+    public void WhenHostNetworkHasIpAddress_PrefillsFirstThreeOctetsOfStaticIp()
+    {
+        // The default ctor stub already returns HostIpAddress "192.168.1.42" - the printer is
+        // assumed to join the same subnet, so only the first 3 octets should be pre-filled,
+        // leaving the last one for the user to enter.
+        var cut = Render<Configure>();
+
+        Assert.Equal("192", cut.Find("#ip-octet-1").GetAttribute("value"));
+        Assert.Equal("168", cut.Find("#ip-octet-2").GetAttribute("value"));
+        Assert.Equal("1", cut.Find("#ip-octet-3").GetAttribute("value"));
+        Assert.Equal(string.Empty, cut.Find("#ip-octet-4").GetAttribute("value"));
+    }
+
+    [Fact]
+    public void WhenHostIpAddressIsUnavailable_LeavesStaticIpFieldEmpty()
+    {
+        _hostNetworkInfoService.GetCurrentAsync(Arg.Any<CancellationToken>())
+            .Returns(new HostNetworkInfo { HostIpAddress = string.Empty, Netmask = "255.255.255.0", Gateway = "192.168.1.1" });
+
+        var cut = Render<Configure>();
+
+        Assert.Equal(string.Empty, cut.Find("#ip-octet-1").GetAttribute("value"));
+    }
+
+    [Fact]
     public async Task Submit_WithValidFormAndHostOnWifi_PopulatesSessionAndNavigatesToProgress()
     {
         _hostNetworkInfoService.GetCurrentAsync(Arg.Any<CancellationToken>())
-            .Returns(new HostNetworkInfo { Netmask = "255.255.255.0", Gateway = "192.168.1.1" });
+            .Returns(new HostNetworkInfo { HostIpAddress = "192.168.1.42", Netmask = "255.255.255.0", Gateway = "192.168.1.1" });
         var cut = Render<Configure>();
 
         cut.Find("#ssid").Change("Warehouse-WiFi");

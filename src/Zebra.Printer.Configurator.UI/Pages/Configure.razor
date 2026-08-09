@@ -69,10 +69,24 @@
         if (_hostNetworkInfo is null)
         {
             _hostNetworkError = "This device must be connected to the target WiFi network before configuring the printer.";
+            return;
         }
-        else if (!string.IsNullOrEmpty(_hostNetworkInfo.Ssid))
+
+        if (!string.IsNullOrEmpty(_hostNetworkInfo.Ssid))
         {
             _model.Ssid = _hostNetworkInfo.Ssid;
+        }
+
+        // The printer is assumed to join the same subnet the phone is already on, so its first 3
+        // octets can be pre-filled from the phone's own IP - the user only has to fill in the last
+        // octet. Only applies when the field is still blank, which today is always true here (this
+        // page starts a fresh ConfigureFormModel on every load, including reconfiguring an
+        // already-configured printer), but checked explicitly so a future default wouldn't be
+        // silently overwritten.
+        var hostOctets = _hostNetworkInfo.HostIpAddress.Split('.');
+        if (string.IsNullOrEmpty(_model.StaticIpAddress) && hostOctets.Length == 4)
+        {
+            _model.StaticIpAddress = string.Join('.', hostOctets.Take(3));
         }
     }
 

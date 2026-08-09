@@ -12,9 +12,10 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 
 /// <summary>
 /// Reads the host device's active WiFi connection via ConnectivityManager/LinkProperties, so its
-/// netmask/gateway can be inherited into the printer's static IP configuration (the phone running
-/// this app is assumed to already be on the target WiFi network). Uses the application Context
-/// rather than the current Activity, so it has no Activity-lifecycle dependency.
+/// netmask/gateway can be inherited into the printer's static IP configuration and its own IP
+/// address can pre-fill the printer's static IP form field (the phone running this app is assumed to
+/// already be on the target WiFi network, and the printer will join the same one). Uses the
+/// application Context rather than the current Activity, so it has no Activity-lifecycle dependency.
 /// </summary>
 public sealed class HostNetworkInfoService : IHostNetworkInfoService
 {
@@ -56,6 +57,7 @@ public sealed class HostNetworkInfoService : IHostNetworkInfoService
 
         return new HostNetworkInfo
         {
+            HostIpAddress = ipv4Address.Address!.HostAddress ?? string.Empty,
             Netmask = Ipv4NetmaskConverter.FromPrefixLength(ipv4Address.PrefixLength),
             Gateway = gateway,
             Ssid = await TryGetCurrentSsidAsync(),
