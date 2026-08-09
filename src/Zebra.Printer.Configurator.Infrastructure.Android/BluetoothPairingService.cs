@@ -109,7 +109,7 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
         _ = PollBondStateAsync(device, bondCompletion, appLog, pollingCts.Token);
         try
         {
-            if (!device.CreateBond())
+            if (!CreateBond(device, appLog))
             {
                 appLog.Log("Could not start Bluetooth pairing.", LogLevel.Error);
                 return false;
@@ -153,6 +153,45 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
             CurrentPairingTargetAddress = null;
             Application.Context.UnregisterReceiver(bondReceiver);
         }
+    }
+
+    // BluetoothDevice.createBond(int transport) is a real, public Android API - unlike removeBond()
+    // below, it isn't hidden/SystemApi - but still isn't bound in this project's Mono.Android surface
+    // (confirmed via reflection: only the parameterless CreateBond() is bound), so it's reached the
+    // same way removeBond() is. Requesting BR/EDR specifically, instead of the default TRANSPORT_AUTO,
+    // is an attempt to stop Android's own dual-transport negotiation for this printer from starting
+    // the LE side at all - this app never uses BLE for anything, and that negotiation is a confirmed,
+    // reproduced source of pairing failures (Classic bonds, then the LE side's own authentication
+    // fails and tears the *whole* bond back down, not just its own half - see this class's own doc
+    // comment). Falls back to the ordinary bound CreateBond() (TRANSPORT_AUTO) if the reflection call
+    // can't be resolved or fails for any reason, rather than ever leaving pairing unable to proceed at
+    // all on some device/OS combination this wasn't tested against. Unverified as of this build
+    // whether requesting BR/EDR here actually prevents Android from also bonding LE independently
+    // (e.g. its own post-bond GATT service discovery could still trigger it) - needs on-device
+    // confirmation.
+    private static bool CreateBond(BluetoothDevice device, IAppLog appLog)
+    {
+        try
+        {
+            // Java.Lang.Integer.Type (the primitive int.class descriptor, needed to match createBond's
+            // "(I)Z" signature via reflection) is distinct from constructing a Java.Lang.Integer
+            // instance as an argument - the latter is obsoleted on API 33+ in favor of Java.Lang.Object's
+            // own implicit/explicit int/bool conversion operators, used below instead.
+            var primitiveIntType = Java.Lang.Integer.Type;
+            var createBondWithTransport = primitiveIntType is null ? null : device.Class.GetMethod("createBond", [primitiveIntType]);
+            if (createBondWithTransport is not null)
+            {
+                var result = createBondWithTransport.Invoke(device, [(int)BluetoothTransports.Bredr]);
+                return result is not null && (bool)result;
+            }
+        }
+        catch (Exception ex)
+        {
+            appLog.Log($"Could not request BR/EDR-only pairing ({ex.Message}) - falling back to the default transport.", LogLevel.Warning);
+            return device.CreateBond();
+        }
+
+        return device.CreateBond();
     }
 
     // Diagnostic only - polls device.BondState directly, with no broadcast involved at all, purely
