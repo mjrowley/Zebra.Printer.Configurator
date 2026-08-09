@@ -25,6 +25,17 @@ internal static class BluetoothConnectionRunner
     private const int ConnectionAttempts = 3;
     private static readonly TimeSpan ConnectionRetryDelay = TimeSpan.FromSeconds(3);
 
+    // Confirmed on-device: two Bluetooth Classic connections in quick succession - even to an
+    // already-bonded device, with no pairing involved at all - can still fail (Android's own
+    // "Can't connect" system notification) if the second is attempted too soon after the first one
+    // opened. Observed specifically between the automatic post-pair WiFi check succeeding and the
+    // automatic firmware version check immediately afterward failing - two independent connections,
+    // back-to-back, with nothing in between to give the stack a moment to settle. Mirrors
+    // BluetoothPairingService.PostBondSettlingDelay's same underlying theme, but applied here to
+    // every connection this runner opens, not just the one right after a fresh bond.
+    private static readonly TimeSpan MinimumGapBetweenConnections = TimeSpan.FromSeconds(2);
+    private static DateTime _lastConnectionOpenedAtUtc = DateTime.MinValue;
+
     public static Task RunAsync(string macAddress, Action<Connection> action, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken) =>
         RunAsync<object?>(macAddress, connection =>
         {
@@ -68,17 +79,27 @@ internal static class BluetoothConnectionRunner
     /// </summary>
     public static async Task<Connection> OpenAsync(string macAddress, IAppLog appLog, CancellationToken cancellationToken)
     {
+        var elapsedSinceLastOpen = DateTime.UtcNow - _lastConnectionOpenedAtUtc;
+        if (elapsedSinceLastOpen < MinimumGapBetweenConnections)
+        {
+            var wait = MinimumGapBetweenConnections - elapsedSinceLastOpen;
+            appLog.Log($"Waiting {wait.TotalSeconds:N1}s before connecting - the previous Bluetooth connection closed too recently.");
+            await Task.Delay(wait, cancellationToken);
+        }
+
         for (var attempt = 1; attempt <= ConnectionAttempts; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                return await Task.Run(() =>
+                var connection = await Task.Run(() =>
                 {
                     Connection connection = new BluetoothConnection(macAddress);
                     connection.Open();
                     return connection;
                 }, cancellationToken);
+                _lastConnectionOpenedAtUtc = DateTime.UtcNow;
+                return connection;
             }
             catch (OperationCanceledException)
             {
