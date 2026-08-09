@@ -7,21 +7,21 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 
 /// <summary>
 /// Establishes an OS-level Bluetooth bond with the printer, matching Zebra's "Tap &amp; Pair" numeric
-/// SSP flow (see zebra.com/.../tap-pair-instructions.html) but accepted automatically rather than
-/// shown to the user for visual comparison - BluetoothPairingReceiver (a manifest-declared, always-
-/// active BroadcastReceiver, not something this class registers itself) intercepts
-/// ACTION_PAIRING_REQUEST and calls SetPairingConfirmation(true) directly. This class tracks
-/// <see cref="CurrentPairingTargetAddress"/> so that receiver only ever acts on the device this call
-/// itself just asked to bond with, never an unrelated Bluetooth device.
+/// SSP flow (see zebra.com/.../tap-pair-instructions.html). BluetoothPairingReceiver was meant to
+/// silently accept the SSP passkey confirmation on this class's behalf, but is currently known
+/// non-functional (manifest-declared, and ACTION_PAIRING_REQUEST isn't exempt from Android's
+/// implicit-broadcast background restrictions for manifest receivers - see its own doc comment) - in
+/// practice the user still sees and manually confirms Android's own default pairing dialog. This
+/// class tracks <see cref="CurrentPairingTargetAddress"/> regardless, so that receiver is scoped
+/// correctly once/if it's reverted to dynamic registration and made to work.
 ///
-/// An earlier version of Bluetooth pairing in this app just called CreateBond() and let Android
-/// handle confirmation on its own, which on-device testing showed sometimes fell back to a failing
-/// legacy PIN negotiation (visible as an OS "PIN error" toast) instead of the printer's actual SSP
-/// numeric-comparison method - driving the pairing-request broadcast explicitly avoids that.
-///
-/// Still under investigation as of this build - see BluetoothPairingReceiver's own doc comment for
-/// the live dual-address theory and the diagnostic logging (device.Type, IdentityAddressWithType)
-/// added here and in BondStateReceiver to confirm or rule it out on the next on-device test.
+/// Confirmed on-device: this printer bonds over both BLE and Classic/BR-EDR as two independent OS
+/// negotiations for the same address (adb logcat during a repro showed both transports reach
+/// BOND_BONDED within the same tick) - not something this class triggers twice. The two negotiations
+/// don't always both succeed cleanly: one repro showed Classic bond, then the LE side's own SSP
+/// authentication fail moments later and take the *entire* bond back down with it (ACL disconnected
+/// on both transports, bond properties removed) - see the settling-delay re-check in
+/// <see cref="EnsurePairedAsync"/> for how that's detected rather than mistaken for success.
 /// </summary>
 public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoothPermissionService, IAppLog appLog) : IBluetoothPairingService
 {
@@ -126,7 +126,23 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
 
             if (bonded)
             {
+                // Confirmed on-device (adb logcat during a repro): this printer's dual-mode (BR/EDR +
+                // LE) bonding can report Bonded via the Classic transport and then have Android fully
+                // tear the *entire* bond back down moments later when the LE side's own SSP
+                // authentication fails - ACL disconnected on both transports and the device's bond
+                // properties removed outright, not merely the LE side going stale. A single Bonded
+                // observation (from BondStateReceiver or the polling fallback below) isn't reliable
+                // evidence pairing actually stuck - only re-reading BondState directly after this
+                // settling delay is, since that failure showed up within ~100ms of the Bonded event,
+                // well inside this window.
                 await Task.Delay(PostBondSettlingDelay, cancellationToken);
+                bonded = device.BondState == Bond.Bonded;
+                if (!bonded)
+                {
+                    appLog.Log(
+                        "Bluetooth pairing was lost shortly after appearing to succeed - the printer's Bluetooth Low Energy pairing likely failed and reset the whole bond.",
+                        LogLevel.Error);
+                }
             }
 
             return bonded;
