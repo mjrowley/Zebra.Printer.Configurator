@@ -187,6 +187,23 @@ public sealed class LinkOsPrinterConfigurationService(
 
     // Redacts to a length rather than a fixed mask, so a mismatch between sent/read-back length is
     // still visible in the log without the actual WiFi password ever appearing on screen.
-    private static string DisplayValue(string key, string? value) =>
-        SensitiveKeys.Contains(key) ? $"<redacted, length {value?.Length ?? 0}>" : value ?? "<null>";
+    private string DisplayValue(string key, string? value)
+    {
+        if (SensitiveKeys.Contains(key))
+        {
+            return $"<redacted, length {value?.Length ?? 0}>";
+        }
+
+        // wlan.state only ever reports a real value when queried over the WiFi connection itself -
+        // confirmed on-device: LinkOsConnectivityTestService reads a genuine value like "CONNECTED"
+        // this same way after restart, but querying it over Bluetooth always comes back "?" (Zebra's
+        // own SGD getvar convention for "no value to report") even once the printer is confirmed
+        // connected to WiFi. Shown as a clearer explanation here rather than the bare "?".
+        if (key == "wlan.state" && value == "?" && connectionModeProvider.Mode == PrinterConnectionMode.Bluetooth)
+        {
+            return "Not available over Bluetooth";
+        }
+
+        return value ?? "<null>";
+    }
 }

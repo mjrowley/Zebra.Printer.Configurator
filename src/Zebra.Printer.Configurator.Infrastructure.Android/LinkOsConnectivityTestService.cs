@@ -95,9 +95,16 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnect
                 foreach (var key in WlanDiagnosticKeys.All)
                 {
                     var value = SGD.GET(key, connection);
-                    var displayValue = key == "wlan.wpa.psk"
-                        ? $"<redacted, length {value?.Length ?? 0}>"
-                        : value;
+                    // wlan.state only ever reports a real value when queried over the WiFi
+                    // connection itself - this fallback path always runs over Bluetooth, so it
+                    // always comes back "?" (Zebra's own SGD getvar convention for "no value to
+                    // report") regardless of whether the printer is actually connected to WiFi.
+                    var displayValue = key switch
+                    {
+                        "wlan.wpa.psk" => $"<redacted, length {value?.Length ?? 0}>",
+                        "wlan.state" when value == "?" => "Not available over Bluetooth",
+                        _ => value,
+                    };
                     appLog.Log($"{key} = {displayValue}");
                 }
             }, appLog, cancellation, cancellationToken);
