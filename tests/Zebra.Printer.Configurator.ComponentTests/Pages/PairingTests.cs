@@ -45,7 +45,7 @@ public class PairingTests : BunitContext
         // result by default, which the automatic post-pairing WiFi check would then throw on when
         // reading .FirstOrDefault() from it - most tests here don't care about that check at all, so
         // give it a harmless empty result unless a specific test overrides this setup itself.
-        _configurationReader.ReadConfigurationAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
+        _configurationReader.ReadConfigurationAsync(Arg.Any<PrinterDevice>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(Array.Empty<PrinterConfigurationValue>());
 
         // Defaults to "up to date" (never blocks Configure Printer) - most tests here don't care
@@ -340,7 +340,7 @@ public class PairingTests : BunitContext
     {
         using var listener = StartLoopbackListener(out var port);
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
-        _configurationReader.ReadConfigurationAsync(device, Arg.Any<CancellationToken>())
+        _configurationReader.ReadConfigurationAsync(device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns([new PrinterConfigurationValue("wlan.ip.addr", "127.0.0.1")]);
 
         var cut = RenderWithReadyPrinter(device, wifiProbePort: port);
@@ -353,7 +353,7 @@ public class PairingTests : BunitContext
     public void WhenPairingSucceeds_AndPrinterIsNotReachableOnWifi_SetsWifiIndicatorToErrorButStillStartsMonitor()
     {
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
-        _configurationReader.ReadConfigurationAsync(device, Arg.Any<CancellationToken>())
+        _configurationReader.ReadConfigurationAsync(device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns([new PrinterConfigurationValue("wlan.ip.addr", "127.0.0.1")]);
 
         // A closed loopback port refuses the probe almost instantly, unlike a real unreachable IP
@@ -381,7 +381,7 @@ public class PairingTests : BunitContext
     {
         using var listener = StartLoopbackListener(out var port);
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
-        _configurationReader.ReadConfigurationAsync(device, Arg.Any<CancellationToken>())
+        _configurationReader.ReadConfigurationAsync(device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns([new PrinterConfigurationValue("wlan.ip.addr", "127.0.0.1")]);
         _versionCheckService.CheckAsync(device, Arg.Any<CancellationToken>())
             .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
@@ -403,7 +403,7 @@ public class PairingTests : BunitContext
         // which bypasses Razor attribute parsing entirely and would never have caught this).
         using var listener = StartLoopbackListener(out var port);
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
-        _configurationReader.ReadConfigurationAsync(device, Arg.Any<CancellationToken>())
+        _configurationReader.ReadConfigurationAsync(device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns([new PrinterConfigurationValue("wlan.ip.addr", "127.0.0.1")]);
         var bundle = new FirmwareBundle
         {

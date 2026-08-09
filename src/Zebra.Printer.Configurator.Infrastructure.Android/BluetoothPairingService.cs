@@ -19,16 +19,14 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// </summary>
 public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoothPermissionService, IAppLog appLog) : IBluetoothPairingService
 {
-    // Widened from 30s: confirmed on-device that the OS-level bond can still be genuinely in
-    // progress past 30s (plausibly slower right after a factory reset, since the printer's
-    // Bluetooth module has to redo the full SSP handshake from a clean state) - when the old
-    // timeout fired first, this method gave up and unregistered its broadcast receivers, so the
-    // later "Bonded" broadcast arrived with nothing listening: the user accepted the correct
-    // passkey (confirmed by a matching label printing on the printer), the app logged "Bluetooth
-    // pairing failed or timed out." and Android surfaced its own "Can't connect" dialog, yet a
-    // retry immediately afterward reported "already paired" - the bond had actually completed in
-    // the background, just after this method had already stopped watching for it.
-    private static readonly TimeSpan PairingTimeout = TimeSpan.FromSeconds(60);
+    // Was temporarily widened to 60s while chasing a real bug that turned out to be something
+    // else entirely: a second, unexpected BLE pairing negotiation (see PrinterConnectionRunner's
+    // allowBleFallback) triggered by the automatic post-pair WiFi check, whose own "Can't connect"
+    // failure was what actually produced the OS's "Can't connect" dialog and the illusion of the
+    // Classic bond itself taking unusually long. Now that callers made shortly after a fresh bond
+    // no longer fall back to BLE, the plain Classic bond this method waits on doesn't need a wider
+    // timeout - back to 30s.
+    private static readonly TimeSpan PairingTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan UnbondTimeout = TimeSpan.FromSeconds(10);
 
     // Confirmed on-device: connecting again immediately after a freshly-completed bond can exhaust

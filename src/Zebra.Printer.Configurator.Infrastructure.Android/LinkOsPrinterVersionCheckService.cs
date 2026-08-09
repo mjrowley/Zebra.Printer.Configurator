@@ -35,7 +35,12 @@ public sealed class LinkOsPrinterVersionCheckService(IPrinterConnectionModeProvi
 
         // Firmware update/version check is out of scope for the header's Cancel button (a separate,
         // bigger piece of work - see PrinterOperationCancellation's doc comment), so no
-        // active-connection tracking is passed here (cancellation: null).
+        // active-connection tracking is passed here (cancellation: null). allowBleFallback: false -
+        // this always runs shortly after a fresh Bluetooth bond (right after pairing, or after
+        // PairAndConfigureWorkflow completes), and a BLE fallback attempted that soon can silently
+        // trigger a second, unexpected OS pairing dialog (see PrinterConnectionRunner's own doc
+        // comment); when this instead runs over WiFi (the Result.razor re-check), BLE fallback was
+        // never reachable anyway, so disabling it here has no effect on that path.
         var result = await PrinterConnectionRunner.RunAsync(device, connectionModeProvider, connection =>
         {
             var productName = SGD.GET("device.product_name", connection);
@@ -55,7 +60,7 @@ public sealed class LinkOsPrinterVersionCheckService(IPrinterConnectionModeProvi
             var linkOsVersionFound = SGD.GET("appl.link_os_version_full", connection);
 
             return PrinterVersionEvaluator.Evaluate(bundle, linkOsVersionFound, firmwareVersionFound);
-        }, appLog, cancellation: null, cancellationToken);
+        }, appLog, cancellation: null, cancellationToken, allowBleFallback: false);
 
         LogOutcome(result);
         return result;

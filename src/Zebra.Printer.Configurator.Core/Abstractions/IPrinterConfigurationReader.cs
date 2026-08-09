@@ -9,5 +9,11 @@ namespace Zebra.Printer.Configurator.Core.Abstractions;
 /// </summary>
 public interface IPrinterConfigurationReader
 {
-    Task<IReadOnlyList<PrinterConfigurationValue>> ReadConfigurationAsync(PrinterDevice device, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// allowBleFallback defaults to true, but is passed false by the automatic post-pairing WiFi
+    /// check on Pairing.razor - a BLE fallback attempted shortly after a fresh Bluetooth bond can
+    /// silently trigger a second, unexpected OS pairing dialog (see PrinterConnectionRunner's own
+    /// doc comment). The user-triggered "Check Configuration" button keeps the default.
+    /// </summary>
+    Task<IReadOnlyList<PrinterConfigurationValue>> ReadConfigurationAsync(PrinterDevice device, bool allowBleFallback = true, CancellationToken cancellationToken = default);
 }

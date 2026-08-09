@@ -13,21 +13,16 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// </summary>
 internal static class BluetoothConnectionRunner
 {
-    // Widened from 3 attempts/2s (~4s of retrying) to 5/3s (~12s): confirmed on a real ZD621 that
-    // pressing "Connect via WiFi" immediately after tap-pairing completes reliably fails all 3
-    // original attempts (the Android Bluetooth stack is still settling from the just-finished bond),
-    // while the identical read via "Check Configuration" succeeds when tried a bit later - the
-    // previous budget didn't reliably cover that settling window.
-    //
-    // Widened again from 5/3s (~12s) to 8/3s (~21s): confirmed on-device that exhausting this
-    // budget shortly after a fresh bond has a real side effect beyond just being slow -
-    // PrinterConnectionRunner falls back to Bluetooth LE when Classic gives up, and opening a
-    // BluetoothLeConnection to a device that's never been BLE-bonded silently triggers a second,
-    // separate OS pairing negotiation (an unexpected second "Pair again" system dialog). Giving
-    // Classic more room to recover on its own makes reaching that fallback less likely in the
-    // first place - see also BluetoothPairingService.PostBondSettlingDelay, which addresses the
-    // same root cause from the other side (pausing before the first post-pairing attempt at all).
-    private const int ConnectionAttempts = 8;
+    // Was temporarily widened to 8 attempts while chasing a real bug: exhausting this budget
+    // shortly after a fresh bond fell back to Bluetooth LE (see PrinterConnectionRunner), and
+    // opening a BluetoothLeConnection to a device that's never been BLE-bonded silently triggers a
+    // second, separate OS pairing negotiation (an unexpected second "Pair again" system dialog).
+    // That's now fixed at the actual source - the callers made shortly after a fresh bond
+    // (Pairing.razor's post-pair WiFi check, LinkOsPrinterVersionCheckService) pass
+    // allowBleFallback: false so they never reach the BLE fallback at all - so a wide retry budget
+    // here is no longer load-bearing for that; back to 3 attempts/3s (~6s) plus
+    // BluetoothPairingService.PostBondSettlingDelay's 2s settling pause before this is ever called.
+    private const int ConnectionAttempts = 3;
     private static readonly TimeSpan ConnectionRetryDelay = TimeSpan.FromSeconds(3);
 
     public static Task RunAsync(string macAddress, Action<Connection> action, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken) =>

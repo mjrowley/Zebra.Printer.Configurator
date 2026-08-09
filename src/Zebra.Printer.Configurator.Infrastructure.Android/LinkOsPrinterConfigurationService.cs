@@ -158,7 +158,7 @@ public sealed class LinkOsPrinterConfigurationService(
             LogLevel.Warning);
     }
 
-    public async Task<IReadOnlyList<PrinterConfigurationValue>> ReadConfigurationAsync(PrinterDevice device, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<PrinterConfigurationValue>> ReadConfigurationAsync(PrinterDevice device, bool allowBleFallback = true, CancellationToken cancellationToken = default)
     {
         await BluetoothPermissionGuard.EnsureGrantedAsync(bluetoothPermissionService, connectionModeProvider, appLog, cancellationToken);
 
@@ -179,7 +179,7 @@ public sealed class LinkOsPrinterConfigurationService(
             }
 
             return (IReadOnlyList<PrinterConfigurationValue>)results;
-        }, appLog, cancellation: null, cancellationToken);
+        }, appLog, cancellation: null, cancellationToken, allowBleFallback);
         appLog.Log("Configuration check complete.", LogLevel.Success);
 
         return values;

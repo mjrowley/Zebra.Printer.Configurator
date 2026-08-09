@@ -20,16 +20,16 @@ internal static class PrinterConnectionRunner
 {
     private const int SgdPort = 6101;
 
-    public static Task RunAsync(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, Action<Connection> action, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken) =>
+    public static Task RunAsync(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, Action<Connection> action, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken, bool allowBleFallback = true) =>
         RunAsync<object?>(device, connectionModeProvider, connection =>
         {
             action(connection);
             return null;
-        }, appLog, cancellation, cancellationToken);
+        }, appLog, cancellation, cancellationToken, allowBleFallback);
 
-    public static async Task<T> RunAsync<T>(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, Func<Connection, T> func, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken)
+    public static async Task<T> RunAsync<T>(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, Func<Connection, T> func, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken, bool allowBleFallback = true)
     {
-        var connection = await OpenAsync(device, connectionModeProvider, appLog, cancellationToken);
+        var connection = await OpenAsync(device, connectionModeProvider, appLog, cancellationToken, allowBleFallback);
         using var _ = cancellation?.TrackActiveConnection(connection.Close);
         try
         {
@@ -57,24 +57,31 @@ internal static class PrinterConnectionRunner
     /// from here. Used directly by PrinterConnectionSessionFactory so several steps can share one
     /// connection instead of each independently reconnecting; RunAsync above is built on top of this
     /// for the simpler one-shot callers.
+    ///
+    /// allowBleFallback defaults to true (Zebra's own Printer Setup Utility connection search order:
+    /// network, then Bluetooth Classic, then Bluetooth LE) but is passed false by callers made
+    /// shortly after a fresh OS-level Bluetooth bond - opening a BluetoothLeConnection to a device
+    /// that's never been BLE-bonded silently triggers Android's own BLE pairing negotiation, showing
+    /// as a second, unexpected system pairing dialog with its own code right on the heels of the
+    /// Classic one.
     /// </summary>
-    public static Task<Connection> OpenAsync(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, IAppLog appLog, CancellationToken cancellationToken)
+    public static Task<Connection> OpenAsync(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, IAppLog appLog, CancellationToken cancellationToken, bool allowBleFallback = true)
     {
         if (connectionModeProvider.Mode == PrinterConnectionMode.Wifi && connectionModeProvider.WifiIpAddress is not null)
         {
             return OpenWifiAsync(connectionModeProvider.WifiIpAddress, cancellationToken);
         }
 
-        return OpenBluetoothAsync(device.BluetoothMacAddress, appLog, cancellationToken);
+        return OpenBluetoothAsync(device.BluetoothMacAddress, appLog, cancellationToken, allowBleFallback);
     }
 
-    private static async Task<Connection> OpenBluetoothAsync(string macAddress, IAppLog appLog, CancellationToken cancellationToken)
+    private static async Task<Connection> OpenBluetoothAsync(string macAddress, IAppLog appLog, CancellationToken cancellationToken, bool allowBleFallback)
     {
         try
         {
             return await BluetoothConnectionRunner.OpenAsync(macAddress, appLog, cancellationToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (allowBleFallback && ex is not OperationCanceledException)
         {
             appLog.Log($"{ex.Message} Trying Bluetooth Low Energy...", LogLevel.Warning);
             return await BleConnectionRunner.OpenAsync(macAddress, appLog, cancellationToken);

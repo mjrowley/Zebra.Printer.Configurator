@@ -31,7 +31,7 @@ public class CheckConfigurationButtonTests : BunitContext
     [Fact]
     public void ClickingButton_PopulatesSharedStateWithResults()
     {
-        _configurationReader.ReadConfigurationAsync(Device, Arg.Any<CancellationToken>())
+        _configurationReader.ReadConfigurationAsync(Device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns([new PrinterConfigurationValue("wlan.essid", "Warehouse-WiFi")]);
         var state = new CheckConfigurationState();
         var cut = Render<CheckConfigurationButton>(p => p
@@ -51,7 +51,7 @@ public class CheckConfigurationButtonTests : BunitContext
     [Fact]
     public void WhenReadFails_PopulatesSharedStateWithError()
     {
-        _configurationReader.ReadConfigurationAsync(Device, Arg.Any<CancellationToken>())
+        _configurationReader.ReadConfigurationAsync(Device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException<IReadOnlyList<PrinterConfigurationValue>>(new InvalidOperationException("simulated failure")));
         var state = new CheckConfigurationState();
         var cut = Render<CheckConfigurationButton>(p => p

@@ -169,7 +169,10 @@
 
         try
         {
-            var values = await ConfigurationReader.ReadConfigurationAsync(device);
+            // allowBleFallback: false - this runs immediately after a fresh Bluetooth bond, and a
+            // BLE fallback attempted that soon can silently trigger a second, unexpected OS pairing
+            // dialog (see PrinterConnectionRunner's own doc comment).
+            var values = await ConfigurationReader.ReadConfigurationAsync(device, allowBleFallback: false);
             var ipAddress = values.FirstOrDefault(v => v.Key == "wlan.ip.addr")?.Value;
 
             if (string.IsNullOrWhiteSpace(ipAddress) || ipAddress == "0.0.0.0")
