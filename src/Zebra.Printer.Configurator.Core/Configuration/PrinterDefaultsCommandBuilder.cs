@@ -12,7 +12,7 @@ public static class PrinterDefaultsCommandBuilder
 {
     public static IReadOnlyList<(string Key, string Value)> BuildSetCommands() =>
     [
-        ("media.printmode", "T"),
+        ("media.printmode", "tear off"),
         ("device.friendly_name", "ZD421"),
         ("ezpl.media_type", "gap/notch"),
         ("ezpl.print_method", "direct thermal"),

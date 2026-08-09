@@ -9,7 +9,7 @@ public class PrinterDefaultsCommandBuilderTests
     {
         var commands = PrinterDefaultsCommandBuilder.BuildSetCommands();
 
-        Assert.Contains(("media.printmode", "T"), commands);
+        Assert.Contains(("media.printmode", "tear off"), commands);
         Assert.Contains(("device.friendly_name", "ZD421"), commands);
         Assert.Contains(("ezpl.media_type", "gap/notch"), commands);
         Assert.Contains(("ezpl.print_method", "direct thermal"), commands);
