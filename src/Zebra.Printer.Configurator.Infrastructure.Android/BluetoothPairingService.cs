@@ -253,14 +253,29 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
             }
 
             var bondState = (Bond)intent.GetIntExtra(BluetoothDevice.ExtraBondState, (int)Bond.None);
+            var transport = (BluetoothTransports)intent.GetIntExtra(BluetoothDevice.ExtraTransport, (int)BluetoothTransports.Auto);
             var deviceAddress = GetDeviceExtra(intent)?.Address;
 
             // Logged unconditionally, before the target-address filter below - a bond-state change
             // for a *different* address while waiting on targetAddress would be a direct sign of the
             // same dual-address theory BluetoothPairingReceiver's logging is checking for.
-            appLog.Log($"BondStateReceiver.OnReceive: device={deviceAddress}, bondState={bondState}, expected={targetAddress}");
+            appLog.Log($"BondStateReceiver.OnReceive: device={deviceAddress}, bondState={bondState}, transport={transport}, expected={targetAddress}");
 
             if (!MatchesTarget(intent, targetAddress))
+            {
+                return;
+            }
+
+            // Confirmed on-device (adb logcat during a repro): this printer is dual-mode and Android
+            // bonds it over BLE and Classic/BR-EDR independently, each producing its own
+            // ACTION_BOND_STATE_CHANGED sequence for the same address. This app only ever opens a
+            // Classic BluetoothConnection (RFCOMM/SPP) - the LE bond is irrelevant to it and, being a
+            // separate negotiation, can complete before or after the Classic one. Only Le is
+            // explicitly excluded (rather than requiring == Bredr) so a broadcast that doesn't carry
+            // this extra at all (defaults to Auto) - e.g. on an OS version or single-transport device
+            // that behaves differently than this one - still completes pairing instead of hanging
+            // until PairingTimeout.
+            if (transport == BluetoothTransports.Le)
             {
                 return;
             }

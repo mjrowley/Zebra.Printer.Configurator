@@ -33,16 +33,11 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 [IntentFilter(new[] { BluetoothDevice.ActionPairingRequest })]
 public sealed class BluetoothPairingReceiver : BroadcastReceiver
 {
-    // Not bound as a named constant in this project's Mono.Android binding (BluetoothDevice.CreateBond(int)
-    // isn't bound either), but documented directly on the Java BluetoothDevice.EXTRA_TRANSPORT since
-    // Android 8 (API 26): 0 = TRANSPORT_AUTO, 1 = TRANSPORT_BREDR (Classic), 2 = TRANSPORT_LE.
-    private const string ExtraTransport = "android.bluetooth.device.extra.TRANSPORT";
-
     public override void OnReceive(Context? context, Intent? intent)
     {
         var appLog = AppServiceLocator.Services?.GetService(typeof(IAppLog)) as IAppLog;
         var device = intent is not null ? BluetoothPairingService.GetDeviceExtra(intent) : null;
-        var transport = intent?.GetIntExtra(ExtraTransport, -1) ?? -1;
+        var transport = (BluetoothTransports)(intent?.GetIntExtra(BluetoothDevice.ExtraTransport, (int)BluetoothTransports.Auto) ?? (int)BluetoothTransports.Auto);
         var variant = intent?.GetIntExtra(BluetoothDevice.ExtraPairingVariant, -1) ?? -1;
 
         // Logged unconditionally, before any filtering at all - if a pairing attempt fails with no
@@ -55,7 +50,7 @@ public sealed class BluetoothPairingReceiver : BroadcastReceiver
             $"BluetoothPairingReceiver.OnReceive: action={intent?.Action}, device={device?.Address}, "
             + $"type={SafeGet(() => device?.Type.ToString())}, bondState={SafeGet(() => device?.BondState.ToString())}, "
             + $"identityAddress={GetIdentityAddress(device)}, "
-            + $"transport={transport} (0=Auto,1=Classic,2=LE), variant={variant}, "
+            + $"transport={transport}, variant={variant}, "
             + $"currentTarget={BluetoothPairingService.CurrentPairingTargetAddress}");
 
         if (intent?.Action != BluetoothDevice.ActionPairingRequest)
