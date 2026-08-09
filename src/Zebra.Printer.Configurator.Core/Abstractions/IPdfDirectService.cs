@@ -8,5 +8,5 @@ namespace Zebra.Printer.Configurator.Core.Abstractions;
 /// </summary>
 public interface IPdfDirectService
 {
-    Task EnsureEnabledAsync(PrinterDevice device, CancellationToken cancellationToken = default);
+    Task EnsureEnabledAsync(PrinterDevice device, IPrinterConnectionSession session, CancellationToken cancellationToken = default);
 }

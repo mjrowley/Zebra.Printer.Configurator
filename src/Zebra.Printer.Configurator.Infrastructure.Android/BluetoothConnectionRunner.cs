@@ -30,6 +30,40 @@ internal static class BluetoothConnectionRunner
 
     public static async Task<T> RunAsync<T>(string macAddress, Func<Connection, T> func, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken)
     {
+        var connection = await OpenAsync(macAddress, appLog, cancellationToken);
+        using var _ = cancellation?.TrackActiveConnection(connection.Close);
+        try
+        {
+            return await Task.Run(() =>
+            {
+                try
+                {
+                    return func(connection);
+                }
+                catch (Exception) when (cancellationToken.IsCancellationRequested)
+                {
+                    // The force-close above (triggered by PrinterOperationCancellation.Cancel())
+                    // is what actually broke this blocking call - whatever raw I/O exception the
+                    // SDK throws as a result is normalized here so callers only ever see a clean
+                    // OperationCanceledException, not a confusing socket error.
+                    throw new OperationCanceledException(cancellationToken);
+                }
+            }, cancellationToken);
+        }
+        finally
+        {
+            connection.Close();
+        }
+    }
+
+    /// <summary>
+    /// Opens a BluetoothConnection with the same retry behavior as RunAsync, but hands it back
+    /// without running anything or closing it - the caller owns its lifecycle from here. Used by
+    /// PrinterConnectionSessionFactory so several steps can share one connection instead of each
+    /// independently reconnecting; RunAsync above is built on top of this for one-shot callers.
+    /// </summary>
+    public static async Task<Connection> OpenAsync(string macAddress, IAppLog appLog, CancellationToken cancellationToken)
+    {
         for (var attempt = 1; attempt <= ConnectionAttempts; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -39,23 +73,7 @@ internal static class BluetoothConnectionRunner
                 {
                     Connection connection = new BluetoothConnection(macAddress);
                     connection.Open();
-                    using var _ = cancellation?.TrackActiveConnection(connection.Close);
-                    try
-                    {
-                        return func(connection);
-                    }
-                    catch (Exception) when (cancellationToken.IsCancellationRequested)
-                    {
-                        // The force-close above (triggered by PrinterOperationCancellation.Cancel())
-                        // is what actually broke this blocking call - whatever raw I/O exception the
-                        // SDK throws as a result is normalized here so callers only ever see a clean
-                        // OperationCanceledException, not a confusing socket error.
-                        throw new OperationCanceledException(cancellationToken);
-                    }
-                    finally
-                    {
-                        connection.Close();
-                    }
+                    return connection;
                 }, cancellationToken);
             }
             catch (OperationCanceledException)

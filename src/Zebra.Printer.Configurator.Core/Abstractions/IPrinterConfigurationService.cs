@@ -7,5 +7,5 @@ namespace Zebra.Printer.Configurator.Core.Abstractions;
 /// </summary>
 public interface IPrinterConfigurationService
 {
-    Task ApplyAsync(PrinterDevice device, WlanConfiguration configuration, CancellationToken cancellationToken = default);
+    Task ApplyAsync(PrinterDevice device, WlanConfiguration configuration, IPrinterConnectionSession session, CancellationToken cancellationToken = default);
 }

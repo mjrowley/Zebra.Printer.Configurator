@@ -23,6 +23,34 @@ internal static class BleConnectionRunner
 
     public static async Task<T> RunAsync<T>(string macAddress, Func<Connection, T> func, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken)
     {
+        var connection = await OpenAsync(macAddress, appLog, cancellationToken);
+        using var _ = cancellation?.TrackActiveConnection(connection.Close);
+        try
+        {
+            return await Task.Run(() =>
+            {
+                try
+                {
+                    return func(connection);
+                }
+                catch (Exception) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException(cancellationToken);
+                }
+            }, cancellationToken);
+        }
+        finally
+        {
+            connection.Close();
+        }
+    }
+
+    /// <summary>
+    /// Opens a BluetoothLeConnection with the same retry behavior as RunAsync, but hands it back
+    /// without running anything or closing it - see BluetoothConnectionRunner.OpenAsync for why.
+    /// </summary>
+    public static async Task<Connection> OpenAsync(string macAddress, IAppLog appLog, CancellationToken cancellationToken)
+    {
         for (var attempt = 1; attempt <= ConnectionAttempts; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -32,19 +60,7 @@ internal static class BleConnectionRunner
                 {
                     Connection connection = new BluetoothLeConnection(macAddress);
                     connection.Open();
-                    using var _ = cancellation?.TrackActiveConnection(connection.Close);
-                    try
-                    {
-                        return func(connection);
-                    }
-                    catch (Exception) when (cancellationToken.IsCancellationRequested)
-                    {
-                        throw new OperationCanceledException(cancellationToken);
-                    }
-                    finally
-                    {
-                        connection.Close();
-                    }
+                    return connection;
                 }, cancellationToken);
             }
             catch (OperationCanceledException)

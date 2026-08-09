@@ -51,6 +51,7 @@ public static class MauiProgram
 		builder.Services.AddSingleton<IPrinterConfigurationReader>(sp => sp.GetRequiredService<LinkOsPrinterConfigurationService>());
 		builder.Services.AddSingleton<IPrinterConnectivityTestService, LinkOsConnectivityTestService>();
 		builder.Services.AddSingleton<IPdfDirectService, LinkOsPdfDirectService>();
+		builder.Services.AddSingleton<IPrinterConnectionSessionFactory, PrinterConnectionSessionFactory>();
 		builder.Services.AddSingleton<IPrinterVersionCheckService, LinkOsPrinterVersionCheckService>();
 		builder.Services.AddSingleton<IPrinterFirmwareUpdateService, LinkOsFirmwareUpdateService>();
 		builder.Services.AddSingleton<FirmwareUpdateStatusMonitor>();

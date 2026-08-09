@@ -2,7 +2,6 @@ using System.Text;
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Configuration;
 using Zebra.Printer.Configurator.Core.Models;
-using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Sdk.Printer;
 
 namespace Zebra.Printer.Configurator.Infrastructure.Android;
@@ -24,8 +23,7 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 public sealed class LinkOsPrinterConfigurationService(
     IBluetoothPermissionService bluetoothPermissionService,
     IPrinterConnectionModeProvider connectionModeProvider,
-    IAppLog appLog,
-    PrinterOperationCancellation cancellation)
+    IAppLog appLog)
     : IPrinterConfigurationService, IPrinterRestartService, IPrinterFactoryResetService, IPrinterConfigurationReader
 {
     // Logged as-is; every other SGD value is safe to show, but the WiFi password should never
@@ -54,12 +52,13 @@ public sealed class LinkOsPrinterConfigurationService(
     private const int ResetReadTimeoutMs = 3000;
     private const int ResetTimeToWaitForMoreDataMs = 500;
 
-    public async Task ApplyAsync(PrinterDevice device, WlanConfiguration configuration, CancellationToken cancellationToken = default)
+    public async Task ApplyAsync(PrinterDevice device, WlanConfiguration configuration, IPrinterConnectionSession session, CancellationToken cancellationToken = default)
     {
-        await EnsureConnectionPermissionAsync(cancellationToken);
-
-        appLog.Log($"Connecting to printer over {connectionModeProvider.Mode} to apply WiFi configuration...");
-        await PrinterConnectionRunner.RunAsync(device, connectionModeProvider, connection =>
+        appLog.Log("Applying WiFi configuration...");
+        // Cast is safe - PrinterConnectionSessionFactory is the only production implementation of
+        // IPrinterConnectionSession; see PrinterConnectionSession's doc comment for why the public
+        // Core interface itself can't expose RunAsync (Core can't reference Zebra.Sdk.Comm.Connection).
+        await ((PrinterConnectionSession)session).RunAsync(connection =>
         {
             var commands = WlanConfigurationCommandBuilder.BuildSetCommands(configuration)
                 .Concat(PrinterDefaultsCommandBuilder.BuildSetCommands())
@@ -96,16 +95,14 @@ public sealed class LinkOsPrinterConfigurationService(
                         : $"{key}: MISMATCH - sent '{DisplayValue(key, value)}', printer has '{DisplayValue(key, actual)}'",
                     matches ? LogLevel.Success : LogLevel.Warning);
             }
-        }, appLog, cancellation, cancellationToken);
+        }, cancellationToken);
         appLog.Log("WiFi configuration applied.", LogLevel.Success);
     }
 
-    public async Task RestartAsync(PrinterDevice device, CancellationToken cancellationToken = default)
+    public async Task RestartAsync(PrinterDevice device, IPrinterConnectionSession session, CancellationToken cancellationToken = default)
     {
-        await EnsureConnectionPermissionAsync(cancellationToken);
-
         appLog.Log("Restarting printer...");
-        await PrinterConnectionRunner.RunAsync(device, connectionModeProvider, connection =>
+        await ((PrinterConnectionSession)session).RunAsync(connection =>
         {
             // "device.restart" is not a real SGD command - SGD silently no-ops unrecognized
             // command names rather than erroring, which is why this previously appeared to
@@ -113,13 +110,13 @@ public sealed class LinkOsPrinterConfigurationService(
             // soft reset is "device.reset" (confirmed against a real-world SGD trace for a
             // ZD-series printer: `! U1 do "device.reset" ""`).
             SGD.DO("device.reset", string.Empty, connection, ResetReadTimeoutMs, ResetTimeToWaitForMoreDataMs);
-        }, appLog, cancellation, cancellationToken);
+        }, cancellationToken);
         appLog.Log("Restart command sent.", LogLevel.Success);
     }
 
     public async Task ResetToFactoryDefaultsAsync(PrinterDevice device, CancellationToken cancellationToken = default)
     {
-        await EnsureConnectionPermissionAsync(cancellationToken);
+        await BluetoothPermissionGuard.EnsureGrantedAsync(bluetoothPermissionService, connectionModeProvider, appLog, cancellationToken);
 
         appLog.Log("Sending factory reset command to printer...", LogLevel.Warning);
         await PrinterConnectionRunner.RunAsync(device, connectionModeProvider, connection =>
@@ -163,7 +160,7 @@ public sealed class LinkOsPrinterConfigurationService(
 
     public async Task<IReadOnlyList<PrinterConfigurationValue>> ReadConfigurationAsync(PrinterDevice device, CancellationToken cancellationToken = default)
     {
-        await EnsureConnectionPermissionAsync(cancellationToken);
+        await BluetoothPermissionGuard.EnsureGrantedAsync(bluetoothPermissionService, connectionModeProvider, appLog, cancellationToken);
 
         appLog.Log($"Connecting to printer over {connectionModeProvider.Mode} to check configuration...");
         // Check Configuration never runs while the header's Cancel button is visible (it's a
@@ -192,26 +189,4 @@ public sealed class LinkOsPrinterConfigurationService(
     // still visible in the log without the actual WiFi password ever appearing on screen.
     private static string DisplayValue(string key, string? value) =>
         SensitiveKeys.Contains(key) ? $"<redacted, length {value?.Length ?? 0}>" : value ?? "<null>";
-
-    private async Task EnsureConnectionPermissionAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        // No Bluetooth permission needed at all when the active transport is WiFi - nothing here
-        // touches the Bluetooth stack in that case.
-        if (connectionModeProvider.Mode != PrinterConnectionMode.Bluetooth)
-        {
-            return;
-        }
-
-        // Requested/awaited here, on the calling context, rather than inside Task.Run below -
-        // showing the system permission dialog needs the Activity, not a background thread-pool thread.
-        var granted = await bluetoothPermissionService.EnsureGrantedAsync(cancellationToken);
-        if (!granted)
-        {
-            appLog.Log("Bluetooth permission is required to configure the printer.", LogLevel.Error);
-            throw new InvalidOperationException(
-                "Bluetooth permission is required to configure the printer. Please grant it and try again.");
-        }
-    }
 }

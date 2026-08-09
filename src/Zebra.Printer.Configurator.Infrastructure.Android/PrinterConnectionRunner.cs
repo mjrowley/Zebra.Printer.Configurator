@@ -27,46 +27,65 @@ internal static class PrinterConnectionRunner
             return null;
         }, appLog, cancellation, cancellationToken);
 
-    public static Task<T> RunAsync<T>(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, Func<Connection, T> func, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken)
+    public static async Task<T> RunAsync<T>(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, Func<Connection, T> func, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken)
+    {
+        var connection = await OpenAsync(device, connectionModeProvider, appLog, cancellationToken);
+        using var _ = cancellation?.TrackActiveConnection(connection.Close);
+        try
+        {
+            return await Task.Run(() =>
+            {
+                try
+                {
+                    return func(connection);
+                }
+                catch (Exception) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException(cancellationToken);
+                }
+            }, cancellationToken);
+        }
+        finally
+        {
+            connection.Close();
+        }
+    }
+
+    /// <summary>
+    /// Opens a connection using whichever transport IPrinterConnectionModeProvider currently
+    /// selects, without running anything against it or closing it - the caller owns its lifecycle
+    /// from here. Used directly by PrinterConnectionSessionFactory so several steps can share one
+    /// connection instead of each independently reconnecting; RunAsync above is built on top of this
+    /// for the simpler one-shot callers.
+    /// </summary>
+    public static Task<Connection> OpenAsync(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, IAppLog appLog, CancellationToken cancellationToken)
     {
         if (connectionModeProvider.Mode == PrinterConnectionMode.Wifi && connectionModeProvider.WifiIpAddress is not null)
         {
-            return RunOverWifiAsync(connectionModeProvider.WifiIpAddress, func, cancellation, cancellationToken);
+            return OpenWifiAsync(connectionModeProvider.WifiIpAddress, cancellationToken);
         }
 
-        return RunOverBluetoothAsync(device.BluetoothMacAddress, func, appLog, cancellation, cancellationToken);
+        return OpenBluetoothAsync(device.BluetoothMacAddress, appLog, cancellationToken);
     }
 
-    private static async Task<T> RunOverBluetoothAsync<T>(string macAddress, Func<Connection, T> func, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken)
+    private static async Task<Connection> OpenBluetoothAsync(string macAddress, IAppLog appLog, CancellationToken cancellationToken)
     {
         try
         {
-            return await BluetoothConnectionRunner.RunAsync(macAddress, func, appLog, cancellation, cancellationToken);
+            return await BluetoothConnectionRunner.OpenAsync(macAddress, appLog, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             appLog.Log($"{ex.Message} Trying Bluetooth Low Energy...", LogLevel.Warning);
-            return await BleConnectionRunner.RunAsync(macAddress, func, appLog, cancellation, cancellationToken);
+            return await BleConnectionRunner.OpenAsync(macAddress, appLog, cancellationToken);
         }
     }
 
-    private static Task<T> RunOverWifiAsync<T>(string ipAddress, Func<Connection, T> func, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken) =>
+    private static Task<Connection> OpenWifiAsync(string ipAddress, CancellationToken cancellationToken) =>
         Task.Run(() =>
         {
             Connection connection = new TcpConnection(ipAddress, SgdPort);
             connection.Open();
-            using var _ = cancellation?.TrackActiveConnection(connection.Close);
-            try
-            {
-                return func(connection);
-            }
-            catch (Exception) when (cancellationToken.IsCancellationRequested)
-            {
-                throw new OperationCanceledException(cancellationToken);
-            }
-            finally
-            {
-                connection.Close();
-            }
+            return connection;
         }, cancellationToken);
 }

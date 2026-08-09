@@ -25,6 +25,7 @@ public class MainLayoutTests : BunitContext
         // substitutes the same way PairAndConfigureWorkflowTests.CreateWorkflow() does, since
         // nothing in these tests drives the workflow itself.
         Services.AddSingleton(new PairAndConfigureWorkflow(
+            Substitute.For<IPrinterConnectionSessionFactory>(),
             Substitute.For<IPrinterConfigurationService>(),
             Substitute.For<IPdfDirectService>(),
             Substitute.For<IPrinterRestartService>(),

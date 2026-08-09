@@ -21,6 +21,7 @@ public class CancelWorkflowButtonTests : BunitContext
         Gateway = "192.168.1.1",
     };
 
+    private readonly IPrinterConnectionSessionFactory _sessionFactory = Substitute.For<IPrinterConnectionSessionFactory>();
     private readonly IPrinterConfigurationService _configurationService = Substitute.For<IPrinterConfigurationService>();
     private readonly IPdfDirectService _pdfDirectService = Substitute.For<IPdfDirectService>();
     private readonly IPrinterRestartService _restartService = Substitute.For<IPrinterRestartService>();
@@ -30,7 +31,9 @@ public class CancelWorkflowButtonTests : BunitContext
 
     public CancelWorkflowButtonTests()
     {
-        _workflow = new PairAndConfigureWorkflow(_configurationService, _pdfDirectService, _restartService, _connectivityTestService);
+        _sessionFactory.OpenAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Substitute.For<IPrinterConnectionSession>()));
+        _workflow = new PairAndConfigureWorkflow(_sessionFactory, _configurationService, _pdfDirectService, _restartService, _connectivityTestService);
         Services.AddSingleton(_workflow);
         Services.AddSingleton(_cancellation);
     }
@@ -95,7 +98,7 @@ public class CancelWorkflowButtonTests : BunitContext
     // interrupted-mid-step scenario Cancel exists for.
     private IRenderedComponent<CancelWorkflowButton> RenderWithRunningWorkflow()
     {
-        _configurationService.ApplyAsync(Device, Configuration, Arg.Any<CancellationToken>())
+        _configurationService.ApplyAsync(Device, Configuration, Arg.Any<IPrinterConnectionSession>(), Arg.Any<CancellationToken>())
             .Returns(new TaskCompletionSource().Task);
 
         var cut = Render<CancelWorkflowButton>();

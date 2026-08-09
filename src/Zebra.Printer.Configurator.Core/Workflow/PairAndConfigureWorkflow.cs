@@ -9,6 +9,7 @@ namespace Zebra.Printer.Configurator.Core.Workflow;
 /// unit-testable with faked services - no Android/SDK involvement.
 /// </summary>
 public sealed class PairAndConfigureWorkflow(
+    IPrinterConnectionSessionFactory sessionFactory,
     IPrinterConfigurationService configurationService,
     IPdfDirectService pdfDirectService,
     IPrinterRestartService restartService,
@@ -29,14 +30,20 @@ public sealed class PairAndConfigureWorkflow(
 
         try
         {
-            SetState(PairingWorkflowState.ApplyingConfiguration);
-            await configurationService.ApplyAsync(device, configuration, cancellationToken).ConfigureAwait(false);
+            // Shared across all three pre-restart steps rather than each opening/closing its own
+            // connection - see PrinterConnectionSession's doc comment.
+            var session = await sessionFactory.OpenAsync(device, cancellationToken).ConfigureAwait(false);
+            await using (session.ConfigureAwait(false))
+            {
+                SetState(PairingWorkflowState.ApplyingConfiguration);
+                await configurationService.ApplyAsync(device, configuration, session, cancellationToken).ConfigureAwait(false);
 
-            SetState(PairingWorkflowState.EnablingPdfDirect);
-            await pdfDirectService.EnsureEnabledAsync(device, cancellationToken).ConfigureAwait(false);
+                SetState(PairingWorkflowState.EnablingPdfDirect);
+                await pdfDirectService.EnsureEnabledAsync(device, session, cancellationToken).ConfigureAwait(false);
 
-            SetState(PairingWorkflowState.Restarting);
-            await restartService.RestartAsync(device, cancellationToken).ConfigureAwait(false);
+                SetState(PairingWorkflowState.Restarting);
+                await restartService.RestartAsync(device, session, cancellationToken).ConfigureAwait(false);
+            }
 
             SetState(PairingWorkflowState.TestingConnection);
             var result = await connectivityTestService.TestConnectionAsync(device, configuration, cancellationToken).ConfigureAwait(false);

@@ -39,13 +39,16 @@ public class ResultTests : BunitContext
         ConnectionTestResult connectivityResult, WlanConfiguration? configuration = null)
     {
         configuration ??= Configuration;
+        var sessionFactory = Substitute.For<IPrinterConnectionSessionFactory>();
+        sessionFactory.OpenAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Substitute.For<IPrinterConnectionSession>()));
         var configurationService = Substitute.For<IPrinterConfigurationService>();
         var pdfDirectService = Substitute.For<IPdfDirectService>();
         var restartService = Substitute.For<IPrinterRestartService>();
         var connectivityTestService = Substitute.For<IPrinterConnectivityTestService>();
         connectivityTestService.TestConnectionAsync(Device, configuration, Arg.Any<CancellationToken>()).Returns(connectivityResult);
 
-        var workflow = new PairAndConfigureWorkflow(configurationService, pdfDirectService, restartService, connectivityTestService);
+        var workflow = new PairAndConfigureWorkflow(sessionFactory, configurationService, pdfDirectService, restartService, connectivityTestService);
         await workflow.RunAsync(Device, configuration);
 
         var session = new PairingSession { Device = Device, Configuration = configuration };
@@ -262,11 +265,12 @@ public class ResultTests : BunitContext
     [Fact]
     public void WhenWorkflowHasNotFinished_RedirectsToPairing()
     {
+        var sessionFactory = Substitute.For<IPrinterConnectionSessionFactory>();
         var configurationService = Substitute.For<IPrinterConfigurationService>();
         var pdfDirectService = Substitute.For<IPdfDirectService>();
         var restartService = Substitute.For<IPrinterRestartService>();
         var connectivityTestService = Substitute.For<IPrinterConnectivityTestService>();
-        var workflow = new PairAndConfigureWorkflow(configurationService, pdfDirectService, restartService, connectivityTestService);
+        var workflow = new PairAndConfigureWorkflow(sessionFactory, configurationService, pdfDirectService, restartService, connectivityTestService);
         Services.AddSingleton(workflow);
         Services.AddSingleton(new PairingSession());
         Services.AddSingleton(_connectivityMonitor);

@@ -21,6 +21,7 @@ public class ProgressTests : BunitContext
         Gateway = "192.168.1.1",
     };
 
+    private readonly IPrinterConnectionSessionFactory _sessionFactory = Substitute.For<IPrinterConnectionSessionFactory>();
     private readonly IPrinterConfigurationService _configurationService = Substitute.For<IPrinterConfigurationService>();
     private readonly IPdfDirectService _pdfDirectService = Substitute.For<IPdfDirectService>();
     private readonly IPrinterRestartService _restartService = Substitute.For<IPrinterRestartService>();
@@ -30,6 +31,8 @@ public class ProgressTests : BunitContext
 
     public ProgressTests()
     {
+        _sessionFactory.OpenAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Substitute.For<IPrinterConnectionSession>()));
         Services.AddSingleton(_wifiMonitor);
         Services.AddSingleton(_cancellation);
     }
@@ -39,7 +42,7 @@ public class ProgressTests : BunitContext
     {
         _connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
             .Returns(ConnectionTestResult.Succeeded("CONNECTED"));
-        var workflow = new PairAndConfigureWorkflow(_configurationService, _pdfDirectService, _restartService, _connectivityTestService);
+        var workflow = new PairAndConfigureWorkflow(_sessionFactory, _configurationService, _pdfDirectService, _restartService, _connectivityTestService);
         Services.AddSingleton(workflow);
         Services.AddSingleton(new PairingSession { Device = Device, Configuration = Configuration });
 
@@ -59,7 +62,7 @@ public class ProgressTests : BunitContext
     {
         _connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
             .Returns(ConnectionTestResult.Failed("Printer did not respond."));
-        var workflow = new PairAndConfigureWorkflow(_configurationService, _pdfDirectService, _restartService, _connectivityTestService);
+        var workflow = new PairAndConfigureWorkflow(_sessionFactory, _configurationService, _pdfDirectService, _restartService, _connectivityTestService);
         Services.AddSingleton(workflow);
         Services.AddSingleton(new PairingSession { Device = Device, Configuration = Configuration });
 
@@ -79,9 +82,9 @@ public class ProgressTests : BunitContext
     {
         // Mirrors what the header's Cancel button does: force-close the connection, which surfaces
         // here as ApplyAsync throwing OperationCanceledException.
-        _configurationService.ApplyAsync(Device, Configuration, Arg.Any<CancellationToken>())
+        _configurationService.ApplyAsync(Device, Configuration, Arg.Any<IPrinterConnectionSession>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new OperationCanceledException()));
-        var workflow = new PairAndConfigureWorkflow(_configurationService, _pdfDirectService, _restartService, _connectivityTestService);
+        var workflow = new PairAndConfigureWorkflow(_sessionFactory, _configurationService, _pdfDirectService, _restartService, _connectivityTestService);
         Services.AddSingleton(workflow);
         Services.AddSingleton(new PairingSession { Device = Device, Configuration = Configuration });
 
@@ -96,7 +99,7 @@ public class ProgressTests : BunitContext
     [Fact]
     public void WhenSessionIncomplete_RedirectsToPairingWithoutRunningWorkflow()
     {
-        var workflow = new PairAndConfigureWorkflow(_configurationService, _pdfDirectService, _restartService, _connectivityTestService);
+        var workflow = new PairAndConfigureWorkflow(_sessionFactory, _configurationService, _pdfDirectService, _restartService, _connectivityTestService);
         Services.AddSingleton(workflow);
         Services.AddSingleton(new PairingSession());
 

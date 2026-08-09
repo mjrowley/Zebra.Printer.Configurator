@@ -1,14 +1,14 @@
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Models;
-using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Sdk.Printer;
 
 namespace Zebra.Printer.Configurator.Infrastructure.Android;
 
 /// <summary>
-/// Installs and enables Zebra's "PDF Direct" virtual device (apl.enable "pdf") over Bluetooth, as
-/// one more step in PairAndConfigureWorkflow alongside applying WLAN settings - before the printer
-/// restarts, while Bluetooth is still the active connection.
+/// Installs and enables Zebra's "PDF Direct" virtual device (apl.enable "pdf"), as one more step in
+/// PairAndConfigureWorkflow alongside applying WLAN settings - before the printer restarts, sharing
+/// the same connection PairAndConfigureWorkflow opened for the whole pre-restart sequence rather than
+/// reconnecting.
 ///
 /// PDF Direct isn't built into the printer's base firmware; it's a separately-loaded "virtual
 /// device" file (the bundled Virtual-Dev-PDF-v215.NRD) that must be downloaded to the printer once
@@ -16,23 +16,23 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// "pdf" if already loaded and enabled, empty otherwise, per Zebra's own documented behavior) so a
 /// printer that already has it doesn't re-transfer the file on every configuration run.
 ///
-/// The asset is extracted to a local file before the connection is opened, not inside the
-/// PrinterConnectionRunner delegate - that delegate is synchronous (run inside its own Task.Run), so
-/// the async file copy can't happen partway through it. Keeping extraction outside also means the
-/// check-then-conditionally-install-then-enable-then-verify sequence below only needs a single
-/// Bluetooth connect/disconnect cycle, not two.
+/// The asset is extracted to a local file before this runs, not inside the session's RunAsync
+/// delegate - that delegate is synchronous (run inside its own Task.Run), so the async file copy
+/// can't happen partway through it.
 /// </summary>
-public sealed class LinkOsPdfDirectService(IPrinterConnectionModeProvider connectionModeProvider, IAppLog appLog, PrinterOperationCancellation cancellation) : IPdfDirectService
+public sealed class LinkOsPdfDirectService(IAppLog appLog) : IPdfDirectService
 {
     private const string PdfDirectAssetLogicalPath = "PDFDirect/Virtual-Dev-PDF-v215.NRD";
     private const string EnabledValue = "pdf";
 
-    public async Task EnsureEnabledAsync(PrinterDevice device, CancellationToken cancellationToken = default)
+    public async Task EnsureEnabledAsync(PrinterDevice device, IPrinterConnectionSession session, CancellationToken cancellationToken = default)
     {
         var localFilePath = await FirmwareAssetProvider.GetLocalFilePathAsync(PdfDirectAssetLogicalPath, cancellationToken);
 
-        appLog.Log($"Connecting to printer over {connectionModeProvider.Mode} to check PDF Direct status...");
-        await PrinterConnectionRunner.RunAsync(device, connectionModeProvider, connection =>
+        // Cast is safe - PrinterConnectionSessionFactory is the only production implementation of
+        // IPrinterConnectionSession; see PrinterConnectionSession's doc comment for why the public
+        // Core interface itself can't expose RunAsync (Core can't reference Zebra.Sdk.Comm.Connection).
+        await ((PrinterConnectionSession)session).RunAsync(connection =>
         {
             var current = SGD.GET("apl.enable", connection)?.Trim();
             if (string.Equals(current, EnabledValue, StringComparison.OrdinalIgnoreCase))
@@ -54,6 +54,6 @@ public sealed class LinkOsPdfDirectService(IPrinterConnectionModeProvider connec
             }
 
             appLog.Log("PDF Direct enabled.", LogLevel.Success);
-        }, appLog, cancellation, cancellationToken);
+        }, cancellationToken);
     }
 }

@@ -7,5 +7,5 @@ namespace Zebra.Printer.Configurator.Core.Abstractions;
 /// </summary>
 public interface IPrinterRestartService
 {
-    Task RestartAsync(PrinterDevice device, CancellationToken cancellationToken = default);
+    Task RestartAsync(PrinterDevice device, IPrinterConnectionSession session, CancellationToken cancellationToken = default);
 }
