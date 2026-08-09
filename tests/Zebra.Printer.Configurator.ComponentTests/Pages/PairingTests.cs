@@ -123,6 +123,32 @@ public class PairingTests : BunitContext
     }
 
     [Fact]
+    public void WhenPrinterDiscoveredTwiceInQuickSuccession_OnlyAttemptsPairingOnce()
+    {
+        // Regression test for a real bug: a single NFC tap sometimes dispatched two intents,
+        // starting two concurrent CreateBond() attempts against the same printer - visible
+        // on-device as two different pairing codes and two OS pairing dialogs.
+        var pairingAttempts = 0;
+        var pairingTcs = new TaskCompletionSource<bool>();
+        _pairingService.EnsurePairedHandler = _ =>
+        {
+            pairingAttempts++;
+            return pairingTcs.Task;
+        };
+        var cut = Render<Pairing>();
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+
+        _discoveryService.RaisePrinterDiscovered(device);
+        _discoveryService.RaisePrinterDiscovered(device);
+
+        cut.WaitForAssertion(() => Assert.Contains("NFC/BT Pairing", cut.Find("h1").TextContent));
+        Assert.Equal(1, pairingAttempts);
+
+        pairingTcs.SetResult(true);
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='discovered-device']")));
+    }
+
+    [Fact]
     public void WhenPairingFails_SetsBluetoothError()
     {
         _pairingService.EnsurePairedHandler = _ => Task.FromResult(false);

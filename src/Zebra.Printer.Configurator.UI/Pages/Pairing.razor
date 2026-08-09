@@ -114,6 +114,19 @@
     {
         InvokeAsync(async () =>
         {
+            // A single physical NFC tap has been observed dispatching more than one intent
+            // (confirmed on-device: the printer displayed two different pairing codes and
+            // Android's pairing dialog appeared twice) - a second discovery arriving while one is
+            // already being handled is ignored rather than starting a concurrent CreateBond()
+            // attempt against the same printer. State is set to Pairing below before the only
+            // await point in this method, so a second call queued via InvokeAsync always sees it
+            // by the time it runs.
+            if (_state != PairingUiState.WaitingForTap)
+            {
+                AppLog.Log("Ignoring duplicate NFC discovery - already pairing.", LogLevel.Warning);
+                return;
+            }
+
             _discoveredDevice = device;
             _checkConfigState = new CheckConfigurationState();
             _state = PairingUiState.Pairing;
