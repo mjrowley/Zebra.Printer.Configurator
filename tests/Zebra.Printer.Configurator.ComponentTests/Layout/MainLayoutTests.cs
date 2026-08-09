@@ -1,8 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
 using Bunit;
+using NSubstitute;
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Connectivity;
 using Zebra.Printer.Configurator.Core.Logging;
+using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Printer.Configurator.UI.Layout;
 
 namespace Zebra.Printer.Configurator.ComponentTests.Layout;
@@ -18,6 +20,16 @@ public class MainLayoutTests : BunitContext
         Services.AddSingleton<IAppLog>(_appLog);
         Services.AddSingleton<IAppVersionProvider>(_appVersionProvider);
         Services.AddSingleton(_connectivityMonitor);
+
+        // MainLayout renders CancelWorkflowButton, which needs both of these - built from
+        // substitutes the same way PairAndConfigureWorkflowTests.CreateWorkflow() does, since
+        // nothing in these tests drives the workflow itself.
+        Services.AddSingleton(new PairAndConfigureWorkflow(
+            Substitute.For<IPrinterConfigurationService>(),
+            Substitute.For<IPdfDirectService>(),
+            Substitute.For<IPrinterRestartService>(),
+            Substitute.For<IPrinterConnectivityTestService>()));
+        Services.AddSingleton(new PrinterOperationCancellation());
     }
 
     [Fact]

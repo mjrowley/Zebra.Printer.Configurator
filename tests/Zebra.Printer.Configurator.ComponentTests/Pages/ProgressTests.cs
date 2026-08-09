@@ -26,10 +26,12 @@ public class ProgressTests : BunitContext
     private readonly IPrinterRestartService _restartService = Substitute.For<IPrinterRestartService>();
     private readonly IPrinterConnectivityTestService _connectivityTestService = Substitute.For<IPrinterConnectivityTestService>();
     private readonly IWifiConnectivityMonitor _wifiMonitor = Substitute.For<IWifiConnectivityMonitor>();
+    private readonly PrinterOperationCancellation _cancellation = new();
 
     public ProgressTests()
     {
         Services.AddSingleton(_wifiMonitor);
+        Services.AddSingleton(_cancellation);
     }
 
     [Fact]
@@ -70,6 +72,25 @@ public class ProgressTests : BunitContext
         });
         Assert.Equal(PairingWorkflowState.Failed, workflow.State);
         Assert.Equal("Printer did not respond.", workflow.FailureReason);
+    }
+
+    [Fact]
+    public void WhenCancelled_DoesNotNavigateToResult()
+    {
+        // Mirrors what the header's Cancel button does: force-close the connection, which surfaces
+        // here as ApplyAsync throwing OperationCanceledException.
+        _configurationService.ApplyAsync(Device, Configuration, Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new OperationCanceledException()));
+        var workflow = new PairAndConfigureWorkflow(_configurationService, _pdfDirectService, _restartService, _connectivityTestService);
+        Services.AddSingleton(workflow);
+        Services.AddSingleton(new PairingSession { Device = Device, Configuration = Configuration });
+
+        var cut = Render<Progress>();
+
+        cut.WaitForAssertion(() => Assert.Equal(PairingWorkflowState.NotStarted, workflow.State));
+        var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        Assert.DoesNotContain("/result", navigation.Uri);
+        _wifiMonitor.DidNotReceive().Start(Arg.Any<string>());
     }
 
     [Fact]

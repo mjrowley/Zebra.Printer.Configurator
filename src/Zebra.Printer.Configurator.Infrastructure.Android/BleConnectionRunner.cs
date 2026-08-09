@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Zebra.Printer.Configurator.Core.Abstractions;
+using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Sdk.Comm;
 using Zebra.Sdk.Comm.Btle;
 
@@ -20,7 +21,7 @@ internal static class BleConnectionRunner
     private const int ConnectionAttempts = 2;
     private static readonly TimeSpan ConnectionRetryDelay = TimeSpan.FromSeconds(2);
 
-    public static async Task<T> RunAsync<T>(string macAddress, Func<Connection, T> func, IAppLog appLog, CancellationToken cancellationToken)
+    public static async Task<T> RunAsync<T>(string macAddress, Func<Connection, T> func, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken)
     {
         for (var attempt = 1; attempt <= ConnectionAttempts; attempt++)
         {
@@ -31,15 +32,24 @@ internal static class BleConnectionRunner
                 {
                     Connection connection = new BluetoothLeConnection(macAddress);
                     connection.Open();
+                    using var _ = cancellation?.TrackActiveConnection(connection.Close);
                     try
                     {
                         return func(connection);
+                    }
+                    catch (Exception) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw new OperationCanceledException(cancellationToken);
                     }
                     finally
                     {
                         connection.Close();
                     }
                 }, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex) when (attempt < ConnectionAttempts)
             {

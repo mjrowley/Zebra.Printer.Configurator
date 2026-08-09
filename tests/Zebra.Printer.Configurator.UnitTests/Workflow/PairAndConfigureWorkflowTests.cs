@@ -123,6 +123,21 @@ public class PairAndConfigureWorkflowTests
     }
 
     [Fact]
+    public async Task RunAsync_OnCancellation_ResetsStateToNotStarted_AndRethrows()
+    {
+        var (configurationService, _, restartService, connectivityTestService, workflow) = CreateWorkflow();
+        using var cts = new CancellationTokenSource();
+        configurationService.ApplyAsync(Device, Configuration, Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new OperationCanceledException(cts.Token)));
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => workflow.RunAsync(Device, Configuration, cts.Token));
+
+        Assert.Equal(PairingWorkflowState.NotStarted, workflow.State);
+        await restartService.DidNotReceive().RestartAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>());
+        await connectivityTestService.DidNotReceive().TestConnectionAsync(Arg.Any<PrinterDevice>(), Arg.Any<WlanConfiguration>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task RunAsync_ResetsPreviousResultAndFailureReason_OnRetry()
     {
         var (_, _, _, connectivityTestService, workflow) = CreateWorkflow();

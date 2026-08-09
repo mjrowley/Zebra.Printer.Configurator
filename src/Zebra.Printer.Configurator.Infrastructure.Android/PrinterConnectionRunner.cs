@@ -1,5 +1,6 @@
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Models;
+using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Sdk.Comm;
 
 namespace Zebra.Printer.Configurator.Infrastructure.Android;
@@ -19,44 +20,49 @@ internal static class PrinterConnectionRunner
 {
     private const int SgdPort = 6101;
 
-    public static Task RunAsync(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, Action<Connection> action, IAppLog appLog, CancellationToken cancellationToken) =>
+    public static Task RunAsync(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, Action<Connection> action, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken) =>
         RunAsync<object?>(device, connectionModeProvider, connection =>
         {
             action(connection);
             return null;
-        }, appLog, cancellationToken);
+        }, appLog, cancellation, cancellationToken);
 
-    public static Task<T> RunAsync<T>(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, Func<Connection, T> func, IAppLog appLog, CancellationToken cancellationToken)
+    public static Task<T> RunAsync<T>(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, Func<Connection, T> func, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken)
     {
         if (connectionModeProvider.Mode == PrinterConnectionMode.Wifi && connectionModeProvider.WifiIpAddress is not null)
         {
-            return RunOverWifiAsync(connectionModeProvider.WifiIpAddress, func, cancellationToken);
+            return RunOverWifiAsync(connectionModeProvider.WifiIpAddress, func, cancellation, cancellationToken);
         }
 
-        return RunOverBluetoothAsync(device.BluetoothMacAddress, func, appLog, cancellationToken);
+        return RunOverBluetoothAsync(device.BluetoothMacAddress, func, appLog, cancellation, cancellationToken);
     }
 
-    private static async Task<T> RunOverBluetoothAsync<T>(string macAddress, Func<Connection, T> func, IAppLog appLog, CancellationToken cancellationToken)
+    private static async Task<T> RunOverBluetoothAsync<T>(string macAddress, Func<Connection, T> func, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken)
     {
         try
         {
-            return await BluetoothConnectionRunner.RunAsync(macAddress, func, appLog, cancellationToken);
+            return await BluetoothConnectionRunner.RunAsync(macAddress, func, appLog, cancellation, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             appLog.Log($"{ex.Message} Trying Bluetooth Low Energy...", LogLevel.Warning);
-            return await BleConnectionRunner.RunAsync(macAddress, func, appLog, cancellationToken);
+            return await BleConnectionRunner.RunAsync(macAddress, func, appLog, cancellation, cancellationToken);
         }
     }
 
-    private static Task<T> RunOverWifiAsync<T>(string ipAddress, Func<Connection, T> func, CancellationToken cancellationToken) =>
+    private static Task<T> RunOverWifiAsync<T>(string ipAddress, Func<Connection, T> func, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken) =>
         Task.Run(() =>
         {
             Connection connection = new TcpConnection(ipAddress, SgdPort);
             connection.Open();
+            using var _ = cancellation?.TrackActiveConnection(connection.Close);
             try
             {
                 return func(connection);
+            }
+            catch (Exception) when (cancellationToken.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(cancellationToken);
             }
             finally
             {

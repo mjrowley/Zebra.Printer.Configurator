@@ -45,7 +45,15 @@ public sealed class PairAndConfigureWorkflow(
             FailureReason = result.Success ? null : result.FailureReason;
             SetState(result.Success ? PairingWorkflowState.Succeeded : PairingWorkflowState.Failed);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException)
+        {
+            // Reset rather than leave State stuck mid-step - Workflow is a DI singleton the header's
+            // Cancel button keeps reading on every page thereafter, so an unreset state would leave
+            // it looking permanently in-progress.
+            SetState(PairingWorkflowState.NotStarted);
+            throw;
+        }
+        catch (Exception ex)
         {
             FailureReason = ex.Message;
             SetState(PairingWorkflowState.Failed);

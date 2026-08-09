@@ -56,9 +56,10 @@ public static class MauiProgram
 		builder.Services.AddSingleton<FirmwareUpdateStatusMonitor>();
 		builder.Services.AddSingleton<IFirmwareUpdateLauncher, FirmwareUpdateLauncher>();
 
-		// Both singletons: single-window app, one pairing attempt in flight at a time.
+		// All three singletons: single-window app, one pairing attempt in flight at a time.
 		builder.Services.AddSingleton<PairingSession>();
 		builder.Services.AddSingleton<PairAndConfigureWorkflow>();
+		builder.Services.AddSingleton<PrinterOperationCancellation>();
 
 #if DEBUG
 		builder.Services.AddBlazorWebViewDeveloperTools();

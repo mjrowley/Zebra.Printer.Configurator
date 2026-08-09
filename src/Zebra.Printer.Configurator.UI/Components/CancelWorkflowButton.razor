@@ -1,0 +1,56 @@
+@* Persistent header control (rendered by MainLayout) for aborting an in-progress Configure Printer
+   run - visible only while PairAndConfigureWorkflow is actually mid-step. Confirming force-closes
+   whatever Bluetooth/WiFi connection is open (even mid file-transfer) via PrinterOperationCancellation,
+   then returns to "/" - Pairing.razor's own OnInitialized() already resets Session/ConnectivityMonitor/
+   WifiMonitor/connection mode every time it's navigated to, so that reset isn't duplicated here. *@
+@implements IDisposable
+@inject PairAndConfigureWorkflow Workflow
+@inject PrinterOperationCancellation Cancellation
+@inject NavigationManager Navigation
+
+@if (IsWorkflowActive)
+{
+    @if (_confirming)
+    {
+        <div class="cancel-confirm-backdrop" data-testid="cancel-confirm-dialog">
+            <div class="cancel-confirm-box" role="alertdialog">
+                <p>This will cancel all operations and open printer connections, are you sure?</p>
+                <div class="cancel-confirm-actions">
+                    <button type="button" class="btn btn-danger btn-sm" data-testid="cancel-confirm-yes" @onclick="ConfirmCancel">Yes - Cancel</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-testid="cancel-confirm-no" @onclick="() => _confirming = false">No - Return</button>
+                </div>
+            </div>
+        </div>
+    }
+    <button type="button" class="btn btn-outline-light btn-sm" data-testid="cancel-workflow-button" @onclick="() => _confirming = true">Cancel</button>
+}
+
+@code {
+    private bool _confirming;
+
+    protected override void OnInitialized() => Workflow.StateChanged += OnWorkflowStateChanged;
+
+    private bool IsWorkflowActive => Workflow.State is
+        PairingWorkflowState.ApplyingConfiguration or
+        PairingWorkflowState.EnablingPdfDirect or
+        PairingWorkflowState.Restarting or
+        PairingWorkflowState.TestingConnection;
+
+    private void OnWorkflowStateChanged(object? sender, EventArgs e) => InvokeAsync(() =>
+    {
+        if (!IsWorkflowActive)
+        {
+            _confirming = false;
+        }
+        StateHasChanged();
+    });
+
+    private void ConfirmCancel()
+    {
+        _confirming = false;
+        Cancellation.Cancel();
+        Navigation.NavigateTo("/", replace: true);
+    }
+
+    public void Dispose() => Workflow.StateChanged -= OnWorkflowStateChanged;
+}

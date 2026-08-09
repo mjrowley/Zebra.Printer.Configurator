@@ -2,6 +2,7 @@ using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Configuration;
 using Zebra.Printer.Configurator.Core.Connectivity;
 using Zebra.Printer.Configurator.Core.Models;
+using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Sdk.Comm;
 using Zebra.Sdk.Printer;
 
@@ -18,7 +19,7 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// LinkOsPrinterConfigurationService applied didn't actually stick, rather than continuing to guess
 /// from the outside.
 /// </summary>
-public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnectivityMonitor connectivityMonitor) : IPrinterConnectivityTestService
+public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnectivityMonitor connectivityMonitor, PrinterOperationCancellation cancellation) : IPrinterConnectivityTestService
 {
     private const int SgdPort = 6101;
     private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(45);
@@ -36,6 +37,12 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnect
             interval: PollInterval,
             cancellationToken: cancellationToken);
 
+        // PollUntilAsync can't tell an external cancellation apart from its own timeout internally
+        // (both just make it return false) - checked explicitly here so a cancelled poll is reported
+        // as a cancellation, not treated as "the printer never came back" and sent into the
+        // Bluetooth-reconnect failure diagnostics below.
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (!reachable)
         {
             var failure = $"Printer did not respond on {configuration.StaticIpAddress}:{SgdPort} within {PollTimeout.TotalSeconds:N0}s after restart.";
@@ -52,6 +59,7 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnect
         {
             Connection connection = new TcpConnection(configuration.StaticIpAddress, SgdPort);
             connection.Open();
+            using var _ = cancellation.TrackActiveConnection(connection.Close);
             try
             {
                 var wlanState = SGD.GET("wlan.state", connection);
@@ -65,6 +73,10 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnect
                 appLog.Log($"WiFi state: {wlanState}", LogLevel.Success);
                 connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
                 return ConnectionTestResult.Succeeded(wlanState);
+            }
+            catch (Exception) when (cancellationToken.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(cancellationToken);
             }
             finally
             {
@@ -88,7 +100,14 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnect
                         : value;
                     appLog.Log($"{key} = {displayValue}");
                 }
-            }, appLog, cancellationToken);
+            }, appLog, cancellation, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Best-effort diagnostic logging only swallows genuine failures below - a cancellation
+            // must still propagate so TestConnectionAsync (and PairAndConfigureWorkflow above it)
+            // see it as a cancel, not report this as a normal connectivity-test failure.
+            throw;
         }
         catch (Exception ex)
         {

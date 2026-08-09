@@ -1,5 +1,6 @@
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Models;
+using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Sdk.Printer;
 
 namespace Zebra.Printer.Configurator.Infrastructure.Android;
@@ -21,7 +22,7 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// check-then-conditionally-install-then-enable-then-verify sequence below only needs a single
 /// Bluetooth connect/disconnect cycle, not two.
 /// </summary>
-public sealed class LinkOsPdfDirectService(IPrinterConnectionModeProvider connectionModeProvider, IAppLog appLog) : IPdfDirectService
+public sealed class LinkOsPdfDirectService(IPrinterConnectionModeProvider connectionModeProvider, IAppLog appLog, PrinterOperationCancellation cancellation) : IPdfDirectService
 {
     private const string PdfDirectAssetLogicalPath = "PDFDirect/Virtual-Dev-PDF-v215.NRD";
     private const string EnabledValue = "pdf";
@@ -53,6 +54,6 @@ public sealed class LinkOsPdfDirectService(IPrinterConnectionModeProvider connec
             }
 
             appLog.Log("PDF Direct enabled.", LogLevel.Success);
-        }, appLog, cancellationToken);
+        }, appLog, cancellation, cancellationToken);
     }
 }

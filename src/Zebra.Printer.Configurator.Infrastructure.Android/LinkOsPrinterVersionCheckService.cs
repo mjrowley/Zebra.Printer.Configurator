@@ -33,6 +33,9 @@ public sealed class LinkOsPrinterVersionCheckService(IPrinterConnectionModeProvi
     {
         appLog.Log("Checking printer firmware version...");
 
+        // Firmware update/version check is out of scope for the header's Cancel button (a separate,
+        // bigger piece of work - see PrinterOperationCancellation's doc comment), so no
+        // active-connection tracking is passed here (cancellation: null).
         var result = await PrinterConnectionRunner.RunAsync(device, connectionModeProvider, connection =>
         {
             var productName = SGD.GET("device.product_name", connection);
@@ -52,7 +55,7 @@ public sealed class LinkOsPrinterVersionCheckService(IPrinterConnectionModeProvi
             var linkOsVersionFound = SGD.GET("appl.link_os_version_full", connection);
 
             return PrinterVersionEvaluator.Evaluate(bundle, linkOsVersionFound, firmwareVersionFound);
-        }, appLog, cancellationToken);
+        }, appLog, cancellation: null, cancellationToken);
 
         LogOutcome(result);
         return result;

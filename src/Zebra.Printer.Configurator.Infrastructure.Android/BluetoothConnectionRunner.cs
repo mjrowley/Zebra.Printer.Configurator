@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Zebra.Printer.Configurator.Core.Abstractions;
+using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Sdk.Comm;
 
 namespace Zebra.Printer.Configurator.Infrastructure.Android;
@@ -20,14 +21,14 @@ internal static class BluetoothConnectionRunner
     private const int ConnectionAttempts = 5;
     private static readonly TimeSpan ConnectionRetryDelay = TimeSpan.FromSeconds(3);
 
-    public static Task RunAsync(string macAddress, Action<Connection> action, IAppLog appLog, CancellationToken cancellationToken) =>
+    public static Task RunAsync(string macAddress, Action<Connection> action, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken) =>
         RunAsync<object?>(macAddress, connection =>
         {
             action(connection);
             return null;
-        }, appLog, cancellationToken);
+        }, appLog, cancellation, cancellationToken);
 
-    public static async Task<T> RunAsync<T>(string macAddress, Func<Connection, T> func, IAppLog appLog, CancellationToken cancellationToken)
+    public static async Task<T> RunAsync<T>(string macAddress, Func<Connection, T> func, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken)
     {
         for (var attempt = 1; attempt <= ConnectionAttempts; attempt++)
         {
@@ -38,15 +39,28 @@ internal static class BluetoothConnectionRunner
                 {
                     Connection connection = new BluetoothConnection(macAddress);
                     connection.Open();
+                    using var _ = cancellation?.TrackActiveConnection(connection.Close);
                     try
                     {
                         return func(connection);
+                    }
+                    catch (Exception) when (cancellationToken.IsCancellationRequested)
+                    {
+                        // The force-close above (triggered by PrinterOperationCancellation.Cancel())
+                        // is what actually broke this blocking call - whatever raw I/O exception the
+                        // SDK throws as a result is normalized here so callers only ever see a clean
+                        // OperationCanceledException, not a confusing socket error.
+                        throw new OperationCanceledException(cancellationToken);
                     }
                     finally
                     {
                         connection.Close();
                     }
                 }, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex) when (attempt < ConnectionAttempts)
             {

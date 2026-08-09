@@ -1,6 +1,7 @@
 @page "/progress"
 @implements IDisposable
 @inject PairAndConfigureWorkflow Workflow
+@inject PrinterOperationCancellation Cancellation
 @inject PairingSession Session
 @inject IWifiConnectivityMonitor WifiMonitor
 @inject NavigationManager Navigation
@@ -61,8 +62,18 @@
         }
 
         Workflow.StateChanged += OnWorkflowStateChanged;
+        Cancellation.Begin();
 
-        await Workflow.RunAsync(Session.Device, Session.Configuration);
+        try
+        {
+            await Workflow.RunAsync(Session.Device, Session.Configuration, Cancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // The header's Cancel button already navigated away once it force-closed the
+            // connection - nothing left to do here.
+            return;
+        }
 
         // Keeps re-checking the printer's WiFi reachability in the background beyond this one-shot
         // workflow run, for as long as this pairing attempt's target IP is known - covers the

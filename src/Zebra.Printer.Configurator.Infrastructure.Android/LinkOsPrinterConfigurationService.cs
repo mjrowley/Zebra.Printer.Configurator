@@ -2,6 +2,7 @@ using System.Text;
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Configuration;
 using Zebra.Printer.Configurator.Core.Models;
+using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Sdk.Printer;
 
 namespace Zebra.Printer.Configurator.Infrastructure.Android;
@@ -23,7 +24,8 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 public sealed class LinkOsPrinterConfigurationService(
     IBluetoothPermissionService bluetoothPermissionService,
     IPrinterConnectionModeProvider connectionModeProvider,
-    IAppLog appLog)
+    IAppLog appLog,
+    PrinterOperationCancellation cancellation)
     : IPrinterConfigurationService, IPrinterRestartService, IPrinterFactoryResetService, IPrinterConfigurationReader
 {
     // Logged as-is; every other SGD value is safe to show, but the WiFi password should never
@@ -94,7 +96,7 @@ public sealed class LinkOsPrinterConfigurationService(
                         : $"{key}: MISMATCH - sent '{DisplayValue(key, value)}', printer has '{DisplayValue(key, actual)}'",
                     matches ? LogLevel.Success : LogLevel.Warning);
             }
-        }, appLog, cancellationToken);
+        }, appLog, cancellation, cancellationToken);
         appLog.Log("WiFi configuration applied.", LogLevel.Success);
     }
 
@@ -111,7 +113,7 @@ public sealed class LinkOsPrinterConfigurationService(
             // soft reset is "device.reset" (confirmed against a real-world SGD trace for a
             // ZD-series printer: `! U1 do "device.reset" ""`).
             SGD.DO("device.reset", string.Empty, connection, ResetReadTimeoutMs, ResetTimeToWaitForMoreDataMs);
-        }, appLog, cancellationToken);
+        }, appLog, cancellation, cancellationToken);
         appLog.Log("Restart command sent.", LogLevel.Success);
     }
 
@@ -151,7 +153,9 @@ public sealed class LinkOsPrinterConfigurationService(
             // connection closes rather than left for the caller to trigger separately.
             appLog.Log("Restarting printer to apply factory defaults...");
             SGD.DO("device.reset", string.Empty, connection, ResetReadTimeoutMs, ResetTimeToWaitForMoreDataMs);
-        }, appLog, cancellationToken);
+            // Factory reset never runs while the header's Cancel button is visible (it's a separate,
+            // mutually-exclusive Pairing-page flow), so no active-connection tracking is needed here.
+        }, appLog, cancellation: null, cancellationToken);
         appLog.Log(
             "Factory reset command sent. The printer is restarting with default network and Bluetooth settings - Bluetooth pairing may need to be redone.",
             LogLevel.Warning);
@@ -162,6 +166,9 @@ public sealed class LinkOsPrinterConfigurationService(
         await EnsureConnectionPermissionAsync(cancellationToken);
 
         appLog.Log($"Connecting to printer over {connectionModeProvider.Mode} to check configuration...");
+        // Check Configuration never runs while the header's Cancel button is visible (it's a
+        // separate, mutually-exclusive Pairing-page flow), so no active-connection tracking is
+        // needed here - cancellation: null.
         var values = await PrinterConnectionRunner.RunAsync(device, connectionModeProvider, connection =>
         {
             var results = new List<PrinterConfigurationValue>();
@@ -175,7 +182,7 @@ public sealed class LinkOsPrinterConfigurationService(
             }
 
             return (IReadOnlyList<PrinterConfigurationValue>)results;
-        }, appLog, cancellationToken);
+        }, appLog, cancellation: null, cancellationToken);
         appLog.Log("Configuration check complete.", LogLevel.Success);
 
         return values;
