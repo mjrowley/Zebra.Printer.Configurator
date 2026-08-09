@@ -18,6 +18,10 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// handle confirmation on its own, which on-device testing showed sometimes fell back to a failing
 /// legacy PIN negotiation (visible as an OS "PIN error" toast) instead of the printer's actual SSP
 /// numeric-comparison method - driving the pairing-request broadcast explicitly avoids that.
+///
+/// Still under investigation as of this build - see BluetoothPairingReceiver's own doc comment for
+/// the live dual-address theory and the diagnostic logging (device.Type, IdentityAddressWithType)
+/// added here and in BondStateReceiver to confirm or rule it out on the next on-device test.
 /// </summary>
 public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoothPermissionService, IAppLog appLog) : IBluetoothPairingService
 {
@@ -66,10 +70,29 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
             return true;
         }
 
-        appLog.Log($"Requesting Bluetooth pairing with printer ({device.Address})...");
+        // Diagnostic: a dual-mode (BR/EDR + LE) printer using a separate BLE "identity address"
+        // distinct from this Classic address is one live theory for why a second, unexplained
+        // pairing negotiation keeps showing up - IdentityAddressWithType would reveal that address
+        // directly if it exists. Only guaranteed present from API 36 - this app's min SDK is 33, so
+        // it's explicitly guarded rather than risking a call the OS doesn't support at all on an
+        // older device this app is otherwise fully compatible with.
+        string? identityAddress = null;
+        if (OperatingSystem.IsAndroidVersionAtLeast(36))
+        {
+            try
+            {
+                identityAddress = device.IdentityAddressWithType?.Address;
+            }
+            catch (Exception ex)
+            {
+                appLog.Log($"Could not read IdentityAddressWithType: {ex.Message}", LogLevel.Warning);
+            }
+        }
+
+        appLog.Log($"Requesting Bluetooth pairing with printer ({device.Address}, type={device.Type}, identityAddress={identityAddress ?? "<none>"})...");
 
         var bondCompletion = new TaskCompletionSource<bool>();
-        using var bondReceiver = new BondStateReceiver(device.Address!, bondCompletion);
+        using var bondReceiver = new BondStateReceiver(device.Address!, bondCompletion, appLog);
 
         Application.Context.RegisterReceiver(bondReceiver, new IntentFilter(BluetoothDevice.ActionBondStateChanged), ReceiverFlags.NotExported);
 
@@ -133,7 +156,7 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
         // mid-teardown is a known source of the Bluetooth stack falling back to a stale/legacy
         // pairing negotiation instead of a clean SSP handshake.
         var unbondCompletion = new TaskCompletionSource<bool>();
-        using var bondReceiver = new BondStateReceiver(device.Address!, unbondCompletion);
+        using var bondReceiver = new BondStateReceiver(device.Address!, unbondCompletion, appLog);
         Application.Context.RegisterReceiver(bondReceiver, new IntentFilter(BluetoothDevice.ActionBondStateChanged), ReceiverFlags.NotExported);
 
         try
@@ -171,16 +194,28 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
         }
     }
 
-    private sealed class BondStateReceiver(string targetAddress, TaskCompletionSource<bool> completionSource) : BroadcastReceiver
+    private sealed class BondStateReceiver(string targetAddress, TaskCompletionSource<bool> completionSource, IAppLog appLog) : BroadcastReceiver
     {
         public override void OnReceive(Context? context, Intent? intent)
         {
-            if (intent?.Action != BluetoothDevice.ActionBondStateChanged || !MatchesTarget(intent, targetAddress))
+            if (intent?.Action != BluetoothDevice.ActionBondStateChanged)
             {
                 return;
             }
 
             var bondState = (Bond)intent.GetIntExtra(BluetoothDevice.ExtraBondState, (int)Bond.None);
+            var deviceAddress = GetDeviceExtra(intent)?.Address;
+
+            // Logged unconditionally, before the target-address filter below - a bond-state change
+            // for a *different* address while waiting on targetAddress would be a direct sign of the
+            // same dual-address theory BluetoothPairingReceiver's logging is checking for.
+            appLog.Log($"BondStateReceiver.OnReceive: device={deviceAddress}, bondState={bondState}, expected={targetAddress}");
+
+            if (!MatchesTarget(intent, targetAddress))
+            {
+                return;
+            }
+
             switch (bondState)
             {
                 case Bond.Bonded:
