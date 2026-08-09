@@ -1,0 +1,23 @@
+.factory-reset-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 10;
+    padding: 1rem;
+}
+
+.factory-reset-modal-box {
+    background: var(--bs-body-bg, #fff);
+    color: var(--bs-body-color, #000);
+    border-radius: 0.5rem;
+    padding: 1.25rem;
+    max-width: 24rem;
+    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.35);
+}
+
+.factory-reset-modal-box p {
+    margin-bottom: 1rem;
+}

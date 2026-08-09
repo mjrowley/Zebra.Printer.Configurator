@@ -60,6 +60,9 @@ public class FactoryResetPanelTests : BunitContext
         cut.Find("[data-testid='factory-reset-confirm']").Click();
 
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='factory-reset-complete']")));
+        // Forces acknowledgment rather than leaving the message inline alongside other buttons -
+        // shown as a modal dialog, not inline text.
+        Assert.NotNull(cut.Find("[data-testid='factory-reset-complete-dialog']"));
         await _factoryResetService.Received(1).ResetToFactoryDefaultsAsync(Device, Arg.Any<CancellationToken>());
         await _pairingService.Received(1).RemoveBondAsync(Device.BluetoothMacAddress, Arg.Any<CancellationToken>());
     }
