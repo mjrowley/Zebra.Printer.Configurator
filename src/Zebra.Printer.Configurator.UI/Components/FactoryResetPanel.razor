@@ -31,9 +31,11 @@
             <div class="factory-reset-modal-box" role="alertdialog">
                 <p data-testid="factory-reset-complete">
                     Factory reset command sent. The printer is restarting with default settings, and
-                    its Bluetooth pairing has been removed - tap the printer again to re-pair.
+                    its Bluetooth pairing has been removed.
                 </p>
-                <button type="button" class="btn btn-primary" @onclick="() => OnFinished.InvokeAsync()">Start Over</button>
+                <div class="factory-reset-modal-actions">
+                    <button type="button" class="btn btn-primary" @onclick="() => OnFinished.InvokeAsync()">Close</button>
+                </div>
             </div>
         </div>
         break;

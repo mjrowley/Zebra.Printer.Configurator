@@ -21,3 +21,8 @@
 .factory-reset-modal-box p {
     margin-bottom: 1rem;
 }
+
+.factory-reset-modal-actions {
+    display: flex;
+    justify-content: center;
+}
