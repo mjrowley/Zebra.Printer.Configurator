@@ -18,7 +18,16 @@ internal static class BluetoothConnectionRunner
     // original attempts (the Android Bluetooth stack is still settling from the just-finished bond),
     // while the identical read via "Check Configuration" succeeds when tried a bit later - the
     // previous budget didn't reliably cover that settling window.
-    private const int ConnectionAttempts = 5;
+    //
+    // Widened again from 5/3s (~12s) to 8/3s (~21s): confirmed on-device that exhausting this
+    // budget shortly after a fresh bond has a real side effect beyond just being slow -
+    // PrinterConnectionRunner falls back to Bluetooth LE when Classic gives up, and opening a
+    // BluetoothLeConnection to a device that's never been BLE-bonded silently triggers a second,
+    // separate OS pairing negotiation (an unexpected second "Pair again" system dialog). Giving
+    // Classic more room to recover on its own makes reaching that fallback less likely in the
+    // first place - see also BluetoothPairingService.PostBondSettlingDelay, which addresses the
+    // same root cause from the other side (pausing before the first post-pairing attempt at all).
+    private const int ConnectionAttempts = 8;
     private static readonly TimeSpan ConnectionRetryDelay = TimeSpan.FromSeconds(3);
 
     public static Task RunAsync(string macAddress, Action<Connection> action, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken) =>

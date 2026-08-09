@@ -31,6 +31,16 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
     private static readonly TimeSpan PairingTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan UnbondTimeout = TimeSpan.FromSeconds(10);
 
+    // Confirmed on-device: connecting again immediately after a freshly-completed bond can exhaust
+    // enough of BluetoothConnectionRunner's own Classic retry budget to fall back to Bluetooth LE -
+    // which, unlike Classic, has never been bonded for this device, so opening it silently triggers
+    // a second, entirely separate OS pairing negotiation (visible as a second "Pair again" system
+    // dialog with a different code, which this app's own PairingRequestReceiver never sees since
+    // it's only registered for the duration of this method). Only applied after a bond this call
+    // itself just completed - the "already paired" fast path above returns before any settling is
+    // needed.
+    private static readonly TimeSpan PostBondSettlingDelay = TimeSpan.FromSeconds(2);
+
     public event EventHandler<PairingCodeRequestedEventArgs>? PairingCodeRequested;
 
     public async Task<bool> EnsurePairedAsync(string macAddress, CancellationToken cancellationToken = default)
@@ -81,6 +91,12 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
             appLog.Log(
                 bonded ? "Bluetooth pairing succeeded." : "Bluetooth pairing failed or timed out.",
                 bonded ? LogLevel.Success : LogLevel.Error);
+
+            if (bonded)
+            {
+                await Task.Delay(PostBondSettlingDelay, cancellationToken);
+            }
+
             return bonded;
         }
         finally
