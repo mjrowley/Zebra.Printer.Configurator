@@ -41,6 +41,10 @@ public static class MauiProgram
 		builder.Services.AddSingleton<IBluetoothPermissionService, BluetoothPermissionService>();
 		builder.Services.AddSingleton<IBluetoothPairingService, BluetoothPairingService>();
 
+		// Temporary diagnostic, not part of the pairing flow itself - see its own doc comment.
+		// Remove once the "Can't connect" OS dialog investigation is concluded.
+		builder.Services.AddSingleton<IBluetoothProfileDiagnostics, BluetoothProfileDiagnostics>();
+
 		// Single instance backs all four interfaces: configuring the printer, restarting it,
 		// factory-resetting it, and reading its configuration back all happen over the same kind of
 		// Bluetooth connection.

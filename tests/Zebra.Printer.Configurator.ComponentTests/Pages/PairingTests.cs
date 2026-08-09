@@ -25,6 +25,7 @@ public class PairingTests : BunitContext
     private readonly IPrinterVersionCheckService _versionCheckService = Substitute.For<IPrinterVersionCheckService>();
     private readonly IFirmwareUpdateLauncher _firmwareUpdateLauncher = Substitute.For<IFirmwareUpdateLauncher>();
     private readonly FirmwareUpdateStatusMonitor _updateStatusMonitor = new();
+    private readonly IBluetoothProfileDiagnostics _profileDiagnostics = Substitute.For<IBluetoothProfileDiagnostics>();
 
     public PairingTests()
     {
@@ -39,6 +40,7 @@ public class PairingTests : BunitContext
         Services.AddSingleton(_versionCheckService);
         Services.AddSingleton(_firmwareUpdateLauncher);
         Services.AddSingleton(_updateStatusMonitor);
+        Services.AddSingleton(_profileDiagnostics);
         Services.AddSingleton(new PairingSession());
 
         // Unconfigured, this NSubstitute mock resolves ReadConfigurationAsync's Task with a null
