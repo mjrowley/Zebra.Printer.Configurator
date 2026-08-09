@@ -19,7 +19,16 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// </summary>
 public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoothPermissionService, IAppLog appLog) : IBluetoothPairingService
 {
-    private static readonly TimeSpan PairingTimeout = TimeSpan.FromSeconds(30);
+    // Widened from 30s: confirmed on-device that the OS-level bond can still be genuinely in
+    // progress past 30s (plausibly slower right after a factory reset, since the printer's
+    // Bluetooth module has to redo the full SSP handshake from a clean state) - when the old
+    // timeout fired first, this method gave up and unregistered its broadcast receivers, so the
+    // later "Bonded" broadcast arrived with nothing listening: the user accepted the correct
+    // passkey (confirmed by a matching label printing on the printer), the app logged "Bluetooth
+    // pairing failed or timed out." and Android surfaced its own "Can't connect" dialog, yet a
+    // retry immediately afterward reported "already paired" - the bond had actually completed in
+    // the background, just after this method had already stopped watching for it.
+    private static readonly TimeSpan PairingTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan UnbondTimeout = TimeSpan.FromSeconds(10);
 
     public event EventHandler<PairingCodeRequestedEventArgs>? PairingCodeRequested;

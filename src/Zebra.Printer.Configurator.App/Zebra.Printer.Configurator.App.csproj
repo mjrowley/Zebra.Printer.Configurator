@@ -29,8 +29,8 @@
         <!-- Versions: bump ApplicationVersion (the build number) on every release so an on-device
              report of "the latest release" can be pinned to an exact build via the version label
              shown in the UI, rather than inferred from when the user last updated. -->
-        <ApplicationDisplayVersion>1.32</ApplicationDisplayVersion>
-        <ApplicationVersion>34</ApplicationVersion>
+        <ApplicationDisplayVersion>1.33</ApplicationDisplayVersion>
+        <ApplicationVersion>35</ApplicationVersion>
 
         <!-- To develop, package, and publish an app to the Microsoft Store, see: https://aka.ms/MauiTemplateUnpackaged -->
         <WindowsPackageType>None</WindowsPackageType>
