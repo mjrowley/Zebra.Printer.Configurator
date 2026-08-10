@@ -3,12 +3,13 @@
    is resolved - either the printer is already up to date/newer, a firmware update completes, or the
    user explicitly Skips (unsupported model) or Cancels (returns to waiting for a different tap).
 
-   NeedsUpdate only blocks when an update is actually possible right now (WiFi reachable) - a
-   never-configured printer has no WiFi yet, and "Configure Printer" is exactly what gives it one, so
-   refusing to let that proceed here would deadlock: Configure blocked pending an update that itself
-   requires WiFi Configure hasn't set up yet. When WiFi isn't available the alert still shows (so the
-   need is visible) but doesn't block - callers are expected to re-render this component once WiFi
-   might exist (e.g. Result.razor, after a successful configuration) to actually enforce/offer it.
+   A firmware update can only ever be performed over WiFi (FirmwareUpdateLauncher needs a reachable
+   IP), so the check itself doesn't even run until that's available - there's no point telling the
+   user about an update they can't act on yet, and a never-configured printer has no WiFi at all when
+   this first renders on Pairing.razor ("Configure Printer" is exactly what gives it one). Nothing
+   renders and Configure isn't blocked in that case; callers are expected to re-render this component
+   once WiFi might exist (e.g. Result.razor, after a successful configuration) so the check actually
+   runs and can offer/enforce the update then.
 
    The actual transfer runs in FirmwareUpdateForegroundService (Android), not an inline awaited call
    here - a plain awaited Task tied to this component's lifecycle would be abandoned if the user
@@ -162,6 +163,17 @@ else if (_result is not null)
             _loading = false;
             _updating = true;
             _updateProgress = UpdateStatus.Progress;
+            await NotifyBlockingChanged();
+            return;
+        }
+
+        if (!CanUpdateFirmware)
+        {
+            // A firmware update can only ever be performed over WiFi - no point running a Bluetooth
+            // version check (or showing anything) for a result the user couldn't act on yet anyway.
+            // See this component's own doc comment for the never-configured-printer/deadlock case
+            // this most commonly applies to.
+            _loading = false;
             await NotifyBlockingChanged();
             return;
         }

@@ -54,9 +54,11 @@ public class PrinterVersionAlertTests : BunitContext
     {
         _versionCheckService.CheckAsync(Device, Arg.Any<CancellationToken>())
             .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.UpToDate, Bundle = Bundle });
+        _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
         var blockingValues = new List<bool>();
         var cut = Render<PrinterVersionAlert>(p => p
             .Add(c => c.Device, Device)
+            .Add(c => c.WifiIpAddress, "192.168.1.50")
             .Add(c => c.BlockingChanged, EventCallback.Factory.Create<bool>(this, b => blockingValues.Add(b))));
 
         cut.WaitForAssertion(() => Assert.Contains(false, blockingValues));
@@ -77,9 +79,11 @@ public class PrinterVersionAlertTests : BunitContext
                 LinkOsVersionFound = "7.7.0",
                 FirmwareVersionFound = "V93.22.01Z",
             });
+        _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
         var blockingValues = new List<bool>();
         var cut = Render<PrinterVersionAlert>(p => p
             .Add(c => c.Device, Device)
+            .Add(c => c.WifiIpAddress, "192.168.1.50")
             .Add(c => c.BlockingChanged, EventCallback.Factory.Create<bool>(this, b => blockingValues.Add(b))));
 
         cut.WaitForAssertion(() =>
@@ -122,32 +126,22 @@ public class PrinterVersionAlertTests : BunitContext
     }
 
     [Fact]
-    public void NeedsUpdate_WhenWifiNotConnected_UpdateFirmwareButtonIsDisabled()
-    {
-        _versionCheckService.CheckAsync(Device, Arg.Any<CancellationToken>())
-            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, Bundle = Bundle, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
-        var cut = RenderAlert(wifiIpAddress: null, wifiConnected: false);
-
-        cut.WaitForAssertion(() => Assert.True(cut.Find("[data-testid='update-firmware-button']").HasAttribute("disabled")));
-    }
-
-    [Fact]
-    public void NeedsUpdate_WhenWifiNotAvailable_ShowsMessageButDoesNotBlock()
+    public void WhenWifiNotAvailable_SkipsVersionCheck_ShowsNothing_AndDoesNotBlock()
     {
         // A never-configured printer has no WiFi yet, and "Configure Printer" is exactly what gives
-        // it one - blocking here would deadlock (Configure blocked pending an update that itself
-        // requires WiFi Configure hasn't set up yet). The alert still shows, and Result.razor
-        // re-surfaces this same check once the printer actually has WiFi.
-        _versionCheckService.CheckAsync(Device, Arg.Any<CancellationToken>())
-            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, Bundle = Bundle, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
+        // it one - a firmware update can only ever be performed over WiFi, so there's no point running
+        // the check (regardless of what outcome it would report) for something the user couldn't act
+        // on yet anyway. Result.razor re-renders this component once the printer actually has WiFi,
+        // which is when the check (and any update offer) actually happens.
         var blockingValues = new List<bool>();
         var cut = Render<PrinterVersionAlert>(p => p
             .Add(c => c.Device, Device)
             .Add(c => c.BlockingChanged, EventCallback.Factory.Create<bool>(this, b => blockingValues.Add(b))));
 
-        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='version-check-needs-update']")));
-        Assert.DoesNotContain(true, blockingValues);
-        Assert.True(cut.Find("[data-testid='update-firmware-button']").HasAttribute("disabled"));
+        cut.WaitForAssertion(() => Assert.DoesNotContain(true, blockingValues));
+        _ = _versionCheckService.DidNotReceive().CheckAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>());
+        Assert.Empty(cut.FindAll("[data-testid='version-check-needs-update']"));
+        Assert.Empty(cut.FindAll("[data-testid='update-firmware-button']"));
     }
 
     [Fact]
@@ -169,12 +163,12 @@ public class PrinterVersionAlertTests : BunitContext
                 new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.UpToDate, Bundle = Bundle, LinkOsVersionFound = "7.6.2", FirmwareVersionFound = "V93.21.49Z" });
         _firmwareUpdateLauncher.StartAsync(Device, Bundle, "192.168.1.50", Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
+        _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
         var blockingValues = new List<bool>();
         var cut = Render<PrinterVersionAlert>(p => p
             .Add(c => c.Device, Device)
             .Add(c => c.WifiIpAddress, "192.168.1.50")
             .Add(c => c.BlockingChanged, EventCallback.Factory.Create<bool>(this, b => blockingValues.Add(b))));
-        _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
         cut.WaitForAssertion(() => Assert.False(cut.Find("[data-testid='update-firmware-button']").HasAttribute("disabled")));
 
         cut.Find("[data-testid='update-firmware-button']").Click();
@@ -249,9 +243,11 @@ public class PrinterVersionAlertTests : BunitContext
     {
         _versionCheckService.CheckAsync(Device, Arg.Any<CancellationToken>())
             .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.Unsupported });
+        _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
         var blockingValues = new List<bool>();
         var cut = Render<PrinterVersionAlert>(p => p
             .Add(c => c.Device, Device)
+            .Add(c => c.WifiIpAddress, "192.168.1.50")
             .Add(c => c.BlockingChanged, EventCallback.Factory.Create<bool>(this, b => blockingValues.Add(b))));
 
         cut.WaitForAssertion(() =>
@@ -269,9 +265,11 @@ public class PrinterVersionAlertTests : BunitContext
     {
         _versionCheckService.CheckAsync(Device, Arg.Any<CancellationToken>())
             .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.Unsupported });
+        _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
         var blockingValues = new List<bool>();
         var cut = Render<PrinterVersionAlert>(p => p
             .Add(c => c.Device, Device)
+            .Add(c => c.WifiIpAddress, "192.168.1.50")
             .Add(c => c.BlockingChanged, EventCallback.Factory.Create<bool>(this, b => blockingValues.Add(b))));
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='version-check-skip']")));
 
@@ -286,9 +284,11 @@ public class PrinterVersionAlertTests : BunitContext
     {
         _versionCheckService.CheckAsync(Device, Arg.Any<CancellationToken>())
             .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.Unsupported });
+        _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
         var cancelled = false;
         var cut = Render<PrinterVersionAlert>(p => p
             .Add(c => c.Device, Device)
+            .Add(c => c.WifiIpAddress, "192.168.1.50")
             .Add(c => c.OnCancelled, EventCallback.Factory.Create(this, () => cancelled = true)));
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='version-check-cancel']")));
 

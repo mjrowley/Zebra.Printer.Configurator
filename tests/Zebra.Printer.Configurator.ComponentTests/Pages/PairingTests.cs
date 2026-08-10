@@ -424,10 +424,16 @@ public class PairingTests : BunitContext
     [Fact]
     public void WhenVersionCheckIsUnsupported_ConfigurePrinterButtonIsDisabled_UntilSkipped()
     {
+        // The version check only runs once WiFi is available (a firmware update can only ever happen
+        // over WiFi, so there's no point checking before then) - simulates a re-tap of a printer
+        // that's already configured and reachable, not a fresh/never-configured one.
+        using var listener = StartLoopbackListener(out var port);
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        _configurationReader.ReadConfigurationAsync(device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns([new PrinterConfigurationValue("wlan.ip.addr", "127.0.0.1")]);
         _versionCheckService.CheckAsync(device, Arg.Any<CancellationToken>())
             .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.Unsupported });
-        var cut = RenderWithReadyPrinter(device);
+        var cut = RenderWithReadyPrinter(device, wifiProbePort: port);
         cut.WaitForAssertion(() => Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled")));
 
         cut.Find("[data-testid='version-check-skip']").Click();
@@ -438,10 +444,13 @@ public class PairingTests : BunitContext
     [Fact]
     public void WhenVersionCheckIsUnsupported_ClickingCancel_ReturnsToWaitingForTap()
     {
+        using var listener = StartLoopbackListener(out var port);
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        _configurationReader.ReadConfigurationAsync(device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns([new PrinterConfigurationValue("wlan.ip.addr", "127.0.0.1")]);
         _versionCheckService.CheckAsync(device, Arg.Any<CancellationToken>())
             .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.Unsupported });
-        var cut = RenderWithReadyPrinter(device);
+        var cut = RenderWithReadyPrinter(device, wifiProbePort: port);
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='version-check-cancel']")));
 
         cut.Find("[data-testid='version-check-cancel']").Click();
