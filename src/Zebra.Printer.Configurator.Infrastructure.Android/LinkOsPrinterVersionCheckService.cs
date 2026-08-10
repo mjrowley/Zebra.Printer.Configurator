@@ -26,9 +26,19 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// only returns a two-part "major.minor" string (e.g. "7.6"). "_full" was originally assumed to
 /// always return the complete three-part version, but a printer running 7.5.0 confirmed even "_full"
 /// can report just "7.5" - see LinkOsVersion.TryParse, which accepts either form.
+///
+/// device.product_name is read with a short retry rather than accepted blank on the first try -
+/// confirmed on-device that the automatic re-check right after a firmware update (triggered the
+/// instant FirmwareUpdateForegroundService reports success, itself only once the SDK's own
+/// UpdateFirmwareUnconditionally has confirmed the printer reconnected) can hit the printer in a
+/// narrow window where its SGD command-processing subsystem hasn't finished initializing after the
+/// reboot yet, even though the same query succeeds moments later when checked manually.
 /// </summary>
 public sealed class LinkOsPrinterVersionCheckService(IPrinterConnectionModeProvider connectionModeProvider, IAppLog appLog) : IPrinterVersionCheckService
 {
+    private const int MaxProductNameAttempts = 3;
+    private static readonly TimeSpan ProductNameRetryDelay = TimeSpan.FromSeconds(2);
+
     public async Task<PrinterVersionCheckResult> CheckAsync(PrinterDevice device, CancellationToken cancellationToken = default)
     {
         appLog.Log("Checking printer firmware version...");
@@ -43,7 +53,7 @@ public sealed class LinkOsPrinterVersionCheckService(IPrinterConnectionModeProvi
         // never reachable anyway, so disabling it here has no effect on that path.
         var result = await PrinterConnectionRunner.RunAsync(device, connectionModeProvider, connection =>
         {
-            var productName = SGD.GET("device.product_name", connection);
+            var productName = GetProductNameWithRetry(connection);
             var bundle = FirmwareBundleCatalog.FindByProductName(productName);
             if (bundle is null)
             {
@@ -64,6 +74,21 @@ public sealed class LinkOsPrinterVersionCheckService(IPrinterConnectionModeProvi
 
         LogOutcome(result);
         return result;
+    }
+
+    // Runs on a background thread already (this connection's whole delegate runs inside
+    // PrinterConnectionRunner's own Task.Run), so a blocking Thread.Sleep between attempts is fine.
+    private string? GetProductNameWithRetry(Connection connection)
+    {
+        var productName = SGD.GET("device.product_name", connection);
+        for (var attempt = 2; attempt <= MaxProductNameAttempts && string.IsNullOrWhiteSpace(productName); attempt++)
+        {
+            appLog.Log($"Printer did not report a model name (attempt {attempt} of {MaxProductNameAttempts}) - it may still be finishing its post-firmware-update reboot. Retrying...", LogLevel.Warning);
+            Thread.Sleep(ProductNameRetryDelay);
+            productName = SGD.GET("device.product_name", connection);
+        }
+
+        return productName;
     }
 
     private void LogOutcome(PrinterVersionCheckResult result)
