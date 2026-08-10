@@ -13,10 +13,20 @@ public class LinkOsVersionTests
         Assert.Equal(new LinkOsVersion(7, 6, 2), version);
     }
 
+    [Fact]
+    public void TryParse_ParsesMajorMinorWithMicroDefaultingToZero()
+    {
+        // Confirmed on-device: appl.link_os_version_full doesn't always include the micro component -
+        // a printer running 7.5.0 reported plain "7.5".
+        var parsed = LinkOsVersion.TryParse("7.5", out var version);
+
+        Assert.True(parsed);
+        Assert.Equal(new LinkOsVersion(7, 5, 0), version);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
-    [InlineData("7.6")]
     [InlineData("7.6.2.1")]
     [InlineData("V7.6.2")]
     [InlineData("not a version")]

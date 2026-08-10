@@ -23,9 +23,9 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// reported a stale Link-OS version (7.6.0) after a firmware update that Zebra Setup Utilities
 /// (reading the printer directly) confirmed had actually landed at 7.6.2. Deliberately "_full", not
 /// plain "appl.link_os_version" - confirmed via Zebra Setup Utilities on-device that the plain key
-/// only returns a two-part "major.minor" string (e.g. "7.6"), which fails LinkOsVersion.TryParse's
-/// major.minor.micro format and was silently surfacing as PrinterVersionOutcome.Unsupported instead
-/// of a real comparison; "_full" returns the complete three-part version (e.g. "7.6.2").
+/// only returns a two-part "major.minor" string (e.g. "7.6"). "_full" was originally assumed to
+/// always return the complete three-part version, but a printer running 7.5.0 confirmed even "_full"
+/// can report just "7.5" - see LinkOsVersion.TryParse, which accepts either form.
 /// </summary>
 public sealed class LinkOsPrinterVersionCheckService(IPrinterConnectionModeProvider connectionModeProvider, IAppLog appLog) : IPrinterVersionCheckService
 {
