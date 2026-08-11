@@ -6,9 +6,14 @@
     <title>Zebra.Printer.Configurator.App</title>
     <base href="/" />
     <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="lib/material-web/theme.css" />
     <link rel="stylesheet" href="app.css" />
     <link rel="stylesheet" href="Zebra.Printer.Configurator.App.styles.css" />
     <link rel="icon" href="data:,">
+    <!-- Registers every <md-*> custom element (Google's Material Web Components) for use in .razor
+         markup going forward - see lib/material-web/all.bundle.js's own header comment for what this
+         is and lib/material-web/theme.css for the brand-color token overrides. -->
+    <script type="module" src="lib/material-web/all.bundle.js"></script>
 </head>
 
 <body>

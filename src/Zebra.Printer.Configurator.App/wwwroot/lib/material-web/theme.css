@@ -1,0 +1,23 @@
+/*
+ * Brand-color overrides for @material/web's Material 3 color tokens (--md-sys-color-*).
+ *
+ * Every <md-*> component already has Material's own baseline color scheme built in as a CSS fallback
+ * (e.g. internally: var(--md-sys-color-primary, #6750a4)) - components render correctly with zero
+ * setup. Only the primary-related tokens are overridden here, with this app's existing brand blue
+ * (#146C94, already used as .btn-primary's color before the @material/web migration started) rather
+ * than Material's default purple. Every other token (surface, error, outline, ...) is deliberately
+ * left at Material's baseline default.
+ *
+ * IMPORTANT: these primary-container/on-primary-container values are a hand-picked approximation,
+ * not a true Material 3 tonal palette. A real M3 theme derives every related tone (container,
+ * on-container, fixed, fixed-dim, ...) from one seed color via the HCT color space (Material Theme
+ * Builder, or the @material/material-color-utilities package) - that generation step needs real JS
+ * tooling (Node/npm) this project doesn't have. Regenerate this file properly once that tooling (or
+ * access to Material Theme Builder) is available, rather than hand-picking further token values here.
+ */
+:root {
+    --md-sys-color-primary: #146c94;
+    --md-sys-color-on-primary: #ffffff;
+    --md-sys-color-primary-container: #cfe8f3;
+    --md-sys-color-on-primary-container: #002f3e;
+}
