@@ -1,0 +1,30 @@
+/* .active/.done are applied by StepClass() in Progress.razor.cs but had no styling anywhere in the
+   repo before this - .active only got Bootstrap's own default list-group-item.active look, and .done
+   had none at all. */
+
+.list-group {
+    border-radius: var(--radius-card, 14px);
+    overflow: hidden;
+}
+
+.list-group-item {
+    border-color: var(--color-border, #e5e5ea);
+    color: var(--color-text-secondary, #6b6b70);
+}
+
+.list-group-item.active {
+    background: var(--color-primary, #1c75bc);
+    border-color: var(--color-primary, #1c75bc);
+    color: #fff;
+    font-weight: 600;
+}
+
+.list-group-item.done {
+    color: var(--color-text, #1c1c1e);
+}
+
+.list-group-item.done::before {
+    content: "\2713 ";
+    color: var(--color-primary, #1c75bc);
+    font-weight: 700;
+}

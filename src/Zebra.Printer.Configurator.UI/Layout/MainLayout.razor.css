@@ -10,9 +10,9 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.5rem 0.75rem;
-    border-bottom: 2px solid #444;
-    background: #1e1e1e;
-    color: #fff;
+    border-bottom: 1px solid var(--color-border, #e5e5ea);
+    background: var(--color-surface, #fff);
+    color: var(--color-text, #1c1c1e);
 }
 
 .app-name {
@@ -26,7 +26,7 @@
 
 .app-version {
     font-size: 0.75rem;
-    color: #999;
+    color: var(--color-text-secondary, #6b6b70);
     flex-shrink: 0;
 }
 
@@ -55,8 +55,8 @@
     z-index: 2;
     margin: -1rem -1rem 1rem;
     padding: 1rem 1rem 0.75rem;
-    background: var(--bs-body-bg, #fff);
-    border-bottom: 1px solid #ddd;
+    background: var(--color-bg, #f2f2f7);
+    border-bottom: 1px solid var(--color-border, #e5e5ea);
 }
 
 /* A cluster of action buttons (Configure Printer, Factory Reset, Check Configuration, Connect via
@@ -87,10 +87,12 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    border-top: 2px solid #444;
-    background: #1e1e1e;
+    background: #0a0a0a;
     color: #ddd;
     padding: 0.5rem 1rem 0.75rem;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1;
 }
 
 .log-panel h2 {

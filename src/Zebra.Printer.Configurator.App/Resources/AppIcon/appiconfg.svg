@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- Printer + WiFi glyph: a network printer being configured, this app's whole purpose. All shapes
-     stay within the adaptive-icon safe zone (roughly x:90-366, y:90-366 of the 456x456 canvas) so
-     nothing is clipped by the circular/rounded-square masks Android applies at runtime. -->
+<!-- Printer + WiFi + "Z" glyph: a network printer being configured, this app's whole purpose, with a
+     stylized Z on its printed label echoing the Zebra brand mark. Flat, single-tone shapes only - no
+     gradients/bevels/glow - and everything stays within the adaptive-icon safe zone (roughly
+     x:90-366, y:90-366 of the 456x456 canvas) so nothing is clipped by the circular/rounded-square
+     masks Android applies at runtime. -->
 <svg width="456" height="456" viewBox="0 0 456 456" version="1.1" xmlns="http://www.w3.org/2000/svg">
     <circle cx="228" cy="183" r="9" fill="#ffffff" />
     <path d="M 196 183 A 32 32 0 0 1 260 183" stroke="#ffffff" stroke-width="13" fill="none" stroke-linecap="round" />
@@ -9,4 +11,5 @@
     <rect x="183" y="198" width="90" height="26" rx="4" fill="#ffffff" />
     <rect x="138" y="220" width="180" height="92" rx="14" fill="#ffffff" />
     <rect x="158" y="312" width="140" height="46" rx="6" fill="#ffffff" />
+    <path d="M 172 324 L 284 324 L 172 346 L 284 346" stroke="#146C94" stroke-width="12" fill="none" stroke-linecap="round" stroke-linejoin="round" />
 </svg>

@@ -11,17 +11,15 @@
 
 @if (State.Values is not null)
 {
-    <table class="table table-sm" data-testid="check-configuration-results">
-        <tbody>
-            @foreach (var value in State.Values)
-            {
-                <tr>
-                    <td>@value.Key</td>
-                    <td>@value.Value</td>
-                </tr>
-            }
-        </tbody>
-    </table>
+    <div class="config-list" data-testid="check-configuration-results">
+        @foreach (var value in State.Values)
+        {
+            <div class="config-list-row">
+                <span>@value.Key</span>
+                <span class="config-list-value">@value.Value</span>
+            </div>
+        }
+    </div>
 }
 
 @code {
