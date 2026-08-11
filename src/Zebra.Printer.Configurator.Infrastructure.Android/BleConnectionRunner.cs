@@ -41,7 +41,11 @@ internal static class BleConnectionRunner
         }
         finally
         {
-            connection.Close();
+            // See PrinterConnectionRunner.RunAsync's own comment - a plain synchronous Close() here
+            // runs on the UI thread's SynchronizationContext (confirmed on-device: it stalled the
+            // main thread for several seconds, per Android's own Choreographer/HWUI frame-skip logs),
+            // not a background thread, despite Open()/func() above both running on one.
+            await Task.Run(connection.Close);
         }
     }
 

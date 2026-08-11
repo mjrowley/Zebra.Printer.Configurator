@@ -47,7 +47,14 @@ internal static class PrinterConnectionRunner
         }
         finally
         {
-            connection.Close();
+            // Confirmed on-device (adb logcat): a finally block resumes on whatever context the
+            // preceding await captured, which for a Blazor-component-initiated call is the UI
+            // thread's SynchronizationContext - a plain synchronous Close() here ran ON the UI
+            // thread and blocked it for several seconds (Android's own Choreographer logged
+            // "Skipped 601 frames!" and a 5020ms "Davey!" at the exact same moment), stalling the
+            // whole page including CSS animations like the spinner. Task.Run puts it back on a
+            // background thread, matching where Open()/func() already ran.
+            await Task.Run(connection.Close);
         }
     }
 

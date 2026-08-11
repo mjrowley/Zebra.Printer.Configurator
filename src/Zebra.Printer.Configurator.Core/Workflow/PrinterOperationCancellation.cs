@@ -23,7 +23,19 @@ public sealed class PrinterOperationCancellation
     public void Cancel()
     {
         _cts.Cancel();
-        _closeActiveConnection?.Invoke();
+
+        // Fire-and-forget deliberately, not awaited - Cancel() itself is synchronous (called
+        // directly from a Blazor UI-thread event handler, CancelWorkflowButton.ConfirmCancel), and a
+        // plain synchronous Invoke() here would run Connection.Close() on that same UI thread.
+        // Confirmed on-device (adb logcat) that Close() alone can block for several seconds - Android
+        // logged "Skipped 601 frames!" and a 5020ms "Davey!" the one time this was measured - so
+        // running it inline here would freeze the UI for that whole duration instead of just
+        // interrupting the stuck background read/write it's meant to.
+        var closeActiveConnection = _closeActiveConnection;
+        if (closeActiveConnection is not null)
+        {
+            _ = Task.Run(closeActiveConnection);
+        }
     }
 
     /// <summary>
