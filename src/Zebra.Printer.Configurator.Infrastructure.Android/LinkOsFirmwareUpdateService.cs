@@ -61,7 +61,7 @@ public sealed class LinkOsFirmwareUpdateService(IAppLog appLog) : IPrinterFirmwa
         try
         {
             appLog.Log($"Preparing firmware file ({bundle.ExpectedFirmwareVersion})...");
-            var firmwareFilePath = await FirmwareAssetProvider.GetLocalFilePathAsync(bundle.FirmwareAssetLogicalPath, cancellationToken);
+            var firmwareFilePath = await BundledAssetProvider.GetLocalFilePathAsync(bundle.FirmwareAssetLogicalPath, cancellationToken);
 
             appLog.Log($"Sending firmware update to printer at {ipAddress}...");
             cancellationToken.ThrowIfCancellationRequested();

@@ -25,6 +25,7 @@ public class PairingTests : BunitContext
     private readonly IPrinterVersionCheckService _versionCheckService = Substitute.For<IPrinterVersionCheckService>();
     private readonly IFirmwareUpdateLauncher _firmwareUpdateLauncher = Substitute.For<IFirmwareUpdateLauncher>();
     private readonly FirmwareUpdateStatusMonitor _updateStatusMonitor = new();
+    private readonly IBagTagTemplateService _templateService = Substitute.For<IBagTagTemplateService>();
 
     public PairingTests()
     {
@@ -39,7 +40,13 @@ public class PairingTests : BunitContext
         Services.AddSingleton(_versionCheckService);
         Services.AddSingleton(_firmwareUpdateLauncher);
         Services.AddSingleton(_updateStatusMonitor);
+        Services.AddSingleton(_templateService);
         Services.AddSingleton(new PairingSession());
+
+        // Defaults to "nothing already on the printer" - most tests here don't care about the bag
+        // tag templates panel at all, so this keeps them unaffected unless a specific test overrides it.
+        _templateService.GetExistingTemplateFileNamesAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<string>());
 
         // Unconfigured, this NSubstitute mock resolves ReadConfigurationAsync's Task with a null
         // result by default, which the automatic post-pairing WiFi check would then throw on when

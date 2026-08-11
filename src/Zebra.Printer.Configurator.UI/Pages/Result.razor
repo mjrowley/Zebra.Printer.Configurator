@@ -19,7 +19,7 @@
                check/update offer here, since Pairing.razor's earlier check may have let a NeedsUpdate
                result through unblocked if WiFi wasn't available yet at that point. *@
             <PrinterVersionAlert Device="Session.Device!" WifiIpAddress="@Session.Configuration?.StaticIpAddress" OnCancelled="Retry" />
-            <button type="button" class="btn btn-primary" data-testid="reconfigure-button" disabled="@(_factoryResetActive || _checkingNetwork)" @onclick="Reconfigure">
+            <button type="button" class="btn btn-primary" data-testid="reconfigure-button" disabled="@(_factoryResetActive || _templatesActive || _checkingNetwork)" @onclick="Reconfigure">
                 @if (_checkingNetwork)
                 {
                     <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
@@ -27,7 +27,8 @@
                 Reconfigure Printer
             </button>
             <FactoryResetPanel Device="Session.Device!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
-            <CheckConfigurationButton Device="Session.Device!" State="_checkConfigState" Disabled="_factoryResetActive" />
+            <CheckConfigurationButton Device="Session.Device!" State="_checkConfigState" Disabled="@(_factoryResetActive || _templatesActive)" />
+            <BagTagTemplatesPanel Device="Session.Device!" IsActiveChanged="OnTemplatesActiveChanged" />
         </div>
     }
     else
@@ -53,6 +54,7 @@
     public int WifiProbePort { get; set; } = DefaultWifiProbePort;
 
     private bool _factoryResetActive;
+    private bool _templatesActive;
     private bool _checkingNetwork;
     private CheckConfigurationState _checkConfigState = new();
 
@@ -71,7 +73,7 @@
     // deliberately skips this: a never-configured printer has no WiFi yet, so there's no IP to probe.
     private async Task Reconfigure()
     {
-        if (_factoryResetActive || _checkingNetwork)
+        if (_factoryResetActive || _templatesActive || _checkingNetwork)
         {
             return;
         }
@@ -101,6 +103,8 @@
     }
 
     private void OnFactoryResetActiveChanged(bool active) => _factoryResetActive = active;
+
+    private void OnTemplatesActiveChanged(bool active) => _templatesActive = active;
 
     private void Retry()
     {

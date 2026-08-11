@@ -56,6 +56,7 @@ public static class MauiProgram
 		builder.Services.AddSingleton<IPrinterFirmwareUpdateService, LinkOsFirmwareUpdateService>();
 		builder.Services.AddSingleton<FirmwareUpdateStatusMonitor>();
 		builder.Services.AddSingleton<IFirmwareUpdateLauncher, FirmwareUpdateLauncher>();
+		builder.Services.AddSingleton<IBagTagTemplateService, LinkOsBagTagTemplateService>();
 
 		// All three singletons: single-window app, one pairing attempt in flight at a time.
 		builder.Services.AddSingleton<PairingSession>();

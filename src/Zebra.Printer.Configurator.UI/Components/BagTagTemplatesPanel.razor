@@ -1,0 +1,138 @@
+@* Self-contained "push bag tag templates" button + existence-check + confirm-overwrite + deploy flow
+   for a paired printer, shared between Pairing (right after tap-pairing) and Result (after a
+   successful configuration). These are small (<2KB each) bundled ZPL format templates that work fine
+   over whichever transport is currently active (Bluetooth or WiFi), unlike the firmware update which
+   specifically requires WiFi - see LinkOsBagTagTemplateService's own doc comment.
+
+   The button stays visible and re-usable (like CheckConfigurationButton) rather than being replaced
+   by a terminal state the user has to dismiss (like FactoryResetPanel) - deploying templates isn't
+   destructive or one-shot, so there's no reason to block pressing it again. *@
+@inject IBagTagTemplateService TemplateService
+
+<div>
+    <button type="button" class="btn btn-outline-secondary" data-testid="deploy-templates-button"
+            disabled="@(_state is State.Checking or State.Deploying)" @onclick="StartDeploy">
+        @if (_state is State.Checking or State.Deploying)
+        {
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        }
+        Push Bag Tag Templates
+    </button>
+
+    @if (_state == State.Checking)
+    {
+        <p data-testid="deploy-templates-checking">Checking printer for existing templates&hellip;</p>
+    }
+    else if (_state == State.Deploying)
+    {
+        <p data-testid="deploy-templates-progress">Sending bag tag templates to printer&hellip;</p>
+    }
+    else if (_state == State.Complete)
+    {
+        <p class="text-success" data-testid="deploy-templates-complete">Bag tag templates sent to the printer.</p>
+    }
+    else if (_state == State.Failed)
+    {
+        <p class="text-danger" data-testid="deploy-templates-error">@_errorMessage</p>
+    }
+
+    @if (_state == State.Confirming)
+    {
+        <div class="bag-tag-templates-modal-backdrop" data-testid="deploy-templates-confirm-dialog">
+            <div class="bag-tag-templates-modal-box" role="alertdialog">
+                <p data-testid="deploy-templates-confirm-message">
+                    The following template(s) already exist on the printer and will be overwritten:
+                    @string.Join(", ", _existingFileNames). Continue?
+                </p>
+                <div class="bag-tag-templates-modal-actions">
+                    <button type="button" class="btn btn-danger" data-testid="deploy-templates-confirm" @onclick="Deploy">Overwrite</button>
+                    <button type="button" class="btn btn-secondary" data-testid="deploy-templates-cancel" @onclick="Cancel">Cancel</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private enum State
+    {
+        Idle,
+        Checking,
+        Confirming,
+        Deploying,
+        Complete,
+        Failed,
+    }
+
+    [Parameter, EditorRequired]
+    public PrinterDevice Device { get; set; } = null!;
+
+    /// <summary>
+    /// Raised whenever this panel starts (true) or stops (false) using the printer's Bluetooth/WiFi
+    /// connection, so a host page can disable other actions that would race it - the same reason
+    /// FactoryResetPanel raises this.
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> IsActiveChanged { get; set; }
+
+    private State _state = State.Idle;
+    private IReadOnlyList<string> _existingFileNames = [];
+    private string? _errorMessage;
+
+    private async Task StartDeploy()
+    {
+        _errorMessage = null;
+        await SetState(State.Checking);
+
+        try
+        {
+            _existingFileNames = await TemplateService.GetExistingTemplateFileNamesAsync(Device);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Could not check for existing templates: {ex.Message}";
+            await SetState(State.Failed);
+            return;
+        }
+
+        if (_existingFileNames.Count > 0)
+        {
+            await SetState(State.Confirming);
+            return;
+        }
+
+        await Deploy();
+    }
+
+    private async Task Deploy()
+    {
+        await SetState(State.Deploying);
+
+        try
+        {
+            await TemplateService.DeployTemplatesAsync(Device);
+            await SetState(State.Complete);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Could not send bag tag templates: {ex.Message}";
+            await SetState(State.Failed);
+        }
+    }
+
+    private Task Cancel() => SetState(State.Idle);
+
+    private async Task SetState(State state)
+    {
+        var wasActive = IsActive(_state);
+        _state = state;
+        var isActive = IsActive(_state);
+
+        if (wasActive != isActive)
+        {
+            await IsActiveChanged.InvokeAsync(isActive);
+        }
+    }
+
+    private static bool IsActive(State state) => state is State.Checking or State.Confirming or State.Deploying;
+}

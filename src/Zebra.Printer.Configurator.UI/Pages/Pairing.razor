@@ -35,9 +35,10 @@
             </p>
             <div class="button-row">
                 <PrinterVersionAlert Device="_discoveredDevice!" WifiIpAddress="@_wifiIpAddress" BlockingChanged="OnVersionCheckBlockingChanged" OnCancelled="Retry" />
-                <button type="button" class="btn btn-primary" data-testid="configure-printer-button" disabled="@(_factoryResetActive || _versionCheckBlocking)" @onclick="Continue">Configure Printer</button>
+                <button type="button" class="btn btn-primary" data-testid="configure-printer-button" disabled="@(_factoryResetActive || _templatesActive || _versionCheckBlocking)" @onclick="Continue">Configure Printer</button>
                 <FactoryResetPanel Device="_discoveredDevice!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
-                <CheckConfigurationButton Device="_discoveredDevice!" State="_checkConfigState" Disabled="_factoryResetActive" />
+                <CheckConfigurationButton Device="_discoveredDevice!" State="_checkConfigState" Disabled="@(_factoryResetActive || _templatesActive)" />
+                <BagTagTemplatesPanel Device="_discoveredDevice!" IsActiveChanged="OnTemplatesActiveChanged" />
             </div>
             break;
 
@@ -74,6 +75,7 @@
     private PrinterDevice? _discoveredDevice;
     private string? _errorMessage;
     private bool _factoryResetActive;
+    private bool _templatesActive;
     private bool _versionCheckBlocking;
     private string? _wifiIpAddress;
     private CheckConfigurationState _checkConfigState = new();
@@ -205,6 +207,8 @@
 
     private void OnFactoryResetActiveChanged(bool active) => _factoryResetActive = active;
 
+    private void OnTemplatesActiveChanged(bool active) => _templatesActive = active;
+
     private void OnVersionCheckBlockingChanged(bool blocking) => _versionCheckBlocking = blocking;
 
     private void Retry()
@@ -212,6 +216,7 @@
         _discoveredDevice = null;
         _errorMessage = null;
         _factoryResetActive = false;
+        _templatesActive = false;
         _versionCheckBlocking = false;
         _wifiIpAddress = null;
         _checkConfigState = new CheckConfigurationState();

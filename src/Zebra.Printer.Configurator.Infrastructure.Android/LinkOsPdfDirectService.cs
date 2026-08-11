@@ -33,7 +33,7 @@ public sealed class LinkOsPdfDirectService(IAppLog appLog) : IPdfDirectService
 
     public async Task EnsureEnabledAsync(PrinterDevice device, IPrinterConnectionSession session, CancellationToken cancellationToken = default)
     {
-        var localFilePath = await FirmwareAssetProvider.GetLocalFilePathAsync(PdfDirectAssetLogicalPath, cancellationToken);
+        var localFilePath = await BundledAssetProvider.GetLocalFilePathAsync(PdfDirectAssetLogicalPath, cancellationToken);
 
         // Cast is safe - PrinterConnectionSessionFactory is the only production implementation of
         // IPrinterConnectionSession; see PrinterConnectionSession's doc comment for why the public
