@@ -12,9 +12,13 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// <summary>
 /// Sends a bundled firmware file to the printer over WiFi via the Link-OS SDK's own
 /// FirmwareUpdaterLinkOs (reached through ZebraPrinterLinkOs.UpdateFirmwareUnconditionally),
-/// following Zebra's own documented example exactly: a plain TcpConnection on
-/// TcpConnection.DEFAULT_ZPL_TCP_PORT (the raw ZPL/firmware port - distinct from the SGD port 6101
-/// used elsewhere in this app), wrapped with ZebraPrinterFactory.GetLinkOsPrinter.
+/// wrapped with ZebraPrinterFactory.GetLinkOsPrinter.
+///
+/// Uses port 6101 (LinkOsPort below), not TcpConnection.DEFAULT_ZPL_TCP_PORT (9100) - 9100 is the
+/// raw, intermittent-print-job port and was observed on-device throttling a 41MB firmware transfer
+/// to ~10 minutes; 6101 is the same Link-OS/SGD port this app already uses for every other WiFi
+/// transfer (PrinterConnectionRunner.SgdPort, including the 5.9MB PDF Direct virtual device file and
+/// the bag tag templates), which has proven fast and reliable for binary payloads in this app.
 ///
 /// Uses "Unconditionally" deliberately, not the plain UpdateFirmware overload - confirmed on-device
 /// that the plain overload's own version check (which only compares the firmware string) silently
@@ -26,10 +30,18 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// once we've decided to update, the transfer must actually happen, not be silently skipped by a
 /// narrower internal check.
 ///
-/// UpdateFirmwareUnconditionally is a long-running, synchronous, blocking SDK call (up to its own
-/// 10-minute default timeout) that only returns once the printer has finished flashing and
-/// reconnected, so it runs on a background thread via Task.Run, matching how every other blocking
-/// SDK call in this app (BluetoothConnectionRunner, PrinterConnectionRunner) is wrapped.
+/// UpdateFirmwareUnconditionally is a long-running, synchronous, blocking SDK call that only returns
+/// once the printer has finished flashing and reconnected, so it runs on a background thread via
+/// Task.Run, matching how every other blocking SDK call in this app (BluetoothConnectionRunner,
+/// PrinterConnectionRunner) is wrapped. Called with the explicit-timeout overload
+/// (FirmwareUpdateTimeout below) rather than relying on the SDK's own undocumented-for-this-version
+/// default, since the real-world worst case observed on-device (~10 minute transfer alone) leaves
+/// little confidence in an unstated default.
+///
+/// Retries the whole transfer from scratch (not a byte-offset resume - the SDK has no such API, and
+/// on-device testing confirmed the printer safely discards an incomplete/corrupt transfer rather
+/// than committing it) once on failure, to smooth over a transient network blip on a link that spends
+/// several minutes moving 41MB.
 ///
 /// Requires WiFi - the caller passes the printer's already-confirmed-reachable WiFi IP explicitly
 /// (a 41MB Bluetooth Classic transfer would take several minutes, per the earlier decision to
@@ -39,12 +51,17 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// suspend once the screen locks (timeout or power button), stalling or killing the background
 /// thread mid-upload. A partial wake lock keeps the CPU running without also forcing the screen to
 /// stay on, which is all a background network transfer actually needs. Given a timeout of its own
-/// (longer than UpdateFirmwareUnconditionally's own 10-minute default) as a safety net in case the
+/// (longer than FirmwareUpdateTimeout, covering both retry attempts) as a safety net in case the
 /// finally block is somehow never reached, on top of the explicit Release() below.
 /// </summary>
 public sealed class LinkOsFirmwareUpdateService(IAppLog appLog) : IPrinterFirmwareUpdateService
 {
-    private static readonly TimeSpan WakeLockTimeout = TimeSpan.FromMinutes(20);
+    private const int LinkOsPort = 6101;
+    private const int WriteChunkSizeBytes = 65536;
+    private const int MaxAttempts = 2;
+
+    private static readonly TimeSpan FirmwareUpdateTimeout = TimeSpan.FromMinutes(20);
+    private static readonly TimeSpan WakeLockTimeout = TimeSpan.FromMinutes(45);
 
     public async Task UpdateFirmwareAsync(PrinterDevice device, FirmwareBundle bundle, string wifiIpAddress, IProgress<FirmwareUpdateProgress> progress, CancellationToken cancellationToken = default)
     {
@@ -63,25 +80,24 @@ public sealed class LinkOsFirmwareUpdateService(IAppLog appLog) : IPrinterFirmwa
             appLog.Log($"Preparing firmware file ({bundle.ExpectedFirmwareVersion})...");
             var firmwareFilePath = await BundledAssetProvider.GetLocalFilePathAsync(bundle.FirmwareAssetLogicalPath, cancellationToken);
 
-            appLog.Log($"Sending firmware update to printer at {ipAddress}...");
-            cancellationToken.ThrowIfCancellationRequested();
-
-            await Task.Run(() =>
+            for (var attempt = 1; attempt <= MaxAttempts; attempt++)
             {
-                Connection connection = new TcpConnection(ipAddress, TcpConnection.DEFAULT_ZPL_TCP_PORT);
-                connection.Open();
+                cancellationToken.ThrowIfCancellationRequested();
+                appLog.Log(attempt == 1
+                    ? $"Sending firmware update to printer at {ipAddress}..."
+                    : $"Retrying firmware update (attempt {attempt} of {MaxAttempts})...");
+
                 try
                 {
-                    var printer = ZebraPrinterFactory.GetLinkOsPrinter(connection);
-                    printer.UpdateFirmwareUnconditionally(firmwareFilePath, new FirmwareUpdateProgressHandler(progress, appLog));
+                    await Task.Run(() => SendFirmwareOnce(ipAddress, firmwareFilePath, bundle, progress), cancellationToken);
+                    appLog.Log("Firmware update complete.", LogLevel.Success);
+                    return;
                 }
-                finally
+                catch (Exception ex) when (attempt < MaxAttempts)
                 {
-                    connection.Close();
+                    appLog.Log($"Firmware update attempt {attempt} of {MaxAttempts} failed ({ex.Message}) - retrying from the start...", LogLevel.Warning);
                 }
-            }, cancellationToken);
-
-            appLog.Log("Firmware update complete.", LogLevel.Success);
+            }
         }
         finally
         {
@@ -92,8 +108,39 @@ public sealed class LinkOsFirmwareUpdateService(IAppLog appLog) : IPrinterFirmwa
         }
     }
 
-    private sealed class FirmwareUpdateProgressHandler(IProgress<FirmwareUpdateProgress> progress, IAppLog appLog) : FirmwareUpdateHandler
+    private void SendFirmwareOnce(string ipAddress, string firmwareFilePath, FirmwareBundle bundle, IProgress<FirmwareUpdateProgress> progress)
     {
+        var connection = new TcpConnection(ipAddress, LinkOsPort);
+        connection.MaxDataToWrite = WriteChunkSizeBytes;
+        connection.Open();
+        try
+        {
+            var printer = ZebraPrinterFactory.GetLinkOsPrinter(connection);
+            var handler = new FirmwareUpdateProgressHandler(progress, appLog, bundle.ExpectedFirmwareVersion);
+            printer.UpdateFirmwareUnconditionally(firmwareFilePath, (long)FirmwareUpdateTimeout.TotalMilliseconds, handler);
+            handler.EnsureExpectedVersionInstalled();
+        }
+        finally
+        {
+            try
+            {
+                connection.Close();
+            }
+            catch (ConnectionException)
+            {
+                // Expected: the printer intentionally drops the connection immediately after
+                // FirmwareDownloadComplete() fires, to reboot and flash. By this point
+                // UpdateFirmwareUnconditionally has already either succeeded or thrown its own real
+                // exception, so the socket already being gone during this best-effort cleanup isn't
+                // a new failure and must not mask whichever of those already happened.
+            }
+        }
+    }
+
+    private sealed class FirmwareUpdateProgressHandler(IProgress<FirmwareUpdateProgress> progress, IAppLog appLog, string expectedFirmwareVersion) : FirmwareUpdateHandler
+    {
+        private string? _reportedFirmwareVersion;
+
         public override void ProgressUpdate(int bytesWritten, int totalBytes) =>
             progress.Report(new FirmwareUpdateProgress
             {
@@ -104,14 +151,34 @@ public sealed class LinkOsFirmwareUpdateService(IAppLog appLog) : IPrinterFirmwa
 
         public override void FirmwareDownloadComplete()
         {
-            appLog.Log("Firmware download complete - printer is flashing and rebooting...");
+            appLog.Log(
+                "Firmware file received by printer - it is now flashing and rebooting. Keep it powered and on WiFi until this finishes.",
+                LogLevel.Warning);
             progress.Report(new FirmwareUpdateProgress { Stage = FirmwareUpdateStage.AwaitingReboot });
         }
 
         public override void PrinterOnline(ZebraPrinterLinkOs printer, string firmwareVersion)
         {
-            appLog.Log($"Printer back online with firmware version {firmwareVersion}.", LogLevel.Success);
+            _reportedFirmwareVersion = firmwareVersion;
+            var matches = string.Equals(firmwareVersion, expectedFirmwareVersion, StringComparison.OrdinalIgnoreCase);
+            appLog.Log(
+                matches
+                    ? $"Printer back online with firmware version {firmwareVersion}."
+                    : $"Printer reconnected reporting firmware version '{firmwareVersion}', not the expected '{expectedFirmwareVersion}' - the update did not take effect.",
+                matches ? LogLevel.Success : LogLevel.Error);
             progress.Report(new FirmwareUpdateProgress { Stage = FirmwareUpdateStage.Complete });
+        }
+
+        // Called after UpdateFirmwareUnconditionally returns - throws (triggering a retry, or a
+        // reported failure on the last attempt) if the printer never reported PrinterOnline, or came
+        // back reporting a version other than the one this update was supposed to install.
+        public void EnsureExpectedVersionInstalled()
+        {
+            if (!string.Equals(_reportedFirmwareVersion, expectedFirmwareVersion, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"Printer reconnected after the update reporting firmware version '{_reportedFirmwareVersion ?? "<none>"}', not the expected '{expectedFirmwareVersion}'.");
+            }
         }
     }
 }
