@@ -5,6 +5,7 @@
 
 <div class="section-sticky-header">
     <h1>WiFi Configuration</h1>
+    <button type="button" class="btn btn-outline-secondary btn-sm" data-testid="configure-back-button" @onclick="Back">Back</button>
 
     @if (_loadingHostNetwork)
     {
@@ -108,6 +109,11 @@
 
         Navigation.NavigateTo("/progress");
     }
+
+    // Deliberately does not touch Session - Pairing.razor now shows its Ready state directly for an
+    // already-paired Session.Device instead of resetting and waiting for a fresh tap, so returning
+    // there preserves the printer without forcing a re-tap.
+    private void Back() => Navigation.NavigateTo("/");
 
     private sealed class ConfigureFormModel
     {

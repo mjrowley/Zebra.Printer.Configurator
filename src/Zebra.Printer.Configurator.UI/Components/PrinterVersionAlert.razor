@@ -1,7 +1,10 @@
 @* Automatically checks a newly-paired printer's Link-OS/firmware versions against the bundled
    baseline for its model, and blocks "Configure Printer" (via BlockingChanged) until the situation
    is resolved - either the printer is already up to date/newer, a firmware update completes, or the
-   user explicitly Skips (unsupported model) or Cancels (returns to waiting for a different tap).
+   user explicitly Skips (unsupported model, or a needed update they don't want to run right now) or
+   Cancels (returns to waiting for a different tap; only offered for the unsupported-model case,
+   since a skipped update can still be run later - via a re-tap or Check Configuration - unlike an
+   unsupported model, which never can).
 
    A firmware update can only ever be performed over WiFi (FirmwareUpdateLauncher needs a reachable
    IP), so the check itself doesn't even run until that's available - there's no point telling the
@@ -56,6 +59,7 @@ else if (_result is not null)
                     title="@UpdateDisabledReason" disabled="@(UpdateDisabledReason is not null)" @onclick="UpdateFirmware">
                 Update Firmware
             </button>
+            <button type="button" class="btn btn-secondary" data-testid="version-check-skip" @onclick="Skip">Skip for now</button>
             @if (_updateError is not null)
             {
                 <p class="text-danger" data-testid="update-firmware-error">@_updateError</p>
@@ -111,7 +115,7 @@ else if (_result is not null)
         { Outcome: PrinterVersionOutcome.Unsupported } => !_skipped,
         // Only blocks when an update could actually be performed right now - see the WiFi/deadlock
         // note above.
-        { Outcome: PrinterVersionOutcome.NeedsUpdate } => CanUpdateFirmware,
+        { Outcome: PrinterVersionOutcome.NeedsUpdate } => CanUpdateFirmware && !_skipped,
         _ => false,
     };
 

@@ -1,11 +1,18 @@
 @* Persistent header control (rendered by MainLayout) for aborting an in-progress Configure Printer
    run - visible only while PairAndConfigureWorkflow is actually mid-step. Confirming force-closes
    whatever Bluetooth/WiFi connection is open (even mid file-transfer) via PrinterOperationCancellation,
-   then returns to "/" - Pairing.razor's own OnInitialized() already resets Session/ConnectivityMonitor/
-   WifiMonitor/connection mode every time it's navigated to, so that reset isn't duplicated here. *@
+   then returns to "/". Resets Session/ConnectivityMonitor/WifiMonitor/connection mode explicitly
+   here rather than relying on Pairing.razor to do it - Pairing.razor now preserves an
+   already-paired Session.Device instead of always resetting (so a "Back" button elsewhere can
+   return to it), which means Cancel must clear it itself to actually abandon this printer/attempt
+   rather than landing straight back on the very workflow just cancelled. *@
 @implements IDisposable
 @inject PairAndConfigureWorkflow Workflow
 @inject PrinterOperationCancellation Cancellation
+@inject PairingSession Session
+@inject PrinterConnectivityMonitor ConnectivityMonitor
+@inject IWifiConnectivityMonitor WifiMonitor
+@inject IPrinterConnectionModeProvider ConnectionModeProvider
 @inject NavigationManager Navigation
 
 @if (IsWorkflowActive)
@@ -49,6 +56,10 @@
     {
         _confirming = false;
         Cancellation.Cancel();
+        Session.Reset();
+        ConnectivityMonitor.Reset();
+        WifiMonitor.Stop();
+        ConnectionModeProvider.UseBluetooth();
         Navigation.NavigateTo("/", replace: true);
     }
 

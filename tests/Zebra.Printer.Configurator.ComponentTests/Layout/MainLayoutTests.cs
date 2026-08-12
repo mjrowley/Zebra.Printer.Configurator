@@ -21,7 +21,7 @@ public class MainLayoutTests : BunitContext
         Services.AddSingleton<IAppVersionProvider>(_appVersionProvider);
         Services.AddSingleton(_connectivityMonitor);
 
-        // MainLayout renders CancelWorkflowButton, which needs both of these - built from
+        // MainLayout renders CancelWorkflowButton, which needs all of these - built from
         // substitutes the same way PairAndConfigureWorkflowTests.CreateWorkflow() does, since
         // nothing in these tests drives the workflow itself.
         Services.AddSingleton(new PairAndConfigureWorkflow(
@@ -31,6 +31,9 @@ public class MainLayoutTests : BunitContext
             Substitute.For<IPrinterRestartService>(),
             Substitute.For<IPrinterConnectivityTestService>()));
         Services.AddSingleton(new PrinterOperationCancellation());
+        Services.AddSingleton(new PairingSession());
+        Services.AddSingleton(Substitute.For<IWifiConnectivityMonitor>());
+        Services.AddSingleton<IPrinterConnectionModeProvider>(new PrinterConnectionModeProvider());
     }
 
     [Fact]

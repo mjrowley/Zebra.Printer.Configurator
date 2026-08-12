@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Bunit;
 using NSubstitute;
 using Zebra.Printer.Configurator.Core.Abstractions;
+using Zebra.Printer.Configurator.Core.Connectivity;
 using Zebra.Printer.Configurator.Core.Models;
 using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Printer.Configurator.UI.Components;
@@ -28,6 +29,10 @@ public class CancelWorkflowButtonTests : BunitContext
     private readonly IPrinterConnectivityTestService _connectivityTestService = Substitute.For<IPrinterConnectivityTestService>();
     private readonly PrinterOperationCancellation _cancellation = new();
     private readonly PairAndConfigureWorkflow _workflow;
+    private readonly PairingSession _session = new() { Device = Device };
+    private readonly PrinterConnectivityMonitor _connectivityMonitor = new();
+    private readonly IWifiConnectivityMonitor _wifiMonitor = Substitute.For<IWifiConnectivityMonitor>();
+    private readonly PrinterConnectionModeProvider _connectionModeProvider = new();
 
     public CancelWorkflowButtonTests()
     {
@@ -36,6 +41,10 @@ public class CancelWorkflowButtonTests : BunitContext
         _workflow = new PairAndConfigureWorkflow(_sessionFactory, _configurationService, _pdfDirectService, _restartService, _connectivityTestService);
         Services.AddSingleton(_workflow);
         Services.AddSingleton(_cancellation);
+        Services.AddSingleton(_session);
+        Services.AddSingleton(_connectivityMonitor);
+        Services.AddSingleton(_wifiMonitor);
+        Services.AddSingleton<IPrinterConnectionModeProvider>(_connectionModeProvider);
     }
 
     [Fact]
@@ -92,6 +101,26 @@ public class CancelWorkflowButtonTests : BunitContext
         Assert.True(_cancellation.Token.IsCancellationRequested);
         var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
         cut.WaitForAssertion(() => Assert.EndsWith("/", navigation.Uri));
+    }
+
+    [Fact]
+    public void WhenConfirmed_ResetsSessionConnectivityAndConnectionMode()
+    {
+        // Pairing.razor now shows its Ready state directly for an already-paired Session.Device
+        // instead of always resetting, so Cancel must clear that state itself - otherwise it would
+        // land straight back on the very printer/attempt it just cancelled instead of a fresh scan.
+        _connectionModeProvider.UseWifi("192.168.1.50");
+        var cut = RenderWithRunningWorkflow();
+        cut.WaitForAssertion(() => cut.Find("[data-testid='cancel-workflow-button']"));
+        cut.Find("[data-testid='cancel-workflow-button']").Click();
+        cut.WaitForAssertion(() => cut.Find("[data-testid='cancel-confirm-dialog']"));
+
+        cut.Find("[data-testid='cancel-confirm-yes']").Click();
+
+        Assert.Null(_session.Device);
+        Assert.Null(_session.Configuration);
+        Assert.Equal(PrinterConnectionMode.Bluetooth, _connectionModeProvider.Mode);
+        _wifiMonitor.Received().Stop();
     }
 
     // ApplyAsync never completes, holding the workflow at ApplyingConfiguration - the same

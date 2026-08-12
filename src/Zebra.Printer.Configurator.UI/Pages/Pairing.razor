@@ -92,8 +92,25 @@
         _ => "Pair a Printer",
     };
 
-    protected override void OnInitialized()
+    // Session.Device is only ever populated by Continue() below, so landing here with one already
+    // set means some other page (Configure.razor's Back button today) navigated back to an
+    // already-paired printer rather than this being a fresh app launch or an explicit Retry/Cancel -
+    // those clear Session.Device themselves before navigating here specifically so this still takes
+    // the fresh-scan path below. Restoring goes straight to Ready with a re-run WiFi check rather
+    // than waiting for a re-tap, since the printer is still bonded either way.
+    protected override async Task OnInitializedAsync()
     {
+        if (Session.Device is not null)
+        {
+            _discoveredDevice = Session.Device;
+            _checkConfigState = new CheckConfigurationState();
+            _state = PairingUiState.Ready;
+            ConnectivityMonitor.SetBluetooth(ConnectionIndicatorState.Connected);
+            StateHasChanged();
+            await CheckWifiConnectivityAsync(_discoveredDevice);
+            return;
+        }
+
         Session.Reset();
         ConnectivityMonitor.Reset();
         WifiMonitor.Stop();

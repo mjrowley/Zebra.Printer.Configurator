@@ -126,6 +126,26 @@ public class PrinterVersionAlertTests : BunitContext
     }
 
     [Fact]
+    public void NeedsUpdate_ClickingSkip_UnblocksAndKeepsShowingUpdateOption()
+    {
+        _versionCheckService.CheckAsync(Device, Arg.Any<CancellationToken>())
+            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, Bundle = Bundle, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
+        _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
+        var blockingValues = new List<bool>();
+        var cut = Render<PrinterVersionAlert>(p => p
+            .Add(c => c.Device, Device)
+            .Add(c => c.WifiIpAddress, "192.168.1.50")
+            .Add(c => c.BlockingChanged, EventCallback.Factory.Create<bool>(this, b => blockingValues.Add(b))));
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='version-check-skip']")));
+
+        cut.Find("[data-testid='version-check-skip']").Click();
+
+        Assert.True(blockingValues[0]);
+        Assert.False(blockingValues[^1]);
+        Assert.NotNull(cut.Find("[data-testid='update-firmware-button']"));
+    }
+
+    [Fact]
     public void WhenWifiNotAvailable_SkipsVersionCheck_ShowsNothing_AndDoesNotBlock()
     {
         // A never-configured printer has no WiFi yet, and "Configure Printer" is exactly what gives

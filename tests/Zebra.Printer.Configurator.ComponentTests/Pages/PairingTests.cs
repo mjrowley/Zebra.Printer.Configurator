@@ -483,6 +483,23 @@ public class PairingTests : BunitContext
     }
 
     [Fact]
+    public void WhenSessionAlreadyHasDevice_ShowsReadyImmediately_WithoutStartingDiscovery()
+    {
+        // Simulates returning here via Configure.razor's Back button - the printer is already
+        // paired, so this should show it directly rather than restarting discovery and forcing a
+        // re-tap.
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF", SerialNumber = "12345" };
+        Services.AddSingleton(new PairingSession { Device = device });
+
+        var cut = Render<Pairing>();
+
+        cut.WaitForAssertion(() => Assert.Contains("12345", cut.Find("[data-testid='discovered-device']").TextContent));
+        Assert.NotNull(cut.Find("[data-testid='configure-printer-button']"));
+        Assert.Equal(0, _discoveryService.StartListeningCallCount);
+        Assert.Equal(ConnectionIndicatorState.Connected, _connectivityMonitor.Bluetooth);
+    }
+
+    [Fact]
     public void Dispose_StopsListening()
     {
         var cut = Render<Pairing>();

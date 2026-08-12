@@ -160,6 +160,19 @@ public class ConfigureTests : BunitContext
     }
 
     [Fact]
+    public void ClickingBack_NavigatesToPairingWithoutClearingSession()
+    {
+        var device = _session.Device;
+        var cut = Render<Configure>();
+
+        cut.Find("[data-testid='configure-back-button']").Click();
+
+        var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        Assert.EndsWith("/", navigation.Uri);
+        Assert.Same(device, _session.Device);
+    }
+
+    [Fact]
     public void WhenNoDeviceInSession_RedirectsToPairing()
     {
         _session.Device = null;
