@@ -10,7 +10,17 @@ using Zebra.Printer.Configurator.Infrastructure.Android;
 
 namespace Zebra.Printer.Configurator.App;
 
-[Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true, ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
+// LaunchMode.SingleTask - this is a single-window app with process-wide DI singletons
+// (PairingSession, FirmwareUpdateStatusMonitor, ...) backing its Blazor UI, so more than one
+// MainActivity instance existing at once is never valid. Without this, the default "standard"
+// launch mode let a notification tap (FirmwareUpdateForegroundService's PendingIntent, built from
+// a plain PackageManager.GetLaunchIntentForPackage() intent with no ClearTop/SingleTop flag) spin
+// up a *second* instance stacked on top of the backgrounded one instead of resuming it - confirmed
+// as the cause of a real bug where two independently-mounted PrinterVersionAlert components both
+// reacted to the same FirmwareUpdateStatusMonitor.Changed event and ran concurrent Bluetooth/WiFi
+// version-check connections against a printer that had just finished rebooting, corrupting one of
+// the reads into a false "unsupported model" result.
+[Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true, LaunchMode = LaunchMode.SingleTask, ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
 public class MainActivity : MauiAppCompatActivity
 {
 	// NFC foreground dispatch can only be enabled while this Activity is resumed, so its

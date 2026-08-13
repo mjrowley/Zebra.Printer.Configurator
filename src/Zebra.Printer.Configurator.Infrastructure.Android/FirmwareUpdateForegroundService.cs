@@ -196,9 +196,18 @@ public sealed class FirmwareUpdateForegroundService : Service
     private static PendingIntent? BuildContentIntent()
     {
         var launchIntent = Application.Context.PackageManager?.GetLaunchIntentForPackage(Application.Context.PackageName!);
-        return launchIntent is null
-            ? null
-            : PendingIntent.GetActivity(Application.Context, 0, launchIntent, PendingIntentFlags.Immutable);
+        if (launchIntent is null)
+        {
+            return null;
+        }
+
+        // Belt-and-suspenders alongside MainActivity's LaunchMode.SingleTask - ClearTop/SingleTop
+        // makes tapping this notification always resume the existing instance (routed through its
+        // OnNewIntent) rather than risk stacking a second one, even if some other Intent this app
+        // doesn't control ever reaches this Activity without NEW_TASK behaving as expected.
+        launchIntent.AddFlags(ActivityFlags.ClearTop | ActivityFlags.SingleTop);
+
+        return PendingIntent.GetActivity(Application.Context, 0, launchIntent, PendingIntentFlags.Immutable);
     }
 
     // The App project's generated mipmap resource ID isn't reachable from this project (that would
