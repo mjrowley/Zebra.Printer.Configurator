@@ -26,11 +26,38 @@
         <!-- App Identifier -->
         <ApplicationId>com.companyname.zebra.printer.configurator.app</ApplicationId>
 
-        <!-- Versions: bump ApplicationVersion (the build number) on every release so an on-device
-             report of "the latest release" can be pinned to an exact build via the version label
-             shown in the UI, rather than inferred from when the user last updated. -->
-        <ApplicationDisplayVersion>1.57</ApplicationDisplayVersion>
-        <ApplicationVersion>59</ApplicationVersion>
+        <!--
+            Versioning policy (mirrors ECommerce.Mobile.SwiftPick/Fetch/Fetch.csproj):
+              * VersionMajor.Minor are maintained by hand - bump on a real release.
+              * ApplicationVersion (integer build number used by Android as the versionCode) is
+                auto-computed below, not hand-typed - every build gets a fresh, monotonically
+                increasing value, so "bump ApplicationVersion" is no longer a release-workflow step.
+              * In CI, set APP_BUILD_NUMBER, BUILD_BUILDID (Azure DevOps) or GITHUB_RUN_NUMBER
+                (GitHub Actions) to use that build counter instead - not currently wired up to any
+                CI for this project, but kept for parity/future-proofing.
+        -->
+        <VersionMajor>1</VersionMajor>
+        <VersionMinor>57</VersionMinor>
+        <ApplicationDisplayVersion>$(VersionMajor).$(VersionMinor)</ApplicationDisplayVersion>
+        <!-- Evaluate ApplicationVersion at project-evaluation time so Android tooling can read
+             AndroidVersionCode when generating the manifest. This mirrors the SetAppVersion target
+             below but runs earlier. -->
+        <_CiBuildNumber Condition="'$(APP_BUILD_NUMBER)' != ''">$(APP_BUILD_NUMBER)</_CiBuildNumber>
+        <_CiBuildNumber Condition="'$(_CiBuildNumber)' == '' AND '$(BUILD_BUILDID)' != ''">$(BUILD_BUILDID)</_CiBuildNumber>
+        <_CiBuildNumber Condition="'$(_CiBuildNumber)' == '' AND '$(GITHUB_RUN_NUMBER)' != ''">$(GITHUB_RUN_NUMBER)</_CiBuildNumber>
+
+        <_DaysSinceEpoch>$([System.Math]::Floor($([System.DateTime]::UtcNow.Subtract($([System.DateTime]::Parse('2024-01-01'))).TotalDays)))</_DaysSinceEpoch>
+        <_MinutesBucket>$([System.Math]::Floor($([MSBuild]::Divide($([System.DateTime]::UtcNow.TimeOfDay.TotalMinutes), 15))))</_MinutesBucket>
+        <_LocalBuildNumber>$([MSBuild]::Add($([MSBuild]::Multiply($(_DaysSinceEpoch), 100)), $(_MinutesBucket)))</_LocalBuildNumber>
+
+        <ApplicationVersion Condition="'$(_CiBuildNumber)' != ''">$(_CiBuildNumber)</ApplicationVersion>
+        <ApplicationVersion Condition="'$(_CiBuildNumber)' == ''">$(_LocalBuildNumber)</ApplicationVersion>
+
+        <AndroidVersionCode>$(ApplicationVersion)</AndroidVersionCode>
+
+        <!-- Set assembly informational version early so AssemblyInformationalVersionAttribute
+             contains the computed build identifier at compile time. -->
+        <InformationalVersion>$(ApplicationDisplayVersion)+build.$(ApplicationVersion)</InformationalVersion>
 
         <!-- To develop, package, and publish an app to the Microsoft Store, see: https://aka.ms/MauiTemplateUnpackaged -->
         <WindowsPackageType>None</WindowsPackageType>
@@ -77,5 +104,38 @@
       <ProjectReference Include="..\Zebra.Printer.Configurator.Infrastructure.Android\Zebra.Printer.Configurator.Infrastructure.Android.csproj" />
       <ProjectReference Include="..\Zebra.Printer.Configurator.UI\Zebra.Printer.Configurator.UI.csproj" />
     </ItemGroup>
+
+    <!--
+        Compute ApplicationVersion as an auto-incrementing integer.
+        Order of preference:
+          1. APP_BUILD_NUMBER env var (manual override).
+          2. BUILD_BUILDID         (Azure DevOps).
+          3. GITHUB_RUN_NUMBER     (GitHub Actions).
+          4. (DaysSince 2024-01-01) * 100 + (UTC minute-of-day / 15)
+             — guaranteed monotonic for any local build at least 15 minutes apart,
+             stays well within the 32-bit signed int limit until well past 2050.
+    -->
+    <Target Name="SetAppVersion" BeforeTargets="PrepareForBuild">
+        <PropertyGroup>
+            <_CiBuildNumber Condition="'$(APP_BUILD_NUMBER)' != ''">$(APP_BUILD_NUMBER)</_CiBuildNumber>
+            <_CiBuildNumber Condition="'$(_CiBuildNumber)' == '' AND '$(BUILD_BUILDID)' != ''">$(BUILD_BUILDID)</_CiBuildNumber>
+            <_CiBuildNumber Condition="'$(_CiBuildNumber)' == '' AND '$(GITHUB_RUN_NUMBER)' != ''">$(GITHUB_RUN_NUMBER)</_CiBuildNumber>
+
+            <!-- Use Math.Floor to produce plain integer values (avoids culture-specific formatting) -->
+            <_DaysSinceEpoch>$([System.Math]::Floor($([System.DateTime]::UtcNow.Subtract($([System.DateTime]::Parse('2024-01-01'))).TotalDays)))</_DaysSinceEpoch>
+            <_MinutesBucket>$([System.Math]::Floor($([MSBuild]::Divide($([System.DateTime]::UtcNow.TimeOfDay.TotalMinutes), 15))))</_MinutesBucket>
+            <_LocalBuildNumber>$([MSBuild]::Add($([MSBuild]::Multiply($(_DaysSinceEpoch), 100)), $(_MinutesBucket)))</_LocalBuildNumber>
+
+            <ApplicationVersion Condition="'$(_CiBuildNumber)' != ''">$(_CiBuildNumber)</ApplicationVersion>
+            <ApplicationVersion Condition="'$(_CiBuildNumber)' == ''">$(_LocalBuildNumber)</ApplicationVersion>
+
+            <!-- Ensure Android tooling sees an integer versionCode -->
+            <AndroidVersionCode>$(ApplicationVersion)</AndroidVersionCode>
+
+            <InformationalVersion>$(ApplicationDisplayVersion)+build.$(ApplicationVersion)</InformationalVersion>
+        </PropertyGroup>
+
+        <Message Importance="high" Text="App version: $(ApplicationDisplayVersion) (build $(ApplicationVersion))" />
+    </Target>
 
 </Project>

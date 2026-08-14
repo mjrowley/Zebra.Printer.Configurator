@@ -53,7 +53,12 @@ shape of this pattern.
 
 After any code change: `dotnet build Zebra.Printer.Configurator.slnx -c Release` must be 0
 warnings/0 errors; run all three test suites (`dotnet test` on
-`tests/Zebra.Printer.Configurator.UnitTests`, `ComponentTests`, `IntegrationTests`); bump
-`ApplicationDisplayVersion`/`ApplicationVersion` in
-`src/Zebra.Printer.Configurator.App/Zebra.Printer.Configurator.App.csproj`; commit with a detailed
-message; push to `origin/develop`.
+`tests/Zebra.Printer.Configurator.UnitTests`, `ComponentTests`, `IntegrationTests`); commit with a
+detailed message; push to `origin/develop`.
+
+`ApplicationVersion` (the Android build number/versionCode) is no longer hand-bumped - it's
+auto-computed in `Zebra.Printer.Configurator.App.csproj`'s `SetAppVersion` target from the current
+UTC date/time (mirrors `ECommerce.Mobile.SwiftPick/Fetch/Fetch.csproj`'s scheme), so every build
+already gets a fresh, monotonically increasing value. Only bump `VersionMajor`/`VersionMinor` (which
+`ApplicationDisplayVersion` is built from) by hand, and only for an actual user-facing release, not
+every commit.
