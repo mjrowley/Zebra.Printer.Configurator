@@ -18,6 +18,7 @@ public class ResultTests : BunitContext
 
     private static readonly WlanConfiguration Configuration = new()
     {
+        PrinterName = "ZD421",
         Ssid = "Warehouse-WiFi",
         Password = "correcthorsebatterystaple",
         StaticIpAddress = "192.168.1.50",
@@ -35,6 +36,8 @@ public class ResultTests : BunitContext
     private readonly IFirmwareUpdateLauncher _firmwareUpdateLauncher = Substitute.For<IFirmwareUpdateLauncher>();
     private readonly FirmwareUpdateStatusMonitor _updateStatusMonitor = new();
     private readonly IBagTagTemplateService _templateService = Substitute.For<IBagTagTemplateService>();
+    private readonly PrinterActivityMonitor _activityMonitor = new();
+    private readonly IWebInterfaceService _webInterfaceService = Substitute.For<IWebInterfaceService>();
 
     private async Task<(PairAndConfigureWorkflow Workflow, PairingSession Session)> RunWorkflowToCompletionAsync(
         ConnectionTestResult connectivityResult, WlanConfiguration? configuration = null)
@@ -65,12 +68,20 @@ public class ResultTests : BunitContext
         Services.AddSingleton(_firmwareUpdateLauncher);
         Services.AddSingleton(_updateStatusMonitor);
         Services.AddSingleton(_templateService);
+        Services.AddSingleton(_activityMonitor);
+        Services.AddSingleton(_webInterfaceService);
 
         // Defaults to "up to date" (renders nothing) - most tests here don't care about the
         // firmware/version check at all, so this keeps them unaffected unless a specific test
         // overrides it.
         _versionCheckService.CheckAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
             .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.UpToDate });
+
+        // Defaults to "already on" (never blocks Reconfigure Printer, shows "Disable Web
+        // Interface") - most tests here don't care about the web interface toggle at all, so this
+        // keeps them unaffected unless a specific test overrides it.
+        _webInterfaceService.ReadStateAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
+            .Returns(new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true });
 
         // Defaults to "nothing already on the printer" - most tests here don't care about the bag
         // tag templates panel at all, so this keeps them unaffected unless a specific test overrides it.
@@ -253,6 +264,25 @@ public class ResultTests : BunitContext
         cut.Find("[data-testid='factory-reset-button']").Click();
 
         Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public async Task WhileWebInterfaceToggleIsApplying_ReconfigureAndCheckConfigurationAreDisabled()
+    {
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+        var setEnabledTcs = new TaskCompletionSource();
+        _webInterfaceService.SetEnabledAsync(Device, false, Arg.Any<CancellationToken>()).Returns(setEnabledTcs.Task);
+        var cut = Render<Result>();
+        cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-toggle-button']"));
+
+        cut.Find("[data-testid='web-interface-toggle-button']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.True(cut.Find("[data-testid='reconfigure-button']").HasAttribute("disabled"));
+            Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled"));
+        });
+        setEnabledTcs.SetResult();
     }
 
     [Fact]

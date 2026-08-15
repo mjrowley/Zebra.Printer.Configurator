@@ -11,6 +11,7 @@ public class PairAndConfigureWorkflowTests
 
     private static readonly WlanConfiguration Configuration = new()
     {
+        PrinterName = "ZD421",
         Ssid = "Warehouse-WiFi",
         Password = "correcthorsebatterystaple",
         StaticIpAddress = "192.168.1.50",

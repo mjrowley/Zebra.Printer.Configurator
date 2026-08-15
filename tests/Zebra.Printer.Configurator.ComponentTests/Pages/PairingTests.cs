@@ -26,6 +26,8 @@ public class PairingTests : BunitContext
     private readonly IFirmwareUpdateLauncher _firmwareUpdateLauncher = Substitute.For<IFirmwareUpdateLauncher>();
     private readonly FirmwareUpdateStatusMonitor _updateStatusMonitor = new();
     private readonly IBagTagTemplateService _templateService = Substitute.For<IBagTagTemplateService>();
+    private readonly PrinterActivityMonitor _activityMonitor = new();
+    private readonly IWebInterfaceService _webInterfaceService = Substitute.For<IWebInterfaceService>();
 
     public PairingTests()
     {
@@ -41,7 +43,15 @@ public class PairingTests : BunitContext
         Services.AddSingleton(_firmwareUpdateLauncher);
         Services.AddSingleton(_updateStatusMonitor);
         Services.AddSingleton(_templateService);
+        Services.AddSingleton(_activityMonitor);
+        Services.AddSingleton(_webInterfaceService);
         Services.AddSingleton(new PairingSession());
+
+        // Defaults to "already on" (never blocks Configure Printer, shows "Disable Web Interface") -
+        // most tests here don't care about the web interface toggle at all, so this keeps them
+        // unaffected unless a specific test overrides it.
+        _webInterfaceService.ReadStateAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
+            .Returns(new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true });
 
         // Defaults to "nothing already on the printer" - most tests here don't care about the bag
         // tag templates panel at all, so this keeps them unaffected unless a specific test overrides it.
@@ -259,6 +269,25 @@ public class PairingTests : BunitContext
 
         Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled"));
         Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void WhileWebInterfaceToggleIsApplying_ConfigurePrinterAndCheckConfigurationAreDisabled()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        var setEnabledTcs = new TaskCompletionSource();
+        _webInterfaceService.SetEnabledAsync(device, false, Arg.Any<CancellationToken>()).Returns(setEnabledTcs.Task);
+        var cut = RenderWithReadyPrinter(device);
+        cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-toggle-button']"));
+
+        cut.Find("[data-testid='web-interface-toggle-button']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled"));
+            Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled"));
+        });
+        setEnabledTcs.SetResult();
     }
 
     [Fact]

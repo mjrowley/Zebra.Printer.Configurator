@@ -6,6 +6,7 @@ using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Connectivity;
 using Zebra.Printer.Configurator.Core.Firmware;
 using Zebra.Printer.Configurator.Core.Models;
+using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Printer.Configurator.UI.Components;
 
 namespace Zebra.Printer.Configurator.ComponentTests.Components;
@@ -27,6 +28,7 @@ public class PrinterVersionAlertTests : BunitContext
     private readonly FirmwareUpdateStatusMonitor _updateStatusMonitor = new();
     private readonly IPrinterConnectionModeProvider _connectionModeProvider = new PrinterConnectionModeProvider();
     private readonly PrinterConnectivityMonitor _connectivityMonitor = new();
+    private readonly PrinterActivityMonitor _activityMonitor = new();
 
     public PrinterVersionAlertTests()
     {
@@ -35,6 +37,7 @@ public class PrinterVersionAlertTests : BunitContext
         Services.AddSingleton(_updateStatusMonitor);
         Services.AddSingleton(_connectionModeProvider);
         Services.AddSingleton(_connectivityMonitor);
+        Services.AddSingleton(_activityMonitor);
     }
 
     private IRenderedComponent<PrinterVersionAlert> RenderAlert(string? wifiIpAddress = null, bool wifiConnected = false)
@@ -297,6 +300,22 @@ public class PrinterVersionAlertTests : BunitContext
 
         Assert.True(blockingValues[0]);
         Assert.False(blockingValues[^1]);
+    }
+
+    [Fact]
+    public void Unsupported_MarksActivityMonitorBusy_ThenClearsOnSkip()
+    {
+        _versionCheckService.CheckAsync(Device, Arg.Any<CancellationToken>())
+            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.Unsupported });
+        _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
+        var cut = Render<PrinterVersionAlert>(p => p
+            .Add(c => c.Device, Device)
+            .Add(c => c.WifiIpAddress, "192.168.1.50"));
+        cut.WaitForAssertion(() => Assert.True(_activityMonitor.IsBusy));
+
+        cut.Find("[data-testid='version-check-skip']").Click();
+
+        Assert.False(_activityMonitor.IsBusy);
     }
 
     [Fact]

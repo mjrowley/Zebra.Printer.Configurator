@@ -30,6 +30,7 @@
 @inject FirmwareUpdateStatusMonitor UpdateStatus
 @inject IPrinterConnectionModeProvider ConnectionModeProvider
 @inject PrinterConnectivityMonitor ConnectivityMonitor
+@inject PrinterActivityMonitor ActivityMonitor
 
 @if (_loading)
 {
@@ -106,6 +107,8 @@ else if (_result is not null)
     private bool _updating;
     private FirmwareUpdateProgress? _updateProgress;
     private string? _updateError;
+    private bool _wasBlocking;
+    private IDisposable? _activityToken;
 
     private bool CanUpdateFirmware =>
         ConnectivityMonitor.Wifi == ConnectionIndicatorState.Connected && !string.IsNullOrWhiteSpace(WifiIpAddress);
@@ -183,7 +186,10 @@ else if (_result is not null)
         }
 
         _loading = true;
-        _result = await VersionCheckService.CheckAsync(Device);
+        using (ActivityMonitor.Begin("Firmware Version Check"))
+        {
+            _result = await VersionCheckService.CheckAsync(Device);
+        }
         _loading = false;
         await NotifyBlockingChanged();
     }
@@ -250,6 +256,21 @@ else if (_result is not null)
 
     private async Task NotifyBlockingChanged()
     {
+        var isBlocking = Blocking;
+        if (isBlocking != _wasBlocking)
+        {
+            _wasBlocking = isBlocking;
+            if (isBlocking)
+            {
+                _activityToken = ActivityMonitor.Begin("Firmware Version Check");
+            }
+            else
+            {
+                _activityToken?.Dispose();
+                _activityToken = null;
+            }
+        }
+
         StateHasChanged();
         await BlockingChanged.InvokeAsync(Blocking);
     }
@@ -258,5 +279,6 @@ else if (_result is not null)
     {
         ConnectivityMonitor.Changed -= OnConnectivityChanged;
         UpdateStatus.Changed -= OnUpdateStatusChanged;
+        _activityToken?.Dispose();
     }
 }

@@ -22,7 +22,7 @@
             <PrinterVersionAlert Device="Session.Device!" WifiIpAddress="@Session.Configuration?.StaticIpAddress" OnCancelled="Retry" />
         </div>
         <div class="button-row">
-            <button type="button" class="btn btn-primary" data-testid="reconfigure-button" disabled="@(_factoryResetActive || _templatesActive || _checkingNetwork)" @onclick="Reconfigure">
+            <button type="button" class="btn btn-primary" data-testid="reconfigure-button" disabled="@(_factoryResetActive || _templatesActive || _checkingNetwork || _webInterfaceActive)" @onclick="Reconfigure">
                 @if (_checkingNetwork)
                 {
                     <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
@@ -30,8 +30,9 @@
                 Reconfigure Printer
             </button>
             <FactoryResetPanel Device="Session.Device!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
-            <CheckConfigurationButton Device="Session.Device!" State="_checkConfigState" Disabled="@(_factoryResetActive || _templatesActive)" />
+            <CheckConfigurationButton Device="Session.Device!" State="_checkConfigState" Disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive)" />
             <BagTagTemplatesPanel Device="Session.Device!" IsActiveChanged="OnTemplatesActiveChanged" />
+            <WebInterfaceTogglePanel Device="Session.Device!" IsActiveChanged="OnWebInterfaceActiveChanged" />
         </div>
     }
     else
@@ -59,6 +60,7 @@
     private bool _factoryResetActive;
     private bool _templatesActive;
     private bool _checkingNetwork;
+    private bool _webInterfaceActive;
     private CheckConfigurationState _checkConfigState = new();
 
     protected override void OnInitialized()
@@ -108,6 +110,8 @@
     private void OnFactoryResetActiveChanged(bool active) => _factoryResetActive = active;
 
     private void OnTemplatesActiveChanged(bool active) => _templatesActive = active;
+
+    private void OnWebInterfaceActiveChanged(bool active) => _webInterfaceActive = active;
 
     private void Retry()
     {

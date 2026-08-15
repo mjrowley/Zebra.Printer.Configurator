@@ -3,6 +3,7 @@ using Bunit;
 using NSubstitute;
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Models;
+using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Printer.Configurator.UI.Components;
 
 namespace Zebra.Printer.Configurator.ComponentTests.Components;
@@ -12,10 +13,12 @@ public class CheckConfigurationButtonTests : BunitContext
     private static readonly PrinterDevice Device = new() { BluetoothMacAddress = "AABBCCDDEEFF" };
 
     private readonly IPrinterConfigurationReader _configurationReader = Substitute.For<IPrinterConfigurationReader>();
+    private readonly PrinterActivityMonitor _activityMonitor = new();
 
     public CheckConfigurationButtonTests()
     {
         Services.AddSingleton(_configurationReader);
+        Services.AddSingleton(_activityMonitor);
     }
 
     [Fact]
@@ -76,5 +79,24 @@ public class CheckConfigurationButtonTests : BunitContext
             .Add(c => c.Disabled, true));
 
         Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void WhileReading_MarksActivityMonitorBusy_ThenClearsOnCompletion()
+    {
+        var readTcs = new TaskCompletionSource<IReadOnlyList<PrinterConfigurationValue>>();
+        _configurationReader.ReadConfigurationAsync(Device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(readTcs.Task);
+        var cut = Render<CheckConfigurationButton>(p => p
+            .Add(c => c.Device, Device)
+            .Add(c => c.State, new CheckConfigurationState()));
+
+        cut.Find("[data-testid='check-configuration-button']").Click();
+
+        Assert.True(_activityMonitor.IsBusy);
+
+        readTcs.SetResult([]);
+
+        cut.WaitForAssertion(() => Assert.False(_activityMonitor.IsBusy));
     }
 }

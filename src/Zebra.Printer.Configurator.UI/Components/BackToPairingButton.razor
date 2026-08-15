@@ -1,0 +1,106 @@
+@* Persistent header control (rendered by MainLayout, alongside CancelWorkflowButton) for abandoning
+   the current pairing attempt from anywhere in the app and returning to a fresh NFC-tap scan -
+   unlike CancelWorkflowButton (which only appears during PairAndConfigureWorkflow's own active
+   states), this is visible any time a printer is paired at all, but disabled whenever ANY risky
+   operation is in flight: the main configure workflow, a firmware update, or any of the
+   page-local panels (Factory Reset, Bag Tag Templates, Check Configuration, firmware version
+   check) tracked via PrinterActivityMonitor - the only one of those four signals with genuine
+   cross-page visibility, since the other three (PairAndConfigureWorkflow.State,
+   FirmwareUpdateStatusMonitor.State) are already app-wide singletons.
+
+   Rendered visible-but-disabled with a tooltip while busy, not hidden - deliberately different
+   from CancelWorkflowButton's hide-when-inactive pattern: the two controls are complementary
+   (Cancel is actionable exactly when this is disabled), and staying visible-but-disabled explains
+   "why can't I leave right now" better than silently vanishing would.
+
+   Session.Device is only ever populated by Pairing.razor's Continue() when navigating to
+   /configure, so this is correctly hidden both before a printer is ever paired (WaitingForTap) and
+   while already sitting on Pairing.razor's own Ready state - there's no reason to show "go back to
+   pairing" on the page it returns to. *@
+@implements IDisposable
+@inject PairAndConfigureWorkflow Workflow
+@inject FirmwareUpdateStatusMonitor UpdateStatus
+@inject PrinterActivityMonitor ActivityMonitor
+@inject PairingSession Session
+@inject PrinterConnectivityMonitor ConnectivityMonitor
+@inject IWifiConnectivityMonitor WifiMonitor
+@inject IPrinterConnectionModeProvider ConnectionModeProvider
+@inject NavigationManager Navigation
+
+@if (Session.Device is not null)
+{
+    @if (_confirming)
+    {
+        <div class="confirm-modal-backdrop" data-testid="back-to-pairing-confirm-dialog">
+            <div class="confirm-modal-box" role="alertdialog">
+                <p>Returning to Pair a Printer will abandon this printer and wait for a new NFC tap. Continue?</p>
+                <div class="confirm-modal-actions">
+                    <button type="button" class="btn btn-danger btn-sm" data-testid="back-to-pairing-confirm-yes" @onclick="ConfirmBack">Yes</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-testid="back-to-pairing-confirm-no" @onclick="() => _confirming = false">No</button>
+                </div>
+            </div>
+        </div>
+    }
+    <button type="button" class="btn btn-outline-secondary btn-sm" data-testid="back-to-pairing-button"
+            disabled="@IsBusy" title="@(IsBusy ? "Wait for the current operation to finish before leaving this printer." : null)"
+            @onclick="() => _confirming = true">
+        Back to Pairing
+    </button>
+}
+
+@code {
+    private bool _confirming;
+
+    protected override void OnInitialized()
+    {
+        Workflow.StateChanged += OnStateChanged;
+        UpdateStatus.Changed += OnStateChanged;
+        ActivityMonitor.Changed += OnStateChanged;
+
+        // This component lives in MainLayout, which stays mounted across every page navigation
+        // (only @Body's routed component is swapped) - so it never naturally re-renders just
+        // because Session.Device changed on some other page (PairingSession has no Changed event
+        // of its own to subscribe to either). Without this, visibility would only update on some
+        // unrelated re-render, not right when a printer is paired or a Back/Cancel action clears it.
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) =>
+        InvokeAsync(StateHasChanged);
+
+    private bool IsBusy =>
+        Workflow.State is
+            PairingWorkflowState.ApplyingConfiguration or
+            PairingWorkflowState.EnablingPdfDirect or
+            PairingWorkflowState.Restarting or
+            PairingWorkflowState.TestingConnection
+        || UpdateStatus.State == FirmwareUpdateRunState.Running
+        || ActivityMonitor.IsBusy;
+
+    private void OnStateChanged(object? sender, EventArgs e) => InvokeAsync(() =>
+    {
+        if (IsBusy)
+        {
+            _confirming = false;
+        }
+        StateHasChanged();
+    });
+
+    private void ConfirmBack()
+    {
+        _confirming = false;
+        Session.Reset();
+        ConnectivityMonitor.Reset();
+        WifiMonitor.Stop();
+        ConnectionModeProvider.UseBluetooth();
+        Navigation.NavigateTo("/", replace: true);
+    }
+
+    public void Dispose()
+    {
+        Workflow.StateChanged -= OnStateChanged;
+        UpdateStatus.Changed -= OnStateChanged;
+        ActivityMonitor.Changed -= OnStateChanged;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}

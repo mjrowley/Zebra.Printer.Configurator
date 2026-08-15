@@ -3,6 +3,7 @@ using Bunit;
 using NSubstitute;
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Models;
+using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Printer.Configurator.UI.Components;
 
 namespace Zebra.Printer.Configurator.ComponentTests.Components;
@@ -13,11 +14,13 @@ public class FactoryResetPanelTests : BunitContext
 
     private readonly IPrinterFactoryResetService _factoryResetService = Substitute.For<IPrinterFactoryResetService>();
     private readonly IBluetoothPairingService _pairingService = Substitute.For<IBluetoothPairingService>();
+    private readonly PrinterActivityMonitor _activityMonitor = new();
 
     public FactoryResetPanelTests()
     {
         Services.AddSingleton(_factoryResetService);
         Services.AddSingleton(_pairingService);
+        Services.AddSingleton(_activityMonitor);
     }
 
     [Fact]
@@ -139,5 +142,26 @@ public class FactoryResetPanelTests : BunitContext
         // Only one "became active" transition (Idle -> Confirming) - Resetting and Complete are
         // still non-idle, so no further IsActiveChanged events fire until something returns to Idle.
         Assert.Equal([true], activeStates);
+    }
+
+    [Fact]
+    public void ClickingFactoryReset_MarksActivityMonitorBusy()
+    {
+        var cut = Render<FactoryResetPanel>(p => p.Add(c => c.Device, Device));
+
+        cut.Find("[data-testid='factory-reset-button']").Click();
+
+        Assert.True(_activityMonitor.IsBusy);
+    }
+
+    [Fact]
+    public void CancellingConfirmation_ClearsActivityMonitorBusy()
+    {
+        var cut = Render<FactoryResetPanel>(p => p.Add(c => c.Device, Device));
+        cut.Find("[data-testid='factory-reset-button']").Click();
+
+        cut.Find("[data-testid='factory-reset-cancel']").Click();
+
+        Assert.False(_activityMonitor.IsBusy);
     }
 }

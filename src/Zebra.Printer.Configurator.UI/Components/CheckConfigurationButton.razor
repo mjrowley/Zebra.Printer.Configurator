@@ -4,6 +4,7 @@
    CheckConfigurationResults component (sharing the same CheckConfigurationState), so this button
    can live in a page's sticky header while a long results table scrolls separately below. *@
 @inject IPrinterConfigurationReader ConfigurationReader
+@inject PrinterActivityMonitor ActivityMonitor
 
 <button type="button" class="btn btn-outline-secondary" data-testid="check-configuration-button" disabled="@(State.Loading || Disabled)" @onclick="CheckConfiguration">
     @if (State.Loading)
@@ -28,6 +29,7 @@
     {
         State.SetLoading();
 
+        using var _ = ActivityMonitor.Begin("Check Configuration");
         try
         {
             var values = await ConfigurationReader.ReadConfigurationAsync(Device);

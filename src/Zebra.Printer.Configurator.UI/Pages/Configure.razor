@@ -1,6 +1,7 @@
 @page "/configure"
 @inject PairingSession Session
 @inject IHostNetworkInfoService HostNetworkInfoService
+@inject IPrinterModelReader ModelReader
 @inject NavigationManager Navigation
 
 <div class="section-sticky-header">
@@ -11,7 +12,7 @@
     {
         <p data-testid="host-network-loading">
             <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-            Detecting your current WiFi network&hellip;
+            Detecting your printer and current WiFi network&hellip;
         </p>
     }
     else if (_hostNetworkError is not null)
@@ -22,6 +23,12 @@
     {
         <EditForm Model="_model" OnValidSubmit="Submit">
             <DataAnnotationsValidator />
+
+            <div class="mb-3">
+                <label for="printer-name">Printer Name</label>
+                <InputText id="printer-name" class="form-control" @bind-Value="_model.PrinterName" />
+                <ValidationMessage For="() => _model.PrinterName" />
+            </div>
 
             <div class="mb-3">
                 <label for="ssid">WiFi SSID</label>
@@ -47,6 +54,8 @@
 </div>
 
 @code {
+    private const string DefaultPrinterName = "ZD421";
+
     private readonly ConfigureFormModel _model = new();
     private HostNetworkInfo? _hostNetworkInfo;
     private string? _hostNetworkError;
@@ -60,11 +69,19 @@
             return;
         }
 
+        // Run in parallel - unrelated subsystems (Android WifiManager vs. a Bluetooth SGD read),
+        // not a repeat of the "two concurrent Bluetooth connections" hazard documented elsewhere
+        // in this app (that's specifically about two connections to the *printer* at once).
+        var hostNetworkTask = HostNetworkInfoService.GetCurrentAsync();
+        var printerNameTask = ReadPrinterNameOrDefaultAsync();
+        await Task.WhenAll(hostNetworkTask, printerNameTask);
+
         // The phone is assumed to already be on the target WiFi network, so netmask/gateway are
         // inherited from its current connection rather than asked for in the form. Fetched here
         // (rather than at submit time) so a missing connection is surfaced immediately and the SSID
         // field can default to what the phone is already on.
-        _hostNetworkInfo = await HostNetworkInfoService.GetCurrentAsync();
+        _hostNetworkInfo = hostNetworkTask.Result;
+        _model.PrinterName = printerNameTask.Result;
         _loadingHostNetwork = false;
 
         if (_hostNetworkInfo is null)
@@ -91,6 +108,22 @@
         }
     }
 
+    // A failed/blank live read must not block the whole form the way a missing host network
+    // correctly does above - no WiFi means configuration is genuinely impossible, but a failed
+    // printer-name pre-fill is just a cosmetic default the user can retype.
+    private async Task<string> ReadPrinterNameOrDefaultAsync()
+    {
+        try
+        {
+            var modelName = await ModelReader.ReadModelNameAsync(Session.Device!);
+            return string.IsNullOrWhiteSpace(modelName) ? DefaultPrinterName : modelName;
+        }
+        catch (Exception)
+        {
+            return DefaultPrinterName;
+        }
+    }
+
     private void Submit()
     {
         if (_hostNetworkInfo is null)
@@ -100,6 +133,7 @@
 
         Session.Configuration = new WlanConfiguration
         {
+            PrinterName = _model.PrinterName,
             Ssid = _model.Ssid,
             Password = _model.Password,
             StaticIpAddress = _model.StaticIpAddress,
@@ -117,6 +151,9 @@
 
     private sealed class ConfigureFormModel
     {
+        [PrinterName]
+        public string PrinterName { get; set; } = string.Empty;
+
         [Ssid]
         public string Ssid { get; set; } = string.Empty;
 

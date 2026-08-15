@@ -14,6 +14,7 @@ public static class WlanDiagnosticKeys
     // stored (length > 0) without the actual WiFi password appearing on screen.
     public static readonly IReadOnlyList<string> All =
     [
+        "device.friendly_name",
         "wlan.enable",
         "wlan.security",
         "wlan.essid",
@@ -26,7 +27,6 @@ public static class WlanDiagnosticKeys
         "wlan.state",
         "apl.enable",
         "media.printmode",
-        "device.friendly_name",
         "ezpl.media_type",
         "ezpl.print_method",
         "ezpl.print_width",

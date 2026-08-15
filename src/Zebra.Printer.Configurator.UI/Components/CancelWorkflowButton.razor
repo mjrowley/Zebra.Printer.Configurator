@@ -19,10 +19,10 @@
 {
     @if (_confirming)
     {
-        <div class="cancel-confirm-backdrop" data-testid="cancel-confirm-dialog">
-            <div class="cancel-confirm-box" role="alertdialog">
+        <div class="confirm-modal-backdrop" data-testid="cancel-confirm-dialog">
+            <div class="confirm-modal-box" role="alertdialog">
                 <p>This will cancel all operations and open printer connections, are you sure?</p>
-                <div class="cancel-confirm-actions">
+                <div class="confirm-modal-actions">
                     <button type="button" class="btn btn-danger btn-sm" data-testid="cancel-confirm-yes" @onclick="ConfirmCancel">Yes - Cancel</button>
                     <button type="button" class="btn btn-secondary btn-sm" data-testid="cancel-confirm-no" @onclick="() => _confirming = false">No - Return</button>
                 </div>

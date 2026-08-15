@@ -11,17 +11,25 @@ namespace Zebra.Printer.Configurator.ComponentTests.Pages;
 public class ConfigureTests : BunitContext
 {
     private readonly IHostNetworkInfoService _hostNetworkInfoService = Substitute.For<IHostNetworkInfoService>();
+    private readonly IPrinterModelReader _modelReader = Substitute.For<IPrinterModelReader>();
     private readonly PairingSession _session = new() { Device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" } };
 
     public ConfigureTests()
     {
         Services.AddSingleton(_hostNetworkInfoService);
+        Services.AddSingleton(_modelReader);
         Services.AddSingleton(_session);
 
         // Host network detection now happens on page load rather than at submit time, so every test
         // needs a default happy-path stub unless it's specifically exercising the error/prefill case.
         _hostNetworkInfoService.GetCurrentAsync(Arg.Any<CancellationToken>())
             .Returns(new HostNetworkInfo { HostIpAddress = "192.168.1.42", Netmask = "255.255.255.0", Gateway = "192.168.1.1" });
+
+        // Same reasoning - the live printer-model read also happens on page load. "ZD421c" (not
+        // the "ZD421" fallback default) so tests asserting the field's value can tell whether it
+        // came from a genuine live read or the hardcoded fallback.
+        _modelReader.ReadModelNameAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
+            .Returns("ZD421c");
     }
 
     private static void FillIp(IRenderedComponent<Configure> cut, string ip)
@@ -149,7 +157,8 @@ public class ConfigureTests : BunitContext
         await cut.Find("form").SubmitAsync();
 
         Assert.NotNull(_session.Configuration);
-        Assert.Equal("Warehouse-WiFi", _session.Configuration!.Ssid);
+        Assert.Equal("ZD421c", _session.Configuration!.PrinterName);
+        Assert.Equal("Warehouse-WiFi", _session.Configuration.Ssid);
         Assert.Equal("correcthorsebatterystaple", _session.Configuration.Password);
         Assert.Equal("192.168.1.50", _session.Configuration.StaticIpAddress);
         Assert.Equal("255.255.255.0", _session.Configuration.Netmask);
@@ -157,6 +166,39 @@ public class ConfigureTests : BunitContext
 
         var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
         Assert.EndsWith("/progress", navigation.Uri);
+    }
+
+    [Fact]
+    public void WhenModelReadSucceeds_PrefillsPrinterNameField()
+    {
+        _modelReader.ReadModelNameAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
+            .Returns("ZD621");
+
+        var cut = Render<Configure>();
+
+        Assert.Equal("ZD621", cut.Find("#printer-name").GetAttribute("value"));
+    }
+
+    [Fact]
+    public void WhenModelReadFails_FallsBackToDefaultPrinterName()
+    {
+        _modelReader.ReadModelNameAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
+            .Returns<string?>(_ => throw new InvalidOperationException("simulated read failure"));
+
+        var cut = Render<Configure>();
+
+        Assert.Equal("ZD421", cut.Find("#printer-name").GetAttribute("value"));
+    }
+
+    [Fact]
+    public void WhenModelReadReturnsBlank_FallsBackToDefaultPrinterName()
+    {
+        _modelReader.ReadModelNameAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
+            .Returns((string?)null);
+
+        var cut = Render<Configure>();
+
+        Assert.Equal("ZD421", cut.Find("#printer-name").GetAttribute("value"));
     }
 
     [Fact]

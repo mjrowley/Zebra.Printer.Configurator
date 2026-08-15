@@ -61,7 +61,7 @@ public sealed class LinkOsPrinterConfigurationService(
         await ((PrinterConnectionSession)session).RunAsync(connection =>
         {
             var commands = WlanConfigurationCommandBuilder.BuildSetCommands(configuration)
-                .Concat(PrinterDefaultsCommandBuilder.BuildSetCommands())
+                .Concat(PrinterDefaultsCommandBuilder.BuildSetCommands(configuration.PrinterName))
                 .ToList();
 
             foreach (var (key, value) in commands)

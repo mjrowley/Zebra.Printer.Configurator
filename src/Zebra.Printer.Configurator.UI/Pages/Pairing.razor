@@ -45,10 +45,11 @@
                 <PrinterVersionAlert Device="_discoveredDevice!" WifiIpAddress="@_wifiIpAddress" BlockingChanged="OnVersionCheckBlockingChanged" OnCancelled="Retry" />
             </div>
             <div class="button-row">
-                <button type="button" class="btn btn-primary" data-testid="configure-printer-button" disabled="@(_factoryResetActive || _templatesActive || _versionCheckBlocking)" @onclick="Continue">Configure Printer</button>
+                <button type="button" class="btn btn-primary" data-testid="configure-printer-button" disabled="@(_factoryResetActive || _templatesActive || _versionCheckBlocking || _webInterfaceActive)" @onclick="Continue">Configure Printer</button>
                 <FactoryResetPanel Device="_discoveredDevice!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
-                <CheckConfigurationButton Device="_discoveredDevice!" State="_checkConfigState" Disabled="@(_factoryResetActive || _templatesActive)" />
+                <CheckConfigurationButton Device="_discoveredDevice!" State="_checkConfigState" Disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive)" />
                 <BagTagTemplatesPanel Device="_discoveredDevice!" IsActiveChanged="OnTemplatesActiveChanged" />
+                <WebInterfaceTogglePanel Device="_discoveredDevice!" IsActiveChanged="OnWebInterfaceActiveChanged" />
             </div>
             break;
 
@@ -87,6 +88,7 @@
     private bool _factoryResetActive;
     private bool _templatesActive;
     private bool _versionCheckBlocking;
+    private bool _webInterfaceActive;
     private string? _wifiIpAddress;
     private CheckConfigurationState _checkConfigState = new();
 
@@ -238,6 +240,8 @@
 
     private void OnVersionCheckBlockingChanged(bool blocking) => _versionCheckBlocking = blocking;
 
+    private void OnWebInterfaceActiveChanged(bool active) => _webInterfaceActive = active;
+
     private void Retry()
     {
         _discoveredDevice = null;
@@ -245,6 +249,7 @@
         _factoryResetActive = false;
         _templatesActive = false;
         _versionCheckBlocking = false;
+        _webInterfaceActive = false;
         _wifiIpAddress = null;
         _checkConfigState = new CheckConfigurationState();
         ConnectivityMonitor.Reset();

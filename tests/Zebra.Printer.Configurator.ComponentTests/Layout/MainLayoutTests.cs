@@ -3,6 +3,7 @@ using Bunit;
 using NSubstitute;
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Connectivity;
+using Zebra.Printer.Configurator.Core.Firmware;
 using Zebra.Printer.Configurator.Core.Logging;
 using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Printer.Configurator.UI.Layout;
@@ -14,6 +15,9 @@ public class MainLayoutTests : BunitContext
     private readonly AppLog _appLog = new();
     private readonly FakeAppVersionProvider _appVersionProvider = new();
     private readonly PrinterConnectivityMonitor _connectivityMonitor = new();
+    private readonly PairingSession _session = new();
+    private readonly FirmwareUpdateStatusMonitor _updateStatusMonitor = new();
+    private readonly PrinterActivityMonitor _activityMonitor = new();
 
     public MainLayoutTests()
     {
@@ -21,9 +25,9 @@ public class MainLayoutTests : BunitContext
         Services.AddSingleton<IAppVersionProvider>(_appVersionProvider);
         Services.AddSingleton(_connectivityMonitor);
 
-        // MainLayout renders CancelWorkflowButton, which needs all of these - built from
-        // substitutes the same way PairAndConfigureWorkflowTests.CreateWorkflow() does, since
-        // nothing in these tests drives the workflow itself.
+        // MainLayout renders CancelWorkflowButton and BackToPairingButton, which need all of these -
+        // built from substitutes the same way PairAndConfigureWorkflowTests.CreateWorkflow() does,
+        // since nothing in these tests drives the workflow itself.
         Services.AddSingleton(new PairAndConfigureWorkflow(
             Substitute.For<IPrinterConnectionSessionFactory>(),
             Substitute.For<IPrinterConfigurationService>(),
@@ -31,7 +35,9 @@ public class MainLayoutTests : BunitContext
             Substitute.For<IPrinterRestartService>(),
             Substitute.For<IPrinterConnectivityTestService>()));
         Services.AddSingleton(new PrinterOperationCancellation());
-        Services.AddSingleton(new PairingSession());
+        Services.AddSingleton(_session);
+        Services.AddSingleton(_updateStatusMonitor);
+        Services.AddSingleton(_activityMonitor);
         Services.AddSingleton(Substitute.For<IWifiConnectivityMonitor>());
         Services.AddSingleton<IPrinterConnectionModeProvider>(new PrinterConnectionModeProvider());
     }

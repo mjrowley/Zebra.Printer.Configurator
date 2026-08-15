@@ -1,0 +1,230 @@
+@* Self-contained web-interface enable/disable button + restart-confirm flow for a paired printer.
+   Shared between Pairing (right after tap-pairing) and Result (after a successful configuration),
+   matching FactoryResetPanel/BagTagTemplatesPanel/CheckConfigurationButton.
+
+   The toggle itself (SetEnabledAsync) takes effect immediately in the printer's stored settings,
+   but the web server that actually serves ip.https/ip.http only picks up the change on its next
+   boot - so setting the values alone isn't enough; the printer needs a restart too, and that's a
+   separate, more disruptive action the user should explicitly opt into rather than have happen
+   automatically. Declining (PendingRestart) doesn't lose the toggle that was already applied - it
+   just defers the restart decision, and clicking the relabeled button re-asks rather than
+   re-applying the toggle a second time. *@
+@implements IDisposable
+@inject IWebInterfaceService WebInterfaceService
+@inject PrinterActivityMonitor ActivityMonitor
+
+@switch (_state)
+{
+    case State.Loading:
+        <p data-testid="web-interface-loading">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            Checking web interface status&hellip;
+        </p>
+        break;
+
+    case State.Idle:
+    case State.PendingRestart:
+        <button type="button" class="btn btn-outline-secondary" data-testid="web-interface-toggle-button" @onclick="OnButtonClick">
+            @ButtonLabel
+        </button>
+        break;
+
+    case State.Applying:
+        <p data-testid="web-interface-applying">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            @(_pendingEnabled ? "Enabling" : "Disabling") web interface&hellip;
+        </p>
+        break;
+
+    case State.Restarting:
+        <p data-testid="web-interface-restarting">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            Restarting printer&hellip;
+        </p>
+        break;
+
+    case State.Failed:
+        <p class="text-danger" data-testid="web-interface-error">@_errorMessage</p>
+        <button type="button" class="btn btn-primary" @onclick="Retry">Try Again</button>
+        break;
+}
+
+@if (_state == State.ConfirmRestart)
+{
+    <div class="confirm-modal-backdrop" data-testid="web-interface-restart-confirm-dialog">
+        <div class="confirm-modal-box" role="alertdialog">
+            <p>
+                The Web Interface will only be @(_pendingEnabled ? "enabled" : "disabled") after the
+                printer restarts. Restart now?
+            </p>
+            <div class="confirm-modal-actions">
+                <button type="button" class="btn btn-danger btn-sm" data-testid="web-interface-restart-confirm-yes" @onclick="ConfirmRestartNow">Yes - Restart</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-testid="web-interface-restart-confirm-no" @onclick="DeferRestart">No</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_state == State.Complete)
+{
+    <div class="confirm-modal-backdrop" data-testid="web-interface-complete-dialog">
+        <div class="confirm-modal-box" role="alertdialog">
+            <p data-testid="web-interface-complete">
+                Printer restarting - the web interface change will take effect shortly.
+            </p>
+            <div class="confirm-modal-actions">
+                <button type="button" class="btn btn-primary" @onclick="CloseComplete">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private enum State
+    {
+        // Initial field value only, immediately transitioned out of by OnInitializedAsync's first
+        // SetState(Loading) call - deliberately distinct from Loading itself (and IsActive-false)
+        // so that very first transition is correctly detected as "became active" the same way every
+        // other transition is, rather than a no-op false-positive from _state already equalling its
+        // own target value. No @switch case renders it.
+        NotStarted,
+        Loading,
+        Idle,
+        Applying,
+        ConfirmRestart,
+        PendingRestart,
+        Restarting,
+        Complete,
+        Failed,
+    }
+
+    [Parameter, EditorRequired]
+    public PrinterDevice Device { get; set; } = null!;
+
+    /// <summary>
+    /// Raised when the user dismisses the terminal Complete state via its Close button - purely
+    /// informational for a host page (unlike FactoryResetPanel's OnFinished, closing this doesn't
+    /// need the whole page to reset: a plain restart doesn't invalidate the Bluetooth pairing the
+    /// way a factory reset does). This panel returns itself to a freshly-checked Idle/Loading state
+    /// regardless of whether a host page does anything with this callback.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnFinished { get; set; }
+
+    /// <summary>
+    /// Raised whenever this panel starts (true) or stops (false) using the printer's Bluetooth/WiFi
+    /// connection, so a host page can disable other actions that would race it - the same reason
+    /// FactoryResetPanel raises this.
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> IsActiveChanged { get; set; }
+
+    private State _state = State.NotStarted;
+    private WebInterfaceState? _currentState;
+    private bool _pendingEnabled;
+    private string? _errorMessage;
+    private IDisposable? _activityToken;
+
+    private string ButtonLabel => _state == State.PendingRestart
+        ? "Web Interface Change Requires Restart"
+        : (_currentState?.BothEnabled == true ? "Disable Web Interface" : "Enable Web Interface");
+
+    protected override Task OnInitializedAsync() => LoadStateAsync();
+
+    private async Task LoadStateAsync()
+    {
+        await SetState(State.Loading);
+
+        try
+        {
+            _currentState = await WebInterfaceService.ReadStateAsync(Device);
+            await SetState(State.Idle);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Could not check web interface status: {ex.Message}";
+            await SetState(State.Failed);
+        }
+    }
+
+    // From Idle, starts the toggle. From PendingRestart, just re-asks about restarting - the
+    // toggle itself was already applied when the button first read "Web Interface Change Requires
+    // Restart", so this must not call SetEnabledAsync a second time.
+    private Task OnButtonClick() => _state == State.PendingRestart
+        ? SetState(State.ConfirmRestart)
+        : StartToggle();
+
+    private async Task StartToggle()
+    {
+        if (_currentState is null)
+        {
+            return;
+        }
+
+        _pendingEnabled = !_currentState.BothEnabled;
+        await SetState(State.Applying);
+
+        try
+        {
+            await WebInterfaceService.SetEnabledAsync(Device, _pendingEnabled);
+            await SetState(State.ConfirmRestart);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Could not {(_pendingEnabled ? "enable" : "disable")} web interface: {ex.Message}";
+            await SetState(State.Failed);
+        }
+    }
+
+    private Task DeferRestart() => SetState(State.PendingRestart);
+
+    private async Task ConfirmRestartNow()
+    {
+        await SetState(State.Restarting);
+
+        try
+        {
+            await WebInterfaceService.RestartPrinterAsync(Device);
+            await SetState(State.Complete);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Could not restart printer: {ex.Message}";
+            await SetState(State.Failed);
+        }
+    }
+
+    private Task Retry() => LoadStateAsync();
+
+    private async Task CloseComplete()
+    {
+        await OnFinished.InvokeAsync();
+        await LoadStateAsync();
+    }
+
+    private async Task SetState(State state)
+    {
+        var wasActive = IsActive(_state);
+        _state = state;
+        var isActive = IsActive(_state);
+
+        if (wasActive != isActive)
+        {
+            if (isActive)
+            {
+                _activityToken = ActivityMonitor.Begin("Web Interface");
+            }
+            else
+            {
+                _activityToken?.Dispose();
+                _activityToken = null;
+            }
+
+            await IsActiveChanged.InvokeAsync(isActive);
+        }
+    }
+
+    private static bool IsActive(State state) => state is State.Loading or State.Applying or State.Restarting;
+
+    public void Dispose() => _activityToken?.Dispose();
+}

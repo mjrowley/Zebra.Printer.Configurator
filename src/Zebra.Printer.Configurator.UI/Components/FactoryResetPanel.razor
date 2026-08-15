@@ -1,8 +1,10 @@
 @* Self-contained factory-reset button + confirm/progress/result flow for a paired printer. Shared
    between Pairing (right after tap-pairing) and Result (after a successful reconfiguration), rather
    than duplicating the same confirm-then-reset-then-remove-bond state machine on both pages. *@
+@implements IDisposable
 @inject IPrinterFactoryResetService FactoryResetService
 @inject IBluetoothPairingService BluetoothPairingService
+@inject PrinterActivityMonitor ActivityMonitor
 
 @switch (_state)
 {
@@ -27,13 +29,13 @@
         break;
 
     case State.Complete:
-        <div class="factory-reset-modal-backdrop" data-testid="factory-reset-complete-dialog">
-            <div class="factory-reset-modal-box" role="alertdialog">
+        <div class="confirm-modal-backdrop" data-testid="factory-reset-complete-dialog">
+            <div class="confirm-modal-box" role="alertdialog">
                 <p data-testid="factory-reset-complete">
                     Factory reset command sent. The printer is restarting with default settings, and
                     its Bluetooth pairing has been removed.
                 </p>
-                <div class="factory-reset-modal-actions">
+                <div class="confirm-modal-actions">
                     <button type="button" class="btn btn-primary" @onclick="() => OnFinished.InvokeAsync()">Close</button>
                 </div>
             </div>
@@ -73,6 +75,7 @@
 
     private State _state = State.Idle;
     private string? _errorMessage;
+    private IDisposable? _activityToken;
 
     private async Task ConfirmFactoryReset()
     {
@@ -104,7 +107,19 @@
 
         if (wasActive != isActive)
         {
+            if (isActive)
+            {
+                _activityToken = ActivityMonitor.Begin("Factory Reset");
+            }
+            else
+            {
+                _activityToken?.Dispose();
+                _activityToken = null;
+            }
+
             await IsActiveChanged.InvokeAsync(isActive);
         }
     }
+
+    public void Dispose() => _activityToken?.Dispose();
 }

@@ -3,6 +3,7 @@ using Bunit;
 using NSubstitute;
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Models;
+using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Printer.Configurator.UI.Components;
 
 namespace Zebra.Printer.Configurator.ComponentTests.Components;
@@ -12,10 +13,12 @@ public class BagTagTemplatesPanelTests : BunitContext
     private static readonly PrinterDevice Device = new() { BluetoothMacAddress = "AABBCCDDEEFF" };
 
     private readonly IBagTagTemplateService _templateService = Substitute.For<IBagTagTemplateService>();
+    private readonly PrinterActivityMonitor _activityMonitor = new();
 
     public BagTagTemplatesPanelTests()
     {
         Services.AddSingleton(_templateService);
+        Services.AddSingleton(_activityMonitor);
         _templateService.GetExistingTemplateFileNamesAsync(Device, Arg.Any<CancellationToken>())
             .Returns(Array.Empty<string>());
     }
@@ -145,5 +148,21 @@ public class BagTagTemplatesPanelTests : BunitContext
         // Only one "became active" transition (Idle -> Checking) - Confirming is still non-idle, so
         // no further IsActiveChanged events fire until Cancel returns to Idle.
         Assert.Equal([true, false], activeStates);
+    }
+
+    [Fact]
+    public void ClickingButton_MarksActivityMonitorBusyUntilComplete()
+    {
+        var deployTcs = new TaskCompletionSource();
+        _templateService.DeployTemplatesAsync(Device, Arg.Any<CancellationToken>()).Returns(deployTcs.Task);
+        var cut = Render<BagTagTemplatesPanel>(p => p.Add(c => c.Device, Device));
+
+        cut.Find("[data-testid='deploy-templates-button']").Click();
+
+        Assert.True(_activityMonitor.IsBusy);
+
+        deployTcs.SetResult();
+
+        cut.WaitForAssertion(() => Assert.False(_activityMonitor.IsBusy));
     }
 }

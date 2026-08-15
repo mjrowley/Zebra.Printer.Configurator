@@ -7,7 +7,9 @@
    The button stays visible and re-usable (like CheckConfigurationButton) rather than being replaced
    by a terminal state the user has to dismiss (like FactoryResetPanel) - deploying templates isn't
    destructive or one-shot, so there's no reason to block pressing it again. *@
+@implements IDisposable
 @inject IBagTagTemplateService TemplateService
+@inject PrinterActivityMonitor ActivityMonitor
 
 <div>
     <button type="button" class="btn btn-outline-secondary" data-testid="deploy-templates-button"
@@ -38,13 +40,13 @@
 
     @if (_state == State.Confirming)
     {
-        <div class="bag-tag-templates-modal-backdrop" data-testid="deploy-templates-confirm-dialog">
-            <div class="bag-tag-templates-modal-box" role="alertdialog">
+        <div class="confirm-modal-backdrop" data-testid="deploy-templates-confirm-dialog">
+            <div class="confirm-modal-box" role="alertdialog">
                 <p data-testid="deploy-templates-confirm-message">
                     The following template(s) already exist on the printer and will be overwritten:
                     @string.Join(", ", _existingFileNames). Continue?
                 </p>
-                <div class="bag-tag-templates-modal-actions">
+                <div class="confirm-modal-actions">
                     <button type="button" class="btn btn-danger" data-testid="deploy-templates-confirm" @onclick="Deploy">Overwrite</button>
                     <button type="button" class="btn btn-secondary" data-testid="deploy-templates-cancel" @onclick="Cancel">Cancel</button>
                 </div>
@@ -78,6 +80,7 @@
     private State _state = State.Idle;
     private IReadOnlyList<string> _existingFileNames = [];
     private string? _errorMessage;
+    private IDisposable? _activityToken;
 
     private async Task StartDeploy()
     {
@@ -130,9 +133,21 @@
 
         if (wasActive != isActive)
         {
+            if (isActive)
+            {
+                _activityToken = ActivityMonitor.Begin("Bag Tag Templates");
+            }
+            else
+            {
+                _activityToken?.Dispose();
+                _activityToken = null;
+            }
+
             await IsActiveChanged.InvokeAsync(isActive);
         }
     }
 
     private static bool IsActive(State state) => state is State.Checking or State.Confirming or State.Deploying;
+
+    public void Dispose() => _activityToken?.Dispose();
 }
