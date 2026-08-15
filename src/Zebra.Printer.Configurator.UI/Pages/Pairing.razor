@@ -16,10 +16,13 @@
     @switch (_state)
     {
         case PairingUiState.WaitingForTap:
-            <p data-testid="pairing-mode-instruction">
-                On the printer, hold down the label feed button for 5 seconds until it enters pairing mode.
+            <p data-testid="pairing-mode-instruction-wifi">
+                <strong>1. Ensure this device is connected to the store WiFi network.</strong>
             </p>
-            <p>Tap your Zebra printer to the back of your phone to begin.</p>
+            <p data-testid="pairing-mode-instruction">
+                <strong>2. On the printer, hold down the label feed button for 5 seconds until it enters pairing mode.</strong>
+            </p>
+            <p><strong>3. Tap your Zebra printer to the back of your phone to begin.</strong></p>
             break;
 
         case PairingUiState.Pairing:
