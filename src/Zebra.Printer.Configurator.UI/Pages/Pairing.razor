@@ -45,6 +45,12 @@
                     Printer found@(_discoveredDevice?.SerialNumber is not null ? $" (serial {_discoveredDevice.SerialNumber})" : ".")
                 </p>
                 <PrinterVersionAlert Device="_discoveredDevice!" WifiIpAddress="@_wifiIpAddress" VersionResult="_printerStatus?.VersionResult" StatusLoading="_statusLoading" BlockingChanged="OnVersionCheckBlockingChanged" OnCancelled="Retry" />
+                @if (_printerStatus?.WebInterfaceState is { } webInterfaceState)
+                {
+                    <p data-testid="web-interface-status" class="@(webInterfaceState.BothEnabled ? "text-success" : "text-danger")">
+                        Web Interface is currently @(webInterfaceState.BothEnabled ? "enabled" : "disabled").
+                    </p>
+                }
             </div>
             <div class="button-row">
                 <button type="button" class="btn btn-primary" data-testid="configure-printer-button" disabled="@(_factoryResetActive || _templatesActive || _versionCheckBlocking || _webInterfaceActive || _statusLoading)" @onclick="Continue">Configure Printer</button>

@@ -96,12 +96,17 @@ public class WebInterfaceTogglePanelTests : BunitContext
     {
         var cut = RenderPanel(new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false });
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-toggle-button']"));
+        Assert.DoesNotContain("text-danger", cut.Find("[data-testid='web-interface-toggle-button']").ClassList);
         cut.Find("[data-testid='web-interface-toggle-button']").Click();
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-restart-confirm-dialog']"));
 
         cut.Find("[data-testid='web-interface-restart-confirm-no']").Click();
 
         Assert.Equal("Web Interface Change Requires Restart", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim());
+        // Flags the button text red - a plain "Enable/Disable Web Interface" click is reversible, but
+        // this state means a toggle was already applied and is silently waiting on a restart to take
+        // effect, which is easy to forget about otherwise.
+        Assert.Contains("text-danger", cut.Find("[data-testid='web-interface-toggle-button']").ClassList);
         Assert.Empty(cut.FindAll("[data-testid='web-interface-restart-confirm-dialog']"));
 
         cut.Find("[data-testid='web-interface-toggle-button']").Click();

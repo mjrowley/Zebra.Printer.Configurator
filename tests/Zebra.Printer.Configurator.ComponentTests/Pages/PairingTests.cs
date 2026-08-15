@@ -302,6 +302,24 @@ public class PairingTests : BunitContext
         Assert.NotNull(cut.Find("[data-testid='check-configuration-button']"));
     }
 
+    [Theory]
+    [InlineData(true, "enabled", "text-success")]
+    [InlineData(false, "disabled", "text-danger")]
+    public void ReadyState_ShowsWebInterfaceStatusLine_ColoredByEnabledState(bool enabled, string expectedWord, string expectedClass)
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        StubStatus(device, webInterfaceEnabled: enabled);
+
+        var cut = RenderWithReadyPrinter(device);
+
+        cut.WaitForAssertion(() =>
+        {
+            var statusLine = cut.Find("[data-testid='web-interface-status']");
+            Assert.Contains($"currently {expectedWord}", statusLine.TextContent);
+            Assert.Contains(expectedClass, statusLine.ClassList);
+        });
+    }
+
     [Fact]
     public void ReadyState_AutomaticallyPopulatesConfigurationListWithoutClicking()
     {

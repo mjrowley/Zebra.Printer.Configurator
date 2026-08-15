@@ -24,7 +24,7 @@
 
     case State.Idle:
     case State.PendingRestart:
-        <button type="button" class="btn btn-outline-secondary" data-testid="web-interface-toggle-button" @onclick="OnButtonClick">
+        <button type="button" class="btn btn-outline-secondary @(_state == State.PendingRestart ? "text-danger" : "")" data-testid="web-interface-toggle-button" @onclick="OnButtonClick">
             @ButtonLabel
         </button>
         break;

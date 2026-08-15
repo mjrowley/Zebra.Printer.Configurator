@@ -231,6 +231,24 @@ public class ResultTests : BunitContext
         Assert.NotNull(cut.Find("[data-testid='check-configuration-button']"));
     }
 
+    [Theory]
+    [InlineData(true, "enabled", "text-success")]
+    [InlineData(false, "disabled", "text-danger")]
+    public async Task SucceededWorkflow_ShowsWebInterfaceStatusLine_ColoredByEnabledState(bool enabled, string expectedWord, string expectedClass)
+    {
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+        StubStatus(webInterfaceEnabled: enabled);
+
+        var cut = Render<Result>();
+
+        cut.WaitForAssertion(() =>
+        {
+            var statusLine = cut.Find("[data-testid='web-interface-status']");
+            Assert.Contains($"currently {expectedWord}", statusLine.TextContent);
+            Assert.Contains(expectedClass, statusLine.ClassList);
+        });
+    }
+
     [Fact]
     public async Task ClickingReconfigure_NavigatesToConfigureWithoutResettingSession()
     {

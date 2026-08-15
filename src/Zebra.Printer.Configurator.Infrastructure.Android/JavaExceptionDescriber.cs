@@ -19,20 +19,34 @@ internal static class JavaExceptionDescriber
     {
         var parts = new List<string>();
 
+        // Android's BluetoothSocket stack commonly re-wraps the exact same underlying IOException
+        // message at several levels of the cause chain as it propagates up (confirmed on-device: a
+        // failed connect produced the identical "read failed, socket might closed or timeout, read
+        // ret: -1" three times in a row) - each level added no new diagnostic information, just
+        // tripled the length of every retry log line. Only a level whose message actually differs
+        // from the one immediately before it is kept.
         if (ex is Throwable throwable)
         {
             for (var t = throwable; t is not null && parts.Count < MaxChainLength; t = t.Cause)
             {
                 var className = t.GetType().Name;
                 var message = t.Message;
-                parts.Add(string.IsNullOrWhiteSpace(message) ? className : $"{className}: {message}");
+                var part = string.IsNullOrWhiteSpace(message) ? className : $"{className}: {message}";
+                if (parts.Count == 0 || parts[^1] != part)
+                {
+                    parts.Add(part);
+                }
             }
         }
         else
         {
             for (System.Exception? e = ex; e is not null && parts.Count < MaxChainLength; e = e.InnerException)
             {
-                parts.Add(string.IsNullOrWhiteSpace(e.Message) ? e.GetType().Name : e.Message);
+                var part = string.IsNullOrWhiteSpace(e.Message) ? e.GetType().Name : e.Message;
+                if (parts.Count == 0 || parts[^1] != part)
+                {
+                    parts.Add(part);
+                }
             }
         }
 
