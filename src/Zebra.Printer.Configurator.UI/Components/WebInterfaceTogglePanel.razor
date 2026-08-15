@@ -16,10 +16,18 @@
 @switch (_state)
 {
     case State.Loading:
-        <p data-testid="web-interface-loading">
-            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-            Checking web interface status&hellip;
-        </p>
+        @if (!StatusLoading)
+        {
+            // While the page's own merged status read is in flight, PrinterVersionAlert's single
+            // "Checking printer configuration..." spinner already covers this - showing a second,
+            // separate spinner here would just be noise. This panel's own follow-up reads (Retry(),
+            // CloseComplete()'s self-heal) still show their own, since nothing else is indicating
+            // progress for those.
+            <p data-testid="web-interface-loading">
+                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                Checking web interface status&hellip;
+            </p>
+        }
         break;
 
     case State.Idle:

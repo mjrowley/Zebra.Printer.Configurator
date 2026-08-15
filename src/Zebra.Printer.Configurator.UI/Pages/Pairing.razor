@@ -58,6 +58,7 @@
                 <CheckConfigurationButton State="_checkConfigState" Disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive)" OnRecheck="RecheckConfigurationAsync" />
                 <BagTagTemplatesPanel Device="_discoveredDevice!" IsActiveChanged="OnTemplatesActiveChanged" />
                 <WebInterfaceTogglePanel Device="_discoveredDevice!" InitialState="_printerStatus?.WebInterfaceState" StatusLoading="_statusLoading" IsActiveChanged="OnWebInterfaceActiveChanged" />
+                <button type="button" class="btn btn-outline-secondary" data-testid="start-over-button" disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive)" @onclick="Retry">Start Over</button>
             </div>
             break;
 
@@ -101,6 +102,7 @@
     private CheckConfigurationState _checkConfigState = new();
     private PrinterStatus? _printerStatus;
     private bool _statusLoading;
+    private int _statusRequestVersion;
 
     private string FunctionName => _state switch
     {
@@ -256,23 +258,47 @@
     // _checkConfigState.SetLoading() *before* the render that mounts Ready's children (not in here)
     // so those children's very first parameter-set already reflects "loading", never a transient
     // false window.
+    //
+    // _statusRequestVersion guards against a stale result: "Start Over" lets the user abandon this
+    // printer (and reset _checkConfigState to a brand new instance) while this read is still in
+    // flight - actually interrupting the underlying blocking Bluetooth call is out of scope (see
+    // LinkOsPrinterVersionCheckService's own note on this), so the read itself keeps running in the
+    // background regardless. Without this guard, its eventual completion would still write into
+    // whatever _printerStatus/_checkConfigState happen to be live by then - either the fields Retry()
+    // just reset, or (worse) a different printer's if the user has already re-tapped - rather than
+    // being silently discarded as the abandoned attempt it is.
     private async Task LoadPrinterStatusAsync(PrinterDevice device, bool allowBleFallback)
     {
+        var requestVersion = ++_statusRequestVersion;
         using var _ = ActivityMonitor.Begin("Printer Status Check");
         try
         {
-            _printerStatus = await StatusReader.ReadStatusAsync(device, allowBleFallback);
+            var status = await StatusReader.ReadStatusAsync(device, allowBleFallback);
+            if (requestVersion != _statusRequestVersion)
+            {
+                return;
+            }
+
+            _printerStatus = status;
             _checkConfigState.SetResults(_printerStatus.ConfigurationValues);
         }
         catch (Exception ex)
         {
+            if (requestVersion != _statusRequestVersion)
+            {
+                return;
+            }
+
             _printerStatus = null;
             _checkConfigState.SetError($"Could not check printer status: {ex.Message}");
         }
         finally
         {
-            _statusLoading = false;
-            StateHasChanged();
+            if (requestVersion == _statusRequestVersion)
+            {
+                _statusLoading = false;
+                StateHasChanged();
+            }
         }
     }
 
@@ -313,6 +339,9 @@
 
     private void Retry()
     {
+        // Invalidates any LoadPrinterStatusAsync call still in flight (e.g. "Start Over" clicked
+        // mid-check) - see that method's own comment on _statusRequestVersion.
+        _statusRequestVersion++;
         _discoveredDevice = null;
         _errorMessage = null;
         _factoryResetActive = false;

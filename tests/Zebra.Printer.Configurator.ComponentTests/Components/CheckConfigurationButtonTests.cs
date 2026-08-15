@@ -38,13 +38,17 @@ public class CheckConfigurationButtonTests : BunitContext
     }
 
     [Fact]
-    public void WhenStateIsLoading_ButtonHasDisabledAttribute()
+    public void WhenStateIsLoading_ButtonHasDisabledAttribute_AndNoSpinner()
     {
+        // PrinterVersionAlert already shows one "Checking printer configuration..." spinner for the
+        // whole merged read - a second one on this button would be redundant, so this button only
+        // reflects the loading state via its disabled attribute now.
         var state = new CheckConfigurationState();
         state.SetLoading();
         var cut = Render<CheckConfigurationButton>(p => p
             .Add(c => c.State, state));
 
         Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled"));
+        Assert.Empty(cut.FindAll(".spinner-border"));
     }
 }

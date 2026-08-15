@@ -5,11 +5,10 @@
    component (sharing the same CheckConfigurationState), so this button can live in a page's sticky
    header while a long results table scrolls separately below. *@
 
+@* No spinner glyph here even while State.Loading - PrinterVersionAlert's single "Checking printer
+   configuration..." spinner already covers the whole merged read (this button is just disabled for
+   its duration); a second spinner on the button itself would be redundant. *@
 <button type="button" class="btn btn-outline-secondary" data-testid="check-configuration-button" disabled="@(State.Loading || Disabled)" @onclick="() => OnRecheck.InvokeAsync()">
-    @if (State.Loading)
-    {
-        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-    }
     Recheck Configuration
 </button>
 

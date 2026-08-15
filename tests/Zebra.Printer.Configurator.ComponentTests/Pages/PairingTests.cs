@@ -411,6 +411,59 @@ public class PairingTests : BunitContext
     }
 
     [Fact]
+    public void WhileFactoryResetIsSelected_StartOverButtonIsDisabled()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        var cut = RenderWithReadyPrinter(device);
+
+        cut.Find("[data-testid='factory-reset-button']").Click();
+
+        Assert.True(cut.Find("[data-testid='start-over-button']").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void ClickingStartOver_ReturnsToWaitingForTapAndResetsConnectivityMonitorAndConnectionMode()
+    {
+        // Unlike "Try Again" (only reachable from the Failed state, where nothing is in flight), this
+        // is reachable straight from Ready - including while a merged status check is still running -
+        // so it needs to work as an actual escape hatch for a printer the user wants to abandon, not
+        // just a cosmetic "disabled while busy" control.
+        _connectionModeProvider.UseWifi("192.168.1.50");
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        var cut = RenderWithReadyPrinter(device);
+
+        cut.Find("[data-testid='start-over-button']").Click();
+
+        Assert.Contains("Tap this device to the printer", cut.Markup);
+        Assert.Equal(ConnectionIndicatorState.Disconnected, _connectivityMonitor.Bluetooth);
+        Assert.Equal(PrinterConnectionMode.Bluetooth, _connectionModeProvider.Mode);
+    }
+
+    [Fact]
+    public void ClickingStartOver_WhileStatusCheckStillInFlight_LateResultDoesNotResurfaceStaleData()
+    {
+        // Regression guard for the race this button introduces: LoadPrinterStatusAsync doesn't
+        // actually cancel the in-flight Bluetooth read (interrupting a blocking SDK call is out of
+        // scope, same as LinkOsPrinterVersionCheckService's own documented choice) - it just needs to
+        // discard a late result instead of resurrecting it into whatever's on screen by the time it
+        // arrives, which by then could be a totally different (freshly re-tapped) printer.
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        var statusTcs = new TaskCompletionSource<PrinterStatus>();
+        _statusReader.ReadStatusAsync(device, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(statusTcs.Task);
+        var cut = RenderWithReadyPrinter(device);
+        cut.WaitForAssertion(() => Assert.False(cut.Find("[data-testid='start-over-button']").HasAttribute("disabled")));
+
+        cut.Find("[data-testid='start-over-button']").Click();
+        Assert.Contains("Tap this device to the printer", cut.Markup);
+
+        statusTcs.SetResult(DefaultPrinterStatus());
+
+        // Nothing should have changed as a result of the now-stale read resolving - still waiting for
+        // a fresh tap, not silently jumping back to Ready with the abandoned printer's data.
+        Assert.Contains("Tap this device to the printer", cut.Markup);
+    }
+
+    [Fact]
     public void AfterCancellingFactoryReset_ConfigurePrinterButtonIsEnabledAgain()
     {
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };

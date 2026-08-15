@@ -295,4 +295,18 @@ public class WebInterfaceTogglePanelTests : BunitContext
 
         Assert.NotNull(cut.Find("[data-testid='web-interface-restart-confirm-dialog']"));
     }
+
+    [Fact]
+    public void WhileStatusLoadingIsTrue_DoesNotShowItsOwnLoadingIndicator()
+    {
+        // The page's own merged-status read is what's driving StatusLoading here - PrinterVersionAlert
+        // already shows one "Checking printer configuration..." spinner for that whole read, so this
+        // panel deliberately renders nothing rather than a second, redundant spinner.
+        var cut = Render<WebInterfaceTogglePanel>(p => p
+            .Add(c => c.Device, Device)
+            .Add(c => c.InitialState, (WebInterfaceState?)null)
+            .Add(c => c.StatusLoading, true));
+
+        Assert.Empty(cut.FindAll("[data-testid='web-interface-loading']"));
+    }
 }
