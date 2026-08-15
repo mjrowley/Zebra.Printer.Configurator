@@ -51,28 +51,10 @@ public sealed class LinkOsPrinterVersionCheckService(IPrinterConnectionModeProvi
         // trigger a second, unexpected OS pairing dialog (see PrinterConnectionRunner's own doc
         // comment); when this instead runs over WiFi (the Result.razor re-check), BLE fallback was
         // never reachable anyway, so disabling it here has no effect on that path.
-        var result = await PrinterConnectionRunner.RunAsync(device, connectionModeProvider, connection =>
-        {
-            var productName = GetProductNameWithRetry(connection);
-            var bundle = FirmwareBundleCatalog.FindByProductName(productName);
-            if (bundle is null)
-            {
-                appLog.Log($"Printer model ('{productName}') is not a supported model for firmware version checks.", LogLevel.Warning);
-                return PrinterVersionEvaluator.Evaluate(null, null, null);
-            }
+        var result = await PrinterConnectionRunner.RunAsync(device, connectionModeProvider,
+            connection => VersionCheckReader.Read(connection, () => GetProductNameWithRetry(connection), appLog),
+            appLog, cancellation: null, cancellationToken, allowBleFallback: false);
 
-            var firmwareVersionFound = SGD.GET("appl.name", connection);
-            if (string.IsNullOrWhiteSpace(firmwareVersionFound))
-            {
-                firmwareVersionFound = SGD.GET("device.firmware_version", connection);
-            }
-
-            var linkOsVersionFound = SGD.GET("appl.link_os_version_full", connection);
-
-            return PrinterVersionEvaluator.Evaluate(bundle, linkOsVersionFound, firmwareVersionFound);
-        }, appLog, cancellation: null, cancellationToken, allowBleFallback: false);
-
-        LogOutcome(result);
         return result;
     }
 
@@ -89,24 +71,5 @@ public sealed class LinkOsPrinterVersionCheckService(IPrinterConnectionModeProvi
         }
 
         return productName;
-    }
-
-    private void LogOutcome(PrinterVersionCheckResult result)
-    {
-        switch (result.Outcome)
-        {
-            case PrinterVersionOutcome.UpToDate:
-                appLog.Log("Printer firmware is up to date.", LogLevel.Success);
-                break;
-            case PrinterVersionOutcome.NewerThanExpected:
-                appLog.Log($"Printer has a newer firmware than expected (Link-OS {result.LinkOsVersionFound}, firmware {result.FirmwareVersionFound}).", LogLevel.Warning);
-                break;
-            case PrinterVersionOutcome.NeedsUpdate:
-                appLog.Log($"Printer requires a firmware update (Link-OS {result.LinkOsVersionFound}, firmware {result.FirmwareVersionFound}).", LogLevel.Warning);
-                break;
-            case PrinterVersionOutcome.Unsupported:
-                appLog.Log("Printer firmware version could not be checked (unsupported model).", LogLevel.Warning);
-                break;
-        }
     }
 }

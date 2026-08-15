@@ -26,10 +26,6 @@ public sealed class LinkOsPrinterConfigurationService(
     IAppLog appLog)
     : IPrinterConfigurationService, IPrinterRestartService, IPrinterFactoryResetService, IPrinterConfigurationReader
 {
-    // Logged as-is; every other SGD value is safe to show, but the WiFi password should never
-    // appear on screen (or in anything the user might screenshot/share for support).
-    private static readonly HashSet<string> SensitiveKeys = ["wlan.wpa.psk"];
-
     // Zebra's SGD docs state getvar on wlan.wpa.psk always prints a single "*" "for protection",
     // regardless of what was actually stored - so a verification pass can't expect the sent value
     // (a 64-hex-digit PSK) to be echoed back; "*" itself IS the confirmation something was accepted.
@@ -185,25 +181,8 @@ public sealed class LinkOsPrinterConfigurationService(
         return values;
     }
 
-    // Redacts to a length rather than a fixed mask, so a mismatch between sent/read-back length is
-    // still visible in the log without the actual WiFi password ever appearing on screen.
-    private string DisplayValue(string key, string? value)
-    {
-        if (SensitiveKeys.Contains(key))
-        {
-            return $"<redacted, length {value?.Length ?? 0}>";
-        }
-
-        // wlan.state only ever reports a real value when queried over the WiFi connection itself -
-        // confirmed on-device: LinkOsConnectivityTestService reads a genuine value like "CONNECTED"
-        // this same way after restart, but querying it over Bluetooth always comes back "?" (Zebra's
-        // own SGD getvar convention for "no value to report") even once the printer is confirmed
-        // connected to WiFi. Shown as a clearer explanation here rather than the bare "?".
-        if (key == "wlan.state" && value == "?" && connectionModeProvider.Mode == PrinterConnectionMode.Bluetooth)
-        {
-            return "Not available over Bluetooth";
-        }
-
-        return value ?? "<null>";
-    }
+    // Delegates to the shared ConfigurationValueFormatter (also used by LinkOsPrinterStatusReader's
+    // merged read) rather than keeping its own copy of the redaction/formatting rules.
+    private string DisplayValue(string key, string? value) =>
+        ConfigurationValueFormatter.Format(key, value, connectionModeProvider.Mode);
 }

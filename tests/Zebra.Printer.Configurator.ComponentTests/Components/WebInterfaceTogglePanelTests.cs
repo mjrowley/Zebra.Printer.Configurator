@@ -1,4 +1,5 @@
 using Bunit;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Zebra.Printer.Configurator.Core.Abstractions;
@@ -21,13 +22,36 @@ public class WebInterfaceTogglePanelTests : BunitContext
         Services.AddSingleton(_activityMonitor);
     }
 
+    // Mounts with the merged read already "complete" (StatusLoading=false) - this component's
+    // initial display now comes from the page's own merged IPrinterStatusReader read rather than
+    // its own Bluetooth call, so InitialState/StatusLoading stand in for that here. A null
+    // initialState mirrors the merged read failing.
+    private IRenderedComponent<WebInterfaceTogglePanel> RenderPanel(
+        WebInterfaceState? initialState,
+        EventCallback<bool>? isActiveChanged = null,
+        EventCallback? onFinished = null)
+    {
+        return Render<WebInterfaceTogglePanel>(p =>
+        {
+            p.Add(c => c.Device, Device);
+            p.Add(c => c.InitialState, initialState);
+            p.Add(c => c.StatusLoading, false);
+            if (isActiveChanged is { } iac)
+            {
+                p.Add(c => c.IsActiveChanged, iac);
+            }
+
+            if (onFinished is { } of)
+            {
+                p.Add(c => c.OnFinished, of);
+            }
+        });
+    }
+
     [Fact]
     public void WhenBothEnabled_ShowsDisableButton()
     {
-        _webInterfaceService.ReadStateAsync(Device, Arg.Any<CancellationToken>())
-            .Returns(new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true });
-
-        var cut = Render<WebInterfaceTogglePanel>(p => p.Add(c => c.Device, Device));
+        var cut = RenderPanel(new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true });
 
         cut.WaitForAssertion(() => Assert.Equal("Disable Web Interface", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim()));
     }
@@ -38,10 +62,7 @@ public class WebInterfaceTogglePanelTests : BunitContext
     [InlineData(false, false)]
     public void WhenEitherDisabled_ShowsEnableButton(bool httpsEnabled, bool httpEnabled)
     {
-        _webInterfaceService.ReadStateAsync(Device, Arg.Any<CancellationToken>())
-            .Returns(new WebInterfaceState { HttpsEnabled = httpsEnabled, HttpEnabled = httpEnabled });
-
-        var cut = Render<WebInterfaceTogglePanel>(p => p.Add(c => c.Device, Device));
+        var cut = RenderPanel(new WebInterfaceState { HttpsEnabled = httpsEnabled, HttpEnabled = httpEnabled });
 
         cut.WaitForAssertion(() => Assert.Equal("Enable Web Interface", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim()));
     }
@@ -49,9 +70,7 @@ public class WebInterfaceTogglePanelTests : BunitContext
     [Fact]
     public async Task ClickingEnable_SetsBothKeysOn_AndShowsRestartPrompt()
     {
-        _webInterfaceService.ReadStateAsync(Device, Arg.Any<CancellationToken>())
-            .Returns(new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false });
-        var cut = Render<WebInterfaceTogglePanel>(p => p.Add(c => c.Device, Device));
+        var cut = RenderPanel(new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false });
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-toggle-button']"));
 
         cut.Find("[data-testid='web-interface-toggle-button']").Click();
@@ -63,9 +82,7 @@ public class WebInterfaceTogglePanelTests : BunitContext
     [Fact]
     public async Task ClickingDisable_SetsBothKeysOff()
     {
-        _webInterfaceService.ReadStateAsync(Device, Arg.Any<CancellationToken>())
-            .Returns(new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true });
-        var cut = Render<WebInterfaceTogglePanel>(p => p.Add(c => c.Device, Device));
+        var cut = RenderPanel(new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true });
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-toggle-button']"));
 
         cut.Find("[data-testid='web-interface-toggle-button']").Click();
@@ -77,9 +94,7 @@ public class WebInterfaceTogglePanelTests : BunitContext
     [Fact]
     public async Task ClickingNo_ShowsRequiresRestartButton_ClickingItReopensPromptWithoutReapplyingToggle()
     {
-        _webInterfaceService.ReadStateAsync(Device, Arg.Any<CancellationToken>())
-            .Returns(new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false });
-        var cut = Render<WebInterfaceTogglePanel>(p => p.Add(c => c.Device, Device));
+        var cut = RenderPanel(new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false });
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-toggle-button']"));
         cut.Find("[data-testid='web-interface-toggle-button']").Click();
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-restart-confirm-dialog']"));
@@ -99,9 +114,7 @@ public class WebInterfaceTogglePanelTests : BunitContext
     [Fact]
     public async Task ClickingYes_RestartsPrinter_AndShowsCompletion()
     {
-        _webInterfaceService.ReadStateAsync(Device, Arg.Any<CancellationToken>())
-            .Returns(new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false });
-        var cut = Render<WebInterfaceTogglePanel>(p => p.Add(c => c.Device, Device));
+        var cut = RenderPanel(new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false });
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-toggle-button']"));
         cut.Find("[data-testid='web-interface-toggle-button']").Click();
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-restart-confirm-dialog']"));
@@ -115,12 +128,14 @@ public class WebInterfaceTogglePanelTests : BunitContext
     [Fact]
     public void ClickingCloseAfterCompletion_RaisesOnFinished()
     {
+        // CloseComplete self-heals via a direct WebInterfaceService.ReadStateAsync call (unchanged,
+        // outside the merged-read race window), so this is still stubbed here.
         _webInterfaceService.ReadStateAsync(Device, Arg.Any<CancellationToken>())
             .Returns(new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false });
         var finishedRaised = false;
-        var cut = Render<WebInterfaceTogglePanel>(p => p
-            .Add(c => c.Device, Device)
-            .Add(c => c.OnFinished, () => finishedRaised = true));
+        var cut = RenderPanel(
+            new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false },
+            onFinished: EventCallback.Factory.Create(this, () => finishedRaised = true));
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-toggle-button']"));
         cut.Find("[data-testid='web-interface-toggle-button']").Click();
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-restart-confirm-dialog']"));
@@ -135,14 +150,15 @@ public class WebInterfaceTogglePanelTests : BunitContext
     [Fact]
     public void WhenInitialReadFails_ShowsError_AndTryAgainReReadsState()
     {
+        // A merged-read failure now arrives as InitialState=null (the page could not check web
+        // interface status at all) rather than a thrown ReadStateAsync task - only the recovery
+        // path (Try Again -> Retry() -> LoadStateAsync) still goes through ReadStateAsync directly.
         _webInterfaceService.ReadStateAsync(Device, Arg.Any<CancellationToken>())
-            .Returns(
-                Task.FromException<WebInterfaceState>(new InvalidOperationException("simulated read failure")),
-                Task.FromResult(new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true }));
+            .Returns(new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true });
 
-        var cut = Render<WebInterfaceTogglePanel>(p => p.Add(c => c.Device, Device));
+        var cut = RenderPanel(initialState: null);
 
-        cut.WaitForAssertion(() => Assert.Contains("simulated read failure", cut.Find("[data-testid='web-interface-error']").TextContent));
+        cut.WaitForAssertion(() => Assert.Contains("Could not check web interface status.", cut.Find("[data-testid='web-interface-error']").TextContent));
 
         cut.Find("button").Click();
 
@@ -152,11 +168,9 @@ public class WebInterfaceTogglePanelTests : BunitContext
     [Fact]
     public void WhenToggleFails_ShowsError()
     {
-        _webInterfaceService.ReadStateAsync(Device, Arg.Any<CancellationToken>())
-            .Returns(new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false });
         _webInterfaceService.SetEnabledAsync(Device, true, Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("simulated toggle failure")));
-        var cut = Render<WebInterfaceTogglePanel>(p => p.Add(c => c.Device, Device));
+        var cut = RenderPanel(new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false });
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-toggle-button']"));
 
         cut.Find("[data-testid='web-interface-toggle-button']").Click();
@@ -167,11 +181,9 @@ public class WebInterfaceTogglePanelTests : BunitContext
     [Fact]
     public void WhenRestartFails_ShowsError()
     {
-        _webInterfaceService.ReadStateAsync(Device, Arg.Any<CancellationToken>())
-            .Returns(new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false });
         _webInterfaceService.RestartPrinterAsync(Device, Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("simulated restart failure")));
-        var cut = Render<WebInterfaceTogglePanel>(p => p.Add(c => c.Device, Device));
+        var cut = RenderPanel(new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false });
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-toggle-button']"));
         cut.Find("[data-testid='web-interface-toggle-button']").Click();
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-restart-confirm-dialog']"));
@@ -182,26 +194,32 @@ public class WebInterfaceTogglePanelTests : BunitContext
     }
 
     [Fact]
-    public void WhileLoading_MarksActivityMonitorBusy()
+    public void Retry_MarksActivityMonitorBusy_ThenClearsOnCompletion()
     {
+        // The initial merged-status display no longer marks PrinterActivityMonitor itself (the page
+        // owns that for the whole merged read now) - only this panel's own follow-up reads (Retry,
+        // CloseComplete) still register their own activity token, same as the toggle/restart flows.
         var readTcs = new TaskCompletionSource<WebInterfaceState>();
         _webInterfaceService.ReadStateAsync(Device, Arg.Any<CancellationToken>()).Returns(readTcs.Task);
+        var cut = RenderPanel(initialState: null);
+        cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-error']"));
+        Assert.False(_activityMonitor.IsBusy);
 
-        Render<WebInterfaceTogglePanel>(p => p.Add(c => c.Device, Device));
+        cut.Find("button").Click();
 
         Assert.True(_activityMonitor.IsBusy);
 
         readTcs.SetResult(new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true });
+
+        cut.WaitForAssertion(() => Assert.False(_activityMonitor.IsBusy));
     }
 
     [Fact]
     public void ClickingToggle_MarksActivityMonitorBusyUntilConfirmPrompt()
     {
-        _webInterfaceService.ReadStateAsync(Device, Arg.Any<CancellationToken>())
-            .Returns(new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false });
         var setEnabledTcs = new TaskCompletionSource();
         _webInterfaceService.SetEnabledAsync(Device, true, Arg.Any<CancellationToken>()).Returns(setEnabledTcs.Task);
-        var cut = Render<WebInterfaceTogglePanel>(p => p.Add(c => c.Device, Device));
+        var cut = RenderPanel(new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false });
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-toggle-button']"));
 
         cut.Find("[data-testid='web-interface-toggle-button']").Click();
@@ -214,16 +232,62 @@ public class WebInterfaceTogglePanelTests : BunitContext
     }
 
     [Fact]
-    public void IsActiveChanged_RaisedTrueThenFalseAcrossLoad()
+    public void IsActiveChanged_RaisedTrueThenFalseAcrossRetry()
     {
+        // Mounting starts in the Loading placeholder (a plain field assignment, not a real SetState
+        // transition, so it doesn't itself fire IsActiveChanged) and then immediately applies the
+        // already-resolved merged result - that Loading->Failed step IS a real SetState transition,
+        // so it fires one IsActiveChanged(false) right away. Retry() then does its own independent
+        // Failed->Loading->Idle round trip on top of that.
         var activeStates = new List<bool>();
         _webInterfaceService.ReadStateAsync(Device, Arg.Any<CancellationToken>())
             .Returns(new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true });
+        var cut = RenderPanel(
+            initialState: null,
+            isActiveChanged: EventCallback.Factory.Create<bool>(this, active => activeStates.Add(active)));
+        cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-error']"));
+        Assert.Equal([false], activeStates);
 
-        var cut = Render<WebInterfaceTogglePanel>(p => p
-            .Add(c => c.Device, Device)
-            .Add(c => c.IsActiveChanged, active => activeStates.Add(active)));
+        cut.Find("button").Click();
 
-        cut.WaitForAssertion(() => Assert.Equal([true, false], activeStates));
+        cut.WaitForAssertion(() => Assert.Equal([false, true, false], activeStates));
+    }
+
+    [Fact]
+    public void MergedUpdateArrivingMidConfirmRestart_IsIgnored()
+    {
+        // A "Recheck Configuration" firing while the user has an unresolved restart decision pending
+        // must not yank the dialog out from under them - simulated here by cycling StatusLoading
+        // false->true->false (mirroring the page's own RecheckConfigurationAsync) while _state is
+        // ConfirmRestart.
+        void AddParameters(ComponentParameterCollectionBuilder<WebInterfaceTogglePanel> p)
+        {
+            p.Add(c => c.Device, Device);
+        }
+
+        var cut = Render<WebInterfaceTogglePanel>(p =>
+        {
+            AddParameters(p);
+            p.Add(c => c.InitialState, new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false });
+            p.Add(c => c.StatusLoading, false);
+        });
+        cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-toggle-button']"));
+        cut.Find("[data-testid='web-interface-toggle-button']").Click();
+        cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-restart-confirm-dialog']"));
+
+        cut.Render(p =>
+        {
+            AddParameters(p);
+            p.Add(c => c.InitialState, new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false });
+            p.Add(c => c.StatusLoading, true);
+        });
+        cut.Render(p =>
+        {
+            AddParameters(p);
+            p.Add(c => c.InitialState, new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true });
+            p.Add(c => c.StatusLoading, false);
+        });
+
+        Assert.NotNull(cut.Find("[data-testid='web-interface-restart-confirm-dialog']"));
     }
 }

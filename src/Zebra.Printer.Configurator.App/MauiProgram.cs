@@ -59,6 +59,7 @@ public static class MauiProgram
 		builder.Services.AddSingleton<IBagTagTemplateService, LinkOsBagTagTemplateService>();
 		builder.Services.AddSingleton<IPrinterModelReader, LinkOsPrinterModelReader>();
 		builder.Services.AddSingleton<IWebInterfaceService, LinkOsWebInterfaceService>();
+		builder.Services.AddSingleton<IPrinterStatusReader, LinkOsPrinterStatusReader>();
 
 		// All four singletons: single-window app, one pairing attempt in flight at a time.
 		builder.Services.AddSingleton<PairingSession>();

@@ -1,23 +1,19 @@
-@* Reads back the printer's current WLAN settings on demand - deliberately not routed through the
-   Activity Log, since the log is a running trace of actions, not a place to look up "what is the
-   printer's config right now". Results/errors are rendered by the sibling
-   CheckConfigurationResults component (sharing the same CheckConfigurationState), so this button
-   can live in a page's sticky header while a long results table scrolls separately below. *@
-@inject IPrinterConfigurationReader ConfigurationReader
-@inject PrinterActivityMonitor ActivityMonitor
+@* Triggers the page's own merged printer-status read (see IPrinterStatusReader) rather than doing
+   its own I/O - the read now runs automatically once a printer is Ready/paired, so this button is
+   a manual re-trigger of that same read ("Recheck Configuration"), not the original one-shot
+   on-demand check. Results/errors are still rendered by the sibling CheckConfigurationResults
+   component (sharing the same CheckConfigurationState), so this button can live in a page's sticky
+   header while a long results table scrolls separately below. *@
 
-<button type="button" class="btn btn-outline-secondary" data-testid="check-configuration-button" disabled="@(State.Loading || Disabled)" @onclick="CheckConfiguration">
+<button type="button" class="btn btn-outline-secondary" data-testid="check-configuration-button" disabled="@(State.Loading || Disabled)" @onclick="() => OnRecheck.InvokeAsync()">
     @if (State.Loading)
     {
         <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
     }
-    Check Configuration
+    Recheck Configuration
 </button>
 
 @code {
-    [Parameter, EditorRequired]
-    public PrinterDevice Device { get; set; } = null!;
-
     [Parameter, EditorRequired]
     public CheckConfigurationState State { get; set; } = null!;
 
@@ -25,19 +21,7 @@
     [Parameter]
     public bool Disabled { get; set; }
 
-    private async Task CheckConfiguration()
-    {
-        State.SetLoading();
-
-        using var _ = ActivityMonitor.Begin("Check Configuration");
-        try
-        {
-            var values = await ConfigurationReader.ReadConfigurationAsync(Device);
-            State.SetResults(values);
-        }
-        catch (Exception ex)
-        {
-            State.SetError($"Could not check configuration: {ex.Message}");
-        }
-    }
+    /// <summary>Raised on click - the host page owns the actual IPrinterStatusReader call.</summary>
+    [Parameter, EditorRequired]
+    public EventCallback OnRecheck { get; set; }
 }

@@ -38,6 +38,42 @@ public class ResultTests : BunitContext
     private readonly IBagTagTemplateService _templateService = Substitute.For<IBagTagTemplateService>();
     private readonly PrinterActivityMonitor _activityMonitor = new();
     private readonly IWebInterfaceService _webInterfaceService = Substitute.For<IWebInterfaceService>();
+    private readonly IPrinterStatusReader _statusReader = Substitute.For<IPrinterStatusReader>();
+
+    private static PrinterStatus DefaultPrinterStatus() => new()
+    {
+        VersionResult = new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.UpToDate },
+        WebInterfaceState = new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true },
+        ConfigurationValues = Array.Empty<PrinterConfigurationValue>(),
+    };
+
+    // Overrides the merged IPrinterStatusReader read - the single Bluetooth read that now drives
+    // PrinterVersionAlert/WebInterfaceTogglePanel/CheckConfigurationResults' initial content
+    // together (see IPrinterStatusReader's own doc comment). Call after RunWorkflowToCompletionAsync,
+    // whose own setup would otherwise overwrite this with the default "up to date, web interface
+    // already on, no configuration values" response for the same (Device, token) call signature.
+    private void StubStatus(
+        PrinterVersionOutcome outcome = PrinterVersionOutcome.UpToDate,
+        string? linkOsVersionFound = null,
+        string? firmwareVersionFound = null,
+        FirmwareBundle? bundle = null,
+        bool webInterfaceEnabled = true,
+        IReadOnlyList<PrinterConfigurationValue>? configurationValues = null)
+    {
+        _statusReader.ReadStatusAsync(Device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new PrinterStatus
+            {
+                VersionResult = new PrinterVersionCheckResult
+                {
+                    Outcome = outcome,
+                    Bundle = bundle,
+                    LinkOsVersionFound = linkOsVersionFound,
+                    FirmwareVersionFound = firmwareVersionFound,
+                },
+                WebInterfaceState = new WebInterfaceState { HttpsEnabled = webInterfaceEnabled, HttpEnabled = webInterfaceEnabled },
+                ConfigurationValues = configurationValues ?? Array.Empty<PrinterConfigurationValue>(),
+            });
+    }
 
     private async Task<(PairAndConfigureWorkflow Workflow, PairingSession Session)> RunWorkflowToCompletionAsync(
         ConnectionTestResult connectivityResult, WlanConfiguration? configuration = null)
@@ -70,16 +106,14 @@ public class ResultTests : BunitContext
         Services.AddSingleton(_templateService);
         Services.AddSingleton(_activityMonitor);
         Services.AddSingleton(_webInterfaceService);
+        Services.AddSingleton(_statusReader);
 
-        // Defaults to "up to date" (renders nothing) - most tests here don't care about the
-        // firmware/version check at all, so this keeps them unaffected unless a specific test
-        // overrides it.
+        // _webInterfaceService/_versionCheckService are still legitimately used directly by
+        // WebInterfaceTogglePanel's Retry()/CloseComplete() self-heal reads and
+        // PrinterVersionAlert's post-firmware-update-success recheck respectively - kept here
+        // (harmlessly unused by most tests) for the same reason as before.
         _versionCheckService.CheckAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
             .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.UpToDate });
-
-        // Defaults to "already on" (never blocks Reconfigure Printer, shows "Disable Web
-        // Interface") - most tests here don't care about the web interface toggle at all, so this
-        // keeps them unaffected unless a specific test overrides it.
         _webInterfaceService.ReadStateAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
             .Returns(new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true });
 
@@ -87,6 +121,12 @@ public class ResultTests : BunitContext
         // tag templates panel at all, so this keeps them unaffected unless a specific test overrides it.
         _templateService.GetExistingTemplateFileNamesAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
             .Returns(Array.Empty<string>());
+
+        // Defaults to "up to date, web interface already on, no configuration values" - matches the
+        // pre-merge defaults above so most tests here (which don't care about the merged status read
+        // at all) stay unaffected unless a specific test overrides this via StubStatus.
+        _statusReader.ReadStatusAsync(Arg.Any<PrinterDevice>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(DefaultPrinterStatus());
 
         return (workflow, session);
     }
@@ -129,10 +169,7 @@ public class ResultTests : BunitContext
         // is actually offered for real this time.
         _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
         await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
-        // Configured after RunWorkflowToCompletionAsync, whose own setup would otherwise overwrite
-        // this with the default "up to date" response for the same (device, token) call signature.
-        _versionCheckService.CheckAsync(Device, Arg.Any<CancellationToken>())
-            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
+        StubStatus(outcome: PrinterVersionOutcome.NeedsUpdate, linkOsVersionFound: "7.5.0", firmwareVersionFound: "V93.21.06Z");
 
         var cut = Render<Result>();
 
@@ -158,8 +195,7 @@ public class ResultTests : BunitContext
             ExpectedFirmwareVersion = "V93.21.49Z",
             FirmwareAssetLogicalPath = "ZD421_Firmware/V93.21.49Z.zpl",
         };
-        _versionCheckService.CheckAsync(Device, Arg.Any<CancellationToken>())
-            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, Bundle = bundle, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
+        StubStatus(outcome: PrinterVersionOutcome.NeedsUpdate, bundle: bundle, linkOsVersionFound: "7.5.0", firmwareVersionFound: "V93.21.06Z");
         _firmwareUpdateLauncher.StartAsync(Device, bundle, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
         var cut = Render<Result>();
@@ -313,11 +349,31 @@ public class ResultTests : BunitContext
         Services.AddSingleton(_connectivityMonitor);
         Services.AddSingleton(_wifiMonitor);
         Services.AddSingleton<IPrinterConnectionModeProvider>(_connectionModeProvider);
+        // Result.razor injects IPrinterStatusReader/PrinterActivityMonitor at the page level (unlike
+        // the other per-purpose services below, which are only injected by children that mount
+        // inside the Succeeded branch) - they must be registered even though this
+        // redirect-before-render path never actually uses them.
+        Services.AddSingleton(_statusReader);
+        Services.AddSingleton(_activityMonitor);
 
         Render<Result>();
 
         var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
         Assert.EndsWith("/", navigation.Uri);
+    }
+
+    [Fact]
+    public async Task SucceededWorkflow_AutomaticallyFetchesPrinterStatusOnce()
+    {
+        // The merged read now runs automatically as soon as the page shows the Succeeded state (via
+        // OnInitializedAsync), rather than only after a manual "Check Configuration" click.
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+        StubStatus(configurationValues: [new PrinterConfigurationValue("device.friendly_name", "Warehouse-01")]);
+
+        var cut = Render<Result>();
+
+        cut.WaitForAssertion(() => Assert.Contains("Warehouse-01", cut.Find("[data-testid='check-configuration-results']").TextContent));
+        _ = _statusReader.Received(1).ReadStatusAsync(Device, Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

@@ -94,6 +94,19 @@ else if (_result is not null)
     [Parameter]
     public string? WifiIpAddress { get; set; }
 
+    /// <summary>
+    /// The firmware version result from the page's own merged IPrinterStatusReader read - this
+    /// component no longer opens its own Bluetooth connection for the initial check (that used to
+    /// race WebInterfaceTogglePanel's own initial read, corrupting one of the two). Only meaningful
+    /// once <see cref="StatusLoading"/> transitions from true to false.
+    /// </summary>
+    [Parameter]
+    public PrinterVersionCheckResult? VersionResult { get; set; }
+
+    /// <summary>Whether the page's merged status read is currently in flight.</summary>
+    [Parameter]
+    public bool StatusLoading { get; set; }
+
     [Parameter]
     public EventCallback<bool> BlockingChanged { get; set; }
 
@@ -109,6 +122,8 @@ else if (_result is not null)
     private string? _updateError;
     private bool _wasBlocking;
     private IDisposable? _activityToken;
+    private bool _reactToMergedStatus;
+    private bool _previousStatusLoading;
 
     private bool CanUpdateFirmware =>
         ConnectivityMonitor.Wifi == ConnectionIndicatorState.Connected && !string.IsNullOrWhiteSpace(WifiIpAddress);
@@ -185,13 +200,42 @@ else if (_result is not null)
             return;
         }
 
-        _loading = true;
-        using (ActivityMonitor.Begin("Firmware Version Check"))
+        // Reflects the page's own merged status read (StatusLoading/VersionResult) rather than
+        // running its own separate Bluetooth check - that used to race WebInterfaceTogglePanel's
+        // own independent initial read, corrupting one of the two (confirmed on-device: a real
+        // printer with the web interface enabled got falsely reported as disabled).
+        _reactToMergedStatus = true;
+        _loading = StatusLoading;
+        _previousStatusLoading = StatusLoading;
+        if (!StatusLoading)
         {
-            _result = await VersionCheckService.CheckAsync(Device);
+            // Defensive: the page always mounts this component with StatusLoading already true
+            // (see Pairing.razor/Result.razor's own sequencing notes), but handle an
+            // already-finished fetch gracefully regardless.
+            _result = VersionResult;
+            await NotifyBlockingChanged();
         }
-        _loading = false;
-        await NotifyBlockingChanged();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_reactToMergedStatus)
+        {
+            return;
+        }
+
+        _loading = StatusLoading;
+
+        if (_previousStatusLoading && !StatusLoading)
+        {
+            // Fires once per merged fetch - the automatic first load AND every manual "Recheck
+            // Configuration" afterward, so the firmware status shown here stays current across
+            // rechecks, not just the initial one.
+            _result = VersionResult;
+            await NotifyBlockingChanged();
+        }
+
+        _previousStatusLoading = StatusLoading;
     }
 
     private async Task HandleUpdateStatusChanged()

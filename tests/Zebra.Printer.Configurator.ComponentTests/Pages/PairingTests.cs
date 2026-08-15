@@ -28,6 +28,7 @@ public class PairingTests : BunitContext
     private readonly IBagTagTemplateService _templateService = Substitute.For<IBagTagTemplateService>();
     private readonly PrinterActivityMonitor _activityMonitor = new();
     private readonly IWebInterfaceService _webInterfaceService = Substitute.For<IWebInterfaceService>();
+    private readonly IPrinterStatusReader _statusReader = Substitute.For<IPrinterStatusReader>();
 
     public PairingTests()
     {
@@ -45,13 +46,18 @@ public class PairingTests : BunitContext
         Services.AddSingleton(_templateService);
         Services.AddSingleton(_activityMonitor);
         Services.AddSingleton(_webInterfaceService);
+        Services.AddSingleton(_statusReader);
         Services.AddSingleton(new PairingSession());
 
-        // Defaults to "already on" (never blocks Configure Printer, shows "Disable Web Interface") -
-        // most tests here don't care about the web interface toggle at all, so this keeps them
-        // unaffected unless a specific test overrides it.
+        // _webInterfaceService/_versionCheckService are still legitimately used directly by
+        // WebInterfaceTogglePanel's Retry()/CloseComplete() self-heal reads and
+        // PrinterVersionAlert's post-firmware-update-success recheck respectively - neither test here
+        // drives those specific paths, but the stubs are kept (harmlessly unused) for the same reason
+        // _configurationReader's is: consistency with what's still real production wiring.
         _webInterfaceService.ReadStateAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
             .Returns(new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true });
+        _versionCheckService.CheckAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
+            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.UpToDate });
 
         // Defaults to "nothing already on the printer" - most tests here don't care about the bag
         // tag templates panel at all, so this keeps them unaffected unless a specific test overrides it.
@@ -61,15 +67,52 @@ public class PairingTests : BunitContext
         // Unconfigured, this NSubstitute mock resolves ReadConfigurationAsync's Task with a null
         // result by default, which the automatic post-pairing WiFi check would then throw on when
         // reading .FirstOrDefault() from it - most tests here don't care about that check at all, so
-        // give it a harmless empty result unless a specific test overrides this setup itself.
+        // give it a harmless empty result unless a specific test overrides this setup itself. Still
+        // used directly by Pairing.razor's own CheckWifiConnectivityAsync (unrelated to the merged
+        // status read below - that's a separate WLAN-list read solely to discover the printer's
+        // current IP address, not the firmware/web-interface/configuration checks).
         _configurationReader.ReadConfigurationAsync(Arg.Any<PrinterDevice>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(Array.Empty<PrinterConfigurationValue>());
 
-        // Defaults to "up to date" (never blocks Configure Printer) - most tests here don't care
-        // about the firmware/version check at all, so this keeps them unaffected unless a specific
-        // test overrides it.
-        _versionCheckService.CheckAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>())
-            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.UpToDate });
+        // Defaults to "up to date, web interface already on, no configuration values" - matches the
+        // pre-merge defaults above so most tests here (which don't care about the merged status read
+        // at all) stay unaffected unless a specific test overrides this via StubStatus.
+        _statusReader.ReadStatusAsync(Arg.Any<PrinterDevice>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(DefaultPrinterStatus());
+    }
+
+    private static PrinterStatus DefaultPrinterStatus() => new()
+    {
+        VersionResult = new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.UpToDate },
+        WebInterfaceState = new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true },
+        ConfigurationValues = Array.Empty<PrinterConfigurationValue>(),
+    };
+
+    // Overrides the merged IPrinterStatusReader read for a specific device - the single Bluetooth
+    // read that now drives PrinterVersionAlert/WebInterfaceTogglePanel/CheckConfigurationResults'
+    // initial content together (see IPrinterStatusReader's own doc comment).
+    private void StubStatus(
+        PrinterDevice device,
+        PrinterVersionOutcome outcome = PrinterVersionOutcome.UpToDate,
+        string? linkOsVersionFound = null,
+        string? firmwareVersionFound = null,
+        FirmwareBundle? bundle = null,
+        bool webInterfaceEnabled = true,
+        IReadOnlyList<PrinterConfigurationValue>? configurationValues = null)
+    {
+        _statusReader.ReadStatusAsync(device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new PrinterStatus
+            {
+                VersionResult = new PrinterVersionCheckResult
+                {
+                    Outcome = outcome,
+                    Bundle = bundle,
+                    LinkOsVersionFound = linkOsVersionFound,
+                    FirmwareVersionFound = firmwareVersionFound,
+                },
+                WebInterfaceState = new WebInterfaceState { HttpsEnabled = webInterfaceEnabled, HttpEnabled = webInterfaceEnabled },
+                ConfigurationValues = configurationValues ?? Array.Empty<PrinterConfigurationValue>(),
+            });
     }
 
     private IRenderedComponent<Pairing> RenderWithReadyPrinter(PrinterDevice device, int? wifiProbePort = null)
@@ -260,6 +303,65 @@ public class PairingTests : BunitContext
     }
 
     [Fact]
+    public void ReadyState_AutomaticallyPopulatesConfigurationListWithoutClicking()
+    {
+        // The single merged Bluetooth read now covers the configuration list too, so it appears as
+        // soon as the printer is Ready - no click needed (unlike the old per-purpose reads this
+        // replaced).
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        StubStatus(device, configurationValues: [new PrinterConfigurationValue("device.friendly_name", "Warehouse-01")]);
+
+        var cut = RenderWithReadyPrinter(device);
+
+        cut.WaitForAssertion(() => Assert.Contains("Warehouse-01", cut.Find("[data-testid='check-configuration-results']").TextContent));
+    }
+
+    [Fact]
+    public void ClickingRecheckConfiguration_RefreshesFirmwareStatus_WebInterfaceState_AndConfigurationList()
+    {
+        using var listener = StartLoopbackListener(out var port);
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        _configurationReader.ReadConfigurationAsync(device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns([new PrinterConfigurationValue("wlan.ip.addr", "127.0.0.1")]);
+        var firstStatus = new PrinterStatus
+        {
+            VersionResult = new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.UpToDate },
+            WebInterfaceState = new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false },
+            ConfigurationValues = [new PrinterConfigurationValue("device.friendly_name", "Before-Recheck")],
+        };
+        var secondStatus = new PrinterStatus
+        {
+            VersionResult = new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" },
+            WebInterfaceState = new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true },
+            ConfigurationValues = [new PrinterConfigurationValue("device.friendly_name", "After-Recheck")],
+        };
+        // The recheck read is stubbed as a genuinely pending Task (resolved explicitly below) rather
+        // than an instantly-completed one - a real Bluetooth read always has an observable async gap,
+        // and PrinterVersionAlert/WebInterfaceTogglePanel only pick up a merged update by observing
+        // StatusLoading go true->false across two separate renders. An instantly-resolving mock lets
+        // Blazor coalesce both renders into one, which would never happen against real hardware.
+        var rechecktcs = new TaskCompletionSource<PrinterStatus>();
+        _statusReader.ReadStatusAsync(device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(firstStatus), rechecktcs.Task);
+        var cut = RenderWithReadyPrinter(device, wifiProbePort: port);
+        cut.WaitForAssertion(() => Assert.Equal("Enable Web Interface", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim()));
+        cut.WaitForAssertion(() => Assert.Contains("Before-Recheck", cut.Find("[data-testid='check-configuration-results']").TextContent));
+
+        cut.Find("[data-testid='check-configuration-button']").Click();
+
+        cut.WaitForAssertion(() => Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled")));
+
+        rechecktcs.SetResult(secondStatus);
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(cut.Find("[data-testid='version-check-needs-update']"));
+            Assert.Equal("Disable Web Interface", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim());
+            Assert.Contains("After-Recheck", cut.Find("[data-testid='check-configuration-results']").TextContent);
+        });
+    }
+
+    [Fact]
     public void WhileFactoryResetIsSelected_ConfigurePrinterButtonIsDisabled()
     {
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
@@ -398,8 +500,7 @@ public class PairingTests : BunitContext
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
         _configurationReader.ReadConfigurationAsync(device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns([new PrinterConfigurationValue("wlan.ip.addr", "127.0.0.1")]);
-        _versionCheckService.CheckAsync(device, Arg.Any<CancellationToken>())
-            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
+        StubStatus(device, outcome: PrinterVersionOutcome.NeedsUpdate, linkOsVersionFound: "7.5.0", firmwareVersionFound: "V93.21.06Z");
 
         var cut = RenderWithReadyPrinter(device, wifiProbePort: port);
 
@@ -427,8 +528,7 @@ public class PairingTests : BunitContext
             ExpectedFirmwareVersion = "V93.21.49Z",
             FirmwareAssetLogicalPath = "ZD421_Firmware/V93.21.49Z.zpl",
         };
-        _versionCheckService.CheckAsync(device, Arg.Any<CancellationToken>())
-            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, Bundle = bundle, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
+        StubStatus(device, outcome: PrinterVersionOutcome.NeedsUpdate, bundle: bundle, linkOsVersionFound: "7.5.0", firmwareVersionFound: "V93.21.06Z");
         _firmwareUpdateLauncher.StartAsync(device, bundle, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
         var cut = RenderWithReadyPrinter(device, wifiProbePort: port);
@@ -449,8 +549,7 @@ public class PairingTests : BunitContext
         // requires WiFi Configure hasn't set up yet). Result.razor re-surfaces this same check once
         // the printer actually has WiFi, after a successful configuration.
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
-        _versionCheckService.CheckAsync(device, Arg.Any<CancellationToken>())
-            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" });
+        StubStatus(device, outcome: PrinterVersionOutcome.NeedsUpdate, linkOsVersionFound: "7.5.0", firmwareVersionFound: "V93.21.06Z");
 
         var cut = RenderWithReadyPrinter(device);
 
@@ -467,8 +566,7 @@ public class PairingTests : BunitContext
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
         _configurationReader.ReadConfigurationAsync(device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns([new PrinterConfigurationValue("wlan.ip.addr", "127.0.0.1")]);
-        _versionCheckService.CheckAsync(device, Arg.Any<CancellationToken>())
-            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.Unsupported });
+        StubStatus(device, outcome: PrinterVersionOutcome.Unsupported);
         var cut = RenderWithReadyPrinter(device, wifiProbePort: port);
         cut.WaitForAssertion(() => Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled")));
 
@@ -484,8 +582,7 @@ public class PairingTests : BunitContext
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
         _configurationReader.ReadConfigurationAsync(device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns([new PrinterConfigurationValue("wlan.ip.addr", "127.0.0.1")]);
-        _versionCheckService.CheckAsync(device, Arg.Any<CancellationToken>())
-            .Returns(new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.Unsupported });
+        StubStatus(device, outcome: PrinterVersionOutcome.Unsupported);
         var cut = RenderWithReadyPrinter(device, wifiProbePort: port);
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='version-check-cancel']")));
 

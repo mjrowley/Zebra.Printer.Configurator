@@ -2,8 +2,10 @@
 @inject PairAndConfigureWorkflow Workflow
 @inject PairingSession Session
 @inject PrinterConnectivityMonitor ConnectivityMonitor
+@inject PrinterActivityMonitor ActivityMonitor
 @inject IWifiConnectivityMonitor WifiMonitor
 @inject IPrinterConnectionModeProvider ConnectionModeProvider
+@inject IPrinterStatusReader StatusReader
 @inject NavigationManager Navigation
 
 <div class="section-sticky-header">
@@ -19,10 +21,10 @@
                just verified by the workflow's own connectivity test) - re-surfaces the same version
                check/update offer here, since Pairing.razor's earlier check may have let a NeedsUpdate
                result through unblocked if WiFi wasn't available yet at that point. *@
-            <PrinterVersionAlert Device="Session.Device!" WifiIpAddress="@Session.Configuration?.StaticIpAddress" OnCancelled="Retry" />
+            <PrinterVersionAlert Device="Session.Device!" WifiIpAddress="@Session.Configuration?.StaticIpAddress" VersionResult="_printerStatus?.VersionResult" StatusLoading="_statusLoading" OnCancelled="Retry" />
         </div>
         <div class="button-row">
-            <button type="button" class="btn btn-primary" data-testid="reconfigure-button" disabled="@(_factoryResetActive || _templatesActive || _checkingNetwork || _webInterfaceActive)" @onclick="Reconfigure">
+            <button type="button" class="btn btn-primary" data-testid="reconfigure-button" disabled="@(_factoryResetActive || _templatesActive || _checkingNetwork || _webInterfaceActive || _statusLoading)" @onclick="Reconfigure">
                 @if (_checkingNetwork)
                 {
                     <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
@@ -30,9 +32,9 @@
                 Reconfigure Printer
             </button>
             <FactoryResetPanel Device="Session.Device!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
-            <CheckConfigurationButton Device="Session.Device!" State="_checkConfigState" Disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive)" />
+            <CheckConfigurationButton State="_checkConfigState" Disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive)" OnRecheck="RecheckConfigurationAsync" />
             <BagTagTemplatesPanel Device="Session.Device!" IsActiveChanged="OnTemplatesActiveChanged" />
-            <WebInterfaceTogglePanel Device="Session.Device!" IsActiveChanged="OnWebInterfaceActiveChanged" />
+            <WebInterfaceTogglePanel Device="Session.Device!" InitialState="_printerStatus?.WebInterfaceState" StatusLoading="_statusLoading" IsActiveChanged="OnWebInterfaceActiveChanged" />
         </div>
     }
     else
@@ -62,14 +64,34 @@
     private bool _checkingNetwork;
     private bool _webInterfaceActive;
     private CheckConfigurationState _checkConfigState = new();
+    private PrinterStatus? _printerStatus;
+    private bool _statusLoading;
 
+    // Sets the loading flags synchronously, before Blazor's first render - this page's markup
+    // (unlike Pairing.razor's _state-gated switch) already shows the Succeeded button-row on its
+    // very first render with no intermediate loading gate, so PrinterVersionAlert/
+    // WebInterfaceTogglePanel's first parameter-set must already see StatusLoading = true here, not
+    // in OnInitializedAsync (too late - that only delays rendering if it doesn't finish
+    // synchronously, which setting a plain bool always does).
     protected override void OnInitialized()
     {
         if (Workflow.State is not (PairingWorkflowState.Succeeded or PairingWorkflowState.Failed))
         {
             Navigation.NavigateTo("/", replace: true);
+            return;
+        }
+
+        if (Workflow.State == PairingWorkflowState.Succeeded)
+        {
+            _statusLoading = true;
+            _checkConfigState.SetLoading();
         }
     }
+
+    protected override Task OnInitializedAsync() =>
+        Workflow.State == PairingWorkflowState.Succeeded
+            ? LoadPrinterStatusAsync(Session.Device!, allowBleFallback: true)
+            : Task.CompletedTask;
 
     // Mirrors Zebra's own Printer Setup Utility's documented connection search order - network
     // first, Bluetooth after - for reconfiguring a printer this app already successfully configured
@@ -105,6 +127,47 @@
         }
 
         Navigation.NavigateTo("/configure");
+    }
+
+    // Reads firmware version + web interface state + the full configuration list in one connection
+    // (see PrinterStatus's own doc comment) - populates PrinterVersionAlert/WebInterfaceTogglePanel
+    // via their VersionResult/InitialState + StatusLoading parameters, and CheckConfigurationResults
+    // via _checkConfigState, so the configuration list appears automatically rather than only after
+    // a manual click.
+    private async Task LoadPrinterStatusAsync(PrinterDevice device, bool allowBleFallback)
+    {
+        using var _ = ActivityMonitor.Begin("Printer Status Check");
+        try
+        {
+            _printerStatus = await StatusReader.ReadStatusAsync(device, allowBleFallback);
+            _checkConfigState.SetResults(_printerStatus.ConfigurationValues);
+        }
+        catch (Exception ex)
+        {
+            _printerStatus = null;
+            _checkConfigState.SetError($"Could not check printer status: {ex.Message}");
+        }
+        finally
+        {
+            _statusLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    // "Recheck Configuration" button - re-runs the same merged read as the automatic first check,
+    // refreshing the firmware status/web interface state/configuration list together.
+    private Task RecheckConfigurationAsync()
+    {
+        if (Session.Device is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        _printerStatus = null;
+        _statusLoading = true;
+        _checkConfigState.SetLoading();
+        StateHasChanged();
+        return LoadPrinterStatusAsync(Session.Device, allowBleFallback: true);
     }
 
     private void OnFactoryResetActiveChanged(bool active) => _factoryResetActive = active;

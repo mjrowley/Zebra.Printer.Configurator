@@ -102,6 +102,19 @@
     public PrinterDevice Device { get; set; } = null!;
 
     /// <summary>
+    /// The web interface state from the page's own merged IPrinterStatusReader read - this
+    /// component no longer opens its own Bluetooth connection for the initial check (that used to
+    /// race PrinterVersionAlert's own independent initial read, corrupting one of the two). Only
+    /// meaningful once <see cref="StatusLoading"/> transitions from true to false.
+    /// </summary>
+    [Parameter]
+    public WebInterfaceState? InitialState { get; set; }
+
+    /// <summary>Whether the page's merged status read is currently in flight.</summary>
+    [Parameter]
+    public bool StatusLoading { get; set; }
+
+    /// <summary>
     /// Raised when the user dismisses the terminal Complete state via its Close button - purely
     /// informational for a host page (unlike FactoryResetPanel's OnFinished, closing this doesn't
     /// need the whole page to reset: a plain restart doesn't invalidate the Bluetooth pairing the
@@ -124,12 +137,58 @@
     private bool _pendingEnabled;
     private string? _errorMessage;
     private IDisposable? _activityToken;
+    private bool _previousStatusLoading;
 
     private string ButtonLabel => _state == State.PendingRestart
         ? "Web Interface Change Requires Restart"
         : (_currentState?.BothEnabled == true ? "Disable Web Interface" : "Enable Web Interface");
 
-    protected override Task OnInitializedAsync() => LoadStateAsync();
+    // Reflects the page's own merged status read (StatusLoading/InitialState) rather than running
+    // its own separate Bluetooth check on mount - that used to race PrinterVersionAlert's own
+    // independent initial read, corrupting one of the two (confirmed on-device: a real printer
+    // with the web interface enabled got falsely reported as disabled). Plain field assignment
+    // (not SetState) - the page already owns PrinterActivityMonitor registration for this initial
+    // phase via its own ActivityMonitor.Begin around the merged read, so a second registration here
+    // would be redundant.
+    protected override Task OnInitializedAsync()
+    {
+        _state = State.Loading;
+        _previousStatusLoading = StatusLoading;
+        return StatusLoading ? Task.CompletedTask : ApplyMergedResultAsync();
+    }
+
+    protected override Task OnParametersSetAsync()
+    {
+        var wasLoading = _previousStatusLoading;
+        _previousStatusLoading = StatusLoading;
+
+        // Only accept a merged update while at rest (Loading, or Idle possibly showing data from an
+        // earlier fetch) - never while the user has an unresolved decision pending (ConfirmRestart/
+        // PendingRestart/Complete/Failed) or a write in flight (Applying/Restarting). A "Recheck
+        // Configuration" firing mid-toggle-flow must not yank that dialog out from under the user;
+        // this panel already re-reads independently on its own next action (toggle apply, Retry, or
+        // CloseComplete's self-heal).
+        if (wasLoading && !StatusLoading && _state is State.Loading or State.Idle)
+        {
+            return ApplyMergedResultAsync();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task ApplyMergedResultAsync()
+    {
+        if (InitialState is not null)
+        {
+            _currentState = InitialState;
+            await SetState(State.Idle);
+        }
+        else
+        {
+            _errorMessage = "Could not check web interface status.";
+            await SetState(State.Failed);
+        }
+    }
 
     private async Task LoadStateAsync()
     {
