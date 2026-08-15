@@ -22,7 +22,14 @@
             <p data-testid="pairing-mode-instruction">
                 <strong>2. On the printer, hold down the label feed button for 5 seconds until it enters pairing mode.</strong>
             </p>
-            <p><strong>3. Tap your Zebra printer to the back of your phone to begin.</strong></p>
+            <p data-testid="pairing-mode-instruction-nfc">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" class="align-middle me-1">
+                    <rect x="8" y="7" width="11" height="16" rx="2" />
+                    <path d="M6 5a10 10 0 0 1 7 7" stroke-linecap="round" />
+                    <path d="M4 8a6 6 0 0 1 5 5" stroke-linecap="round" />
+                </svg>
+                <strong>3. Tap this device to the printer 'NFC' icon to begin.</strong>
+            </p>
             break;
 
         case PairingUiState.Pairing:

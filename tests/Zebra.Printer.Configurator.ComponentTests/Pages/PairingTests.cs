@@ -97,7 +97,7 @@ public class PairingTests : BunitContext
     {
         var cut = Render<Pairing>();
 
-        Assert.Contains("Tap your Zebra printer", cut.Markup);
+        Assert.Contains("Tap this device to the printer", cut.Markup);
         Assert.Equal(1, _discoveryService.StartListeningCallCount);
     }
 
@@ -196,7 +196,7 @@ public class PairingTests : BunitContext
 
         cut.Find("button").Click(); // "Try Again"
 
-        Assert.Contains("Tap your Zebra printer", cut.Markup);
+        Assert.Contains("Tap this device to the printer", cut.Markup);
     }
 
     [Fact]
@@ -462,7 +462,7 @@ public class PairingTests : BunitContext
 
         cut.Find("[data-testid='version-check-cancel']").Click();
 
-        Assert.Contains("Tap your Zebra printer", cut.Markup);
+        Assert.Contains("Tap this device to the printer", cut.Markup);
     }
 
     [Fact]
