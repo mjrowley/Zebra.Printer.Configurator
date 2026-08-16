@@ -247,7 +247,7 @@ public class PairingTests : BunitContext
 
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='pairing-error']")));
 
-        cut.Find("button").Click(); // "Try Again"
+        cut.Find("md-filled-button").Click(); // "Try Again"
 
         Assert.Contains("Tap this device to the printer", cut.Markup);
     }
@@ -561,7 +561,7 @@ public class PairingTests : BunitContext
 
         var cut = RenderWithReadyPrinter(device);
 
-        Assert.False(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled"));
+        cut.WaitForAssertion(() => Assert.False(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled")));
     }
 
     [Fact]
@@ -672,7 +672,7 @@ public class PairingTests : BunitContext
         _discoveryService.RaisePrinterDiscovered(device);
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='pairing-error']")));
 
-        cut.Find("button").Click(); // "Try Again"
+        cut.Find("md-filled-button").Click(); // "Try Again"
 
         Assert.Equal(ConnectionIndicatorState.Disconnected, _connectivityMonitor.Bluetooth);
         Assert.Equal(PrinterConnectionMode.Bluetooth, _connectionModeProvider.Mode);

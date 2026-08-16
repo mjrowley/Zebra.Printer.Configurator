@@ -12,14 +12,14 @@
 @inject PrinterActivityMonitor ActivityMonitor
 
 <div>
-    <button type="button" class="btn btn-outline-secondary" data-testid="deploy-templates-button"
+    <md-outlined-button type="button" data-testid="deploy-templates-button"
             disabled="@(_state is State.Checking or State.Deploying)" @onclick="StartDeploy">
         @if (_state is State.Checking or State.Deploying)
         {
             <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
         }
         Push Bag Tag Templates
-    </button>
+    </md-outlined-button>
 
     @if (_state == State.Checking)
     {
@@ -47,8 +47,8 @@
                     @string.Join(", ", _existingFileNames). Continue?
                 </p>
                 <div class="confirm-modal-actions">
-                    <button type="button" class="btn btn-danger" data-testid="deploy-templates-confirm" @onclick="Deploy">Overwrite</button>
-                    <button type="button" class="btn btn-secondary" data-testid="deploy-templates-cancel" @onclick="Cancel">Cancel</button>
+                    <md-filled-button type="button" class="btn-error" data-testid="deploy-templates-confirm" @onclick="Deploy">Overwrite</md-filled-button>
+                    <md-filled-tonal-button type="button" data-testid="deploy-templates-cancel" @onclick="Cancel">Cancel</md-filled-tonal-button>
                 </div>
             </div>
         </div>

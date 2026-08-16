@@ -216,7 +216,7 @@ public class ResultTests : BunitContext
 
         var failureElement = cut.Find("[data-testid='result-failure']");
         Assert.Contains("Printer did not respond.", failureElement.TextContent);
-        Assert.NotNull(cut.Find("button"));
+        Assert.NotNull(cut.Find("md-filled-button"));
     }
 
     [Fact]
@@ -345,7 +345,7 @@ public class ResultTests : BunitContext
         var (_, session) = await RunWorkflowToCompletionAsync(ConnectionTestResult.Failed("Printer did not respond."));
         var cut = Render<Result>();
 
-        cut.Find("button").Click();
+        cut.Find("md-filled-button").Click();
 
         Assert.Null(session.Device);
         Assert.Null(session.Configuration);
@@ -403,7 +403,7 @@ public class ResultTests : BunitContext
         await RunWorkflowToCompletionAsync(ConnectionTestResult.Failed("Printer did not respond."));
         var cut = Render<Result>();
 
-        cut.Find("button").Click();
+        cut.Find("md-filled-button").Click();
 
         Assert.Equal(ConnectionIndicatorState.Disconnected, _connectivityMonitor.Bluetooth);
         Assert.Equal(ConnectionIndicatorState.Disconnected, _connectivityMonitor.Wifi);

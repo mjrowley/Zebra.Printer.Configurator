@@ -1,4 +1,5 @@
 using Zebra.Printer.Configurator.Core.Abstractions;
+using Zebra.Printer.Configurator.Core.Configuration;
 using Zebra.Printer.Configurator.Core.Models;
 using Zebra.Sdk.Printer;
 
@@ -29,7 +30,6 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 public sealed class LinkOsPdfDirectService(IAppLog appLog) : IPdfDirectService
 {
     private const string PdfDirectAssetLogicalPath = "PDFDirect/Virtual-Dev-PDF-v215.NRD";
-    private const string EnabledValue = "pdf";
 
     public async Task EnsureEnabledAsync(PrinterDevice device, IPrinterConnectionSession session, CancellationToken cancellationToken = default)
     {
@@ -41,16 +41,16 @@ public sealed class LinkOsPdfDirectService(IAppLog appLog) : IPdfDirectService
         await ((PrinterConnectionSession)session).RunAsync(connection =>
         {
             var current = SGD.GET("apl.enable", connection)?.Trim();
-            if (string.Equals(current, EnabledValue, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(current, PrinterDefaultsCommandBuilder.PdfEnabledValue, StringComparison.OrdinalIgnoreCase))
             {
                 appLog.Log("PDF Direct is already enabled.", LogLevel.Success);
                 return;
             }
 
             appLog.Log("PDF Direct is not enabled - checking whether it can be enabled without reloading the virtual device file...");
-            SGD.SET("apl.enable", EnabledValue, connection);
+            SGD.SET("apl.enable", PrinterDefaultsCommandBuilder.PdfEnabledValue, connection);
             var afterEnableAttempt = SGD.GET("apl.enable", connection)?.Trim();
-            if (string.Equals(afterEnableAttempt, EnabledValue, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(afterEnableAttempt, PrinterDefaultsCommandBuilder.PdfEnabledValue, StringComparison.OrdinalIgnoreCase))
             {
                 appLog.Log("PDF Direct enabled - the virtual device file was already installed.", LogLevel.Success);
                 return;
@@ -60,10 +60,10 @@ public sealed class LinkOsPdfDirectService(IAppLog appLog) : IPdfDirectService
             ZebraPrinterFactory.GetInstance(connection).SendFileContents(localFilePath);
 
             appLog.Log("Enabling PDF Direct...");
-            SGD.SET("apl.enable", EnabledValue, connection);
+            SGD.SET("apl.enable", PrinterDefaultsCommandBuilder.PdfEnabledValue, connection);
 
             var actual = SGD.GET("apl.enable", connection)?.Trim();
-            if (!string.Equals(actual, EnabledValue, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(actual, PrinterDefaultsCommandBuilder.PdfEnabledValue, StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException($"PDF Direct did not enable - printer reports apl.enable = '{actual}'.");
             }

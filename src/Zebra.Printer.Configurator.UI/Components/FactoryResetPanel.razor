@@ -9,7 +9,7 @@
 @switch (_state)
 {
     case State.Idle:
-        <button type="button" class="btn btn-outline-danger" data-testid="factory-reset-button" @onclick="() => SetState(State.Confirming)">Factory Reset</button>
+        <md-outlined-button type="button" class="btn-error" data-testid="factory-reset-button" @onclick="() => SetState(State.Confirming)">Factory Reset</md-outlined-button>
         break;
 
     case State.Confirming:
@@ -17,8 +17,8 @@
             This erases all settings on the printer and restores factory defaults. It may also break
             the current Bluetooth pairing. Continue?
         </p>
-        <button type="button" class="btn btn-danger" data-testid="factory-reset-confirm" @onclick="ConfirmFactoryReset">Factory Reset</button>
-        <button type="button" class="btn btn-secondary" data-testid="factory-reset-cancel" @onclick="() => SetState(State.Idle)">Cancel</button>
+        <md-filled-button type="button" class="btn-error" data-testid="factory-reset-confirm" @onclick="ConfirmFactoryReset">Factory Reset</md-filled-button>
+        <md-filled-tonal-button type="button" data-testid="factory-reset-cancel" @onclick="() => SetState(State.Idle)">Cancel</md-filled-tonal-button>
         break;
 
     case State.Resetting:
@@ -36,7 +36,7 @@
                     its Bluetooth pairing has been removed.
                 </p>
                 <div class="confirm-modal-actions">
-                    <button type="button" class="btn btn-primary" @onclick="() => OnFinished.InvokeAsync()">Close</button>
+                    <md-filled-button type="button" @onclick="() => OnFinished.InvokeAsync()">Close</md-filled-button>
                 </div>
             </div>
         </div>
@@ -44,7 +44,7 @@
 
     case State.Failed:
         <p class="text-danger" data-testid="factory-reset-error">@_errorMessage</p>
-        <button type="button" class="btn btn-primary" @onclick="() => OnFinished.InvokeAsync()">Try Again</button>
+        <md-filled-button type="button" @onclick="() => OnFinished.InvokeAsync()">Try Again</md-filled-button>
         break;
 }
 

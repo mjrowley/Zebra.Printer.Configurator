@@ -20,4 +20,33 @@
     --md-sys-color-on-primary: #ffffff;
     --md-sys-color-primary-container: #cfe8f3;
     --md-sys-color-on-primary-container: #002f3e;
+
+    /* Added for the Bootstrap -> Material 3 button migration: md-filled-tonal-button reads these
+       directly (that's what "tonal" means in M3 - secondary-container based), so defining them
+       re-colours every tonal button app-wide without any per-button class needed. Same
+       hand-picked-approximation caveat as the primary tokens above. */
+    --md-sys-color-secondary: #4f6169;
+    --md-sys-color-on-secondary: #ffffff;
+    --md-sys-color-secondary-container: #d2e5ee;
+    --md-sys-color-on-secondary-container: #0b1e25;
+
+    /* Material's own baseline error red - defined explicitly (not just relying on the built-in
+       fallback) so .btn-error below has a real value to remap --md-sys-color-primary to. */
+    --md-sys-color-error: #ba1a1a;
+    --md-sys-color-on-error: #ffffff;
+    --md-sys-color-error-container: #ffdad6;
+    --md-sys-color-on-error-container: #410002;
+}
+
+/* Filled/outlined/tonal buttons always read --md-sys-color-primary (or -secondary for tonal)
+   internally - there's no separate "danger" button variant in Material 3. Applied directly to a
+   <md-filled-button>/<md-outlined-button> that needs to read as destructive (Factory Reset, Cancel
+   workflow, Overwrite templates, etc.), this remaps just that element's primary-role tokens to the
+   error palette above, via ordinary CSS custom property inheritance through the shadow boundary -
+   the same mechanism that already lets this file's :root overrides reach into every <md-*> element. */
+.btn-error {
+    --md-sys-color-primary: var(--md-sys-color-error);
+    --md-sys-color-on-primary: var(--md-sys-color-on-error);
+    --md-sys-color-primary-container: var(--md-sys-color-error-container);
+    --md-sys-color-on-primary-container: var(--md-sys-color-on-error-container);
 }

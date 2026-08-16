@@ -1,6 +1,7 @@
 using Zebra.Printer.Configurator.Core.Abstractions;
 using Zebra.Printer.Configurator.Core.Configuration;
 using Zebra.Printer.Configurator.Core.Models;
+using Zebra.Printer.Configurator.Core.Workflow;
 using Zebra.Sdk.Printer;
 // Zebra.Sdk.Printer itself declares its own PrinterStatus type, colliding with this app's - alias
 // to disambiguate rather than renaming this app's own, more broadly-used type.
@@ -24,11 +25,22 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 public sealed class LinkOsPrinterStatusReader(
     IBluetoothPermissionService bluetoothPermissionService,
     IPrinterConnectionModeProvider connectionModeProvider,
+    PairingSession session,
     IAppLog appLog) : IPrinterStatusReader
 {
     public async Task<PrinterStatus> ReadStatusAsync(PrinterDevice device, bool allowBleFallback = true, CancellationToken cancellationToken = default)
     {
         await BluetoothPermissionGuard.EnsureGrantedAsync(bluetoothPermissionService, connectionModeProvider, appLog, cancellationToken);
+
+        // The fixed label-printing defaults/apl.enable are known targets regardless of whether this
+        // pairing attempt has reached Configure yet - in particular, this reader also runs from the
+        // Pairing page itself for an already-configured printer being re-tapped (no
+        // Session.Configuration this session at all), which is exactly the case this colour-coding
+        // is meant to help with. Session.Configuration - only set once the user submits the Configure
+        // form - additionally supplies device.friendly_name and the WLAN keys once it exists.
+        var expected = session.Configuration is { } configuration
+            ? PrinterDefaultsCommandBuilder.BuildExpectedDiagnosticValues(configuration.PrinterName, configuration)
+            : PrinterDefaultsCommandBuilder.BuildFixedDiagnosticDefaults();
 
         appLog.Log("Checking printer status (firmware version, web interface, configuration)...");
         var status = await PrinterConnectionRunner.RunAsync(device, connectionModeProvider, connection =>
@@ -46,7 +58,8 @@ public sealed class LinkOsPrinterStatusReader(
             foreach (var key in WlanDiagnosticKeys.All)
             {
                 var value = SGD.GET(key, connection);
-                configurationValues.Add(new PrinterConfigurationValue(key, ConfigurationValueFormatter.Format(key, value, connectionModeProvider.Mode)));
+                var match = ConfigurationValueMatcher.Evaluate(key, expected.GetValueOrDefault(key), value);
+                configurationValues.Add(new PrinterConfigurationValue(key, ConfigurationValueFormatter.Format(key, value, connectionModeProvider.Mode), match));
             }
 
             return new PrinterStatus

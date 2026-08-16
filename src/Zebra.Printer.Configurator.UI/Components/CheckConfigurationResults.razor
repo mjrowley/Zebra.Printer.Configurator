@@ -1,7 +1,9 @@
 @* Renders whatever CheckConfigurationButton (sharing the same CheckConfigurationState) most
    recently produced. Kept as a separate component from the button so a page can place this in its
    scrollable content area while the button stays in the sticky header - see CheckConfigurationState
-   for why. *@
+   for why. Each value is coloured by ConfigurationValueMatch: green if it matches what this app
+   expects, red if it doesn't, default text colour for values this app doesn't set (Informational). *@
+@using Zebra.Printer.Configurator.Core.Configuration
 @implements IDisposable
 
 @if (State.ErrorMessage is not null)
@@ -16,7 +18,7 @@
         {
             <div class="config-list-row">
                 <span>@value.Key</span>
-                <span class="config-list-value">@value.Value</span>
+                <span class="config-list-value @MatchClass(value.Match)">@value.Value</span>
             </div>
         }
     </div>
@@ -25,6 +27,13 @@
 @code {
     [Parameter, EditorRequired]
     public CheckConfigurationState State { get; set; } = null!;
+
+    private static string MatchClass(ConfigurationValueMatch match) => match switch
+    {
+        ConfigurationValueMatch.Matches => "config-value-match",
+        ConfigurationValueMatch.Mismatch => "config-value-mismatch",
+        _ => "",
+    };
 
     private CheckConfigurationState? _subscribedState;
 

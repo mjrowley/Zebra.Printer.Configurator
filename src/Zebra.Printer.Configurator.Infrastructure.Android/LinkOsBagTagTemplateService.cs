@@ -60,7 +60,7 @@ public sealed class LinkOsBagTagTemplateService(
         var localFilePaths = new List<(string LocalPath, string PrinterFileName)>();
         foreach (var template in BagTagTemplateCatalog.All)
         {
-            var localPath = await BundledAssetProvider.GetLocalFilePathAsync(template.LogicalAssetPath, cancellationToken);
+            var localPath = await BundledAssetProvider.GetLocalFilePathAsync(template.LogicalAssetPath, cancellationToken, forceRefresh: true);
             localFilePaths.Add((localPath, template.PrinterFileName));
         }
 

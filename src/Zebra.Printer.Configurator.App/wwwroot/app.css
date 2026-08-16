@@ -9,6 +9,8 @@
     --color-danger-bg: #f8d7da;
     --color-danger-border: #f5c6cb;
     --color-danger-text: #a94442;
+    /* Matches Bootstrap 5's $success, already used elsewhere in this app via .text-success. */
+    --color-success: #198754;
     --radius-card: 14px;
     --radius-pill: 999px;
 }
@@ -114,6 +116,17 @@ a, .btn-link {
 .config-list-row .config-list-value {
     text-align: right;
     word-break: break-word;
+}
+
+/* Colour-codes a value against what this app expects it to be (ConfigurationValueMatch) - green if
+   it matches, red if it doesn't, unstyled (inherits --color-text) for values this app only reads for
+   information and has no expectation for. */
+.config-list-value.config-value-match {
+    color: var(--color-success);
+}
+
+.config-list-value.config-value-mismatch {
+    color: var(--color-danger);
 }
 
 .config-list-row:last-child {

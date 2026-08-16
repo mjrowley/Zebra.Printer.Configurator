@@ -26,19 +26,6 @@ public sealed class LinkOsPrinterConfigurationService(
     IAppLog appLog)
     : IPrinterConfigurationService, IPrinterRestartService, IPrinterFactoryResetService, IPrinterConfigurationReader
 {
-    // Zebra's SGD docs state getvar on wlan.wpa.psk always prints a single "*" "for protection",
-    // regardless of what was actually stored - so a verification pass can't expect the sent value
-    // (a 64-hex-digit PSK) to be echoed back; "*" itself IS the confirmation something was accepted.
-    private const string MaskedPskReadback = "*";
-
-    // Confirmed on-device: reconfiguring a printer that was already connected to WiFi under a
-    // different static IP/gateway reported wlan.ip.addr and wlan.ip.gateway as "mismatches" even
-    // though the new values applied correctly after restart. Unlike wlan.ip.netmask, getvar on
-    // these two reflects the interface's current *operational* value, not the newly staged one - it
-    // can only be meaningfully verified after the restart+reconnect LinkOsConnectivityTestService
-    // performs, not immediately after SGD.SET within this same connection.
-    private static readonly HashSet<string> DeferredVerificationKeys = ["wlan.ip.addr", "wlan.ip.gateway"];
-
     // "device.reset" makes the printer reboot, so it commonly never sends a response at all - the
     // default SGD.DO read timeout is tuned for commands that always answer, so waiting for it here
     // just stalls every reset for no reason. This short timeout still gives the printer a fair
@@ -76,15 +63,13 @@ public sealed class LinkOsPrinterConfigurationService(
             {
                 var actual = SGD.GET(key, connection);
 
-                if (DeferredVerificationKeys.Contains(key))
+                if (ConfigurationValueMatcher.DeferredVerificationKeys.Contains(key))
                 {
                     appLog.Log($"{key}: sent '{DisplayValue(key, value)}' (currently reports '{DisplayValue(key, actual)}' - takes effect after restart)");
                     continue;
                 }
 
-                var matches = key == "wlan.wpa.psk"
-                    ? string.Equals(actual, MaskedPskReadback, StringComparison.Ordinal)
-                    : string.Equals(actual, value, StringComparison.Ordinal);
+                var matches = ConfigurationValueMatcher.Evaluate(key, value, actual) == ConfigurationValueMatch.Matches;
                 appLog.Log(
                     matches
                         ? $"{key}: confirmed ({DisplayValue(key, actual)})"

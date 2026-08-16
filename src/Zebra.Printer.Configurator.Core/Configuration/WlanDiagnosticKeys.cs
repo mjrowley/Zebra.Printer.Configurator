@@ -12,24 +12,31 @@ public static class WlanDiagnosticKeys
 {
     // wlan.wpa.psk is included so a diagnosing user can at least see whether *something* was
     // stored (length > 0) without the actual WiFi password appearing on screen.
+    //
+    // Ordered alphabetically by key, with device.friendly_name pinned first (it's the one value a
+    // human reads this list to identify "which printer is this", so it stays at the top regardless
+    // of where it'd otherwise sort) - CheckConfigurationResults.razor renders this list in source
+    // order, so the order here IS the display order.
     public static readonly IReadOnlyList<string> All =
     [
         "device.friendly_name",
-        "wlan.enable",
-        "wlan.security",
-        "wlan.essid",
-        "wlan.wpa.psk",
-        "wlan.ip.protocol",
-        "wlan.ip.default_addr_enable",
-        "wlan.ip.addr",
-        "wlan.ip.netmask",
-        "wlan.ip.gateway",
-        "wlan.state",
         "apl.enable",
-        "media.printmode",
+        "apl.settings",
+        "ezpl.label_length_max",
         "ezpl.media_type",
         "ezpl.print_method",
         "ezpl.print_width",
-        "ezpl.label_length_max",
+        "media.printmode",
+        "wlan.enable",
+        "wlan.essid",
+        "wlan.ip.addr",
+        "wlan.ip.default_addr_enable",
+        "wlan.ip.gateway",
+        "wlan.ip.netmask",
+        "wlan.ip.protocol",
+        "wlan.security",
+        "wlan.state",
+        "wlan.wpa.psk",
+        "zpl.left_position",
     ];
 }

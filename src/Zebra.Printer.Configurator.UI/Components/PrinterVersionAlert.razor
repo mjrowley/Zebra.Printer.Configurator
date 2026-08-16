@@ -56,11 +56,11 @@ else if (_result is not null)
 
         case PrinterVersionOutcome.NeedsUpdate:
             <p class="text-danger" data-testid="version-check-needs-update">@NeedsUpdateMessage</p>
-            <button type="button" class="btn btn-primary" data-testid="update-firmware-button"
+            <md-filled-button type="button" data-testid="update-firmware-button"
                     title="@UpdateDisabledReason" disabled="@(UpdateDisabledReason is not null)" @onclick="UpdateFirmware">
                 Update Firmware
-            </button>
-            <button type="button" class="btn btn-secondary" data-testid="version-check-skip" @onclick="Skip">Skip for now</button>
+            </md-filled-button>
+            <md-filled-tonal-button type="button" data-testid="version-check-skip" @onclick="Skip">Skip for now</md-filled-tonal-button>
             @if (_updateError is not null)
             {
                 <p class="text-danger" data-testid="update-firmware-error">@_updateError</p>
@@ -69,8 +69,8 @@ else if (_result is not null)
 
         case PrinterVersionOutcome.Unsupported:
             <p class="text-danger" data-testid="version-check-unsupported">@UnsupportedMessage</p>
-            <button type="button" class="btn btn-secondary" data-testid="version-check-skip" @onclick="Skip">Skip</button>
-            <button type="button" class="btn btn-outline-secondary" data-testid="version-check-cancel" @onclick="Cancel">Cancel</button>
+            <md-filled-tonal-button type="button" data-testid="version-check-skip" @onclick="Skip">Skip</md-filled-tonal-button>
+            <md-outlined-button type="button" data-testid="version-check-cancel" @onclick="Cancel">Cancel</md-outlined-button>
             break;
 
         case PrinterVersionOutcome.UpToDate:

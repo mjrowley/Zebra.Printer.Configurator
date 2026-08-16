@@ -96,7 +96,7 @@ public class WebInterfaceTogglePanelTests : BunitContext
     {
         var cut = RenderPanel(new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false });
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-toggle-button']"));
-        Assert.DoesNotContain("text-danger", cut.Find("[data-testid='web-interface-toggle-button']").ClassList);
+        Assert.DoesNotContain("btn-error", cut.Find("[data-testid='web-interface-toggle-button']").ClassList);
         cut.Find("[data-testid='web-interface-toggle-button']").Click();
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-restart-confirm-dialog']"));
 
@@ -106,7 +106,7 @@ public class WebInterfaceTogglePanelTests : BunitContext
         // Flags the button text red - a plain "Enable/Disable Web Interface" click is reversible, but
         // this state means a toggle was already applied and is silently waiting on a restart to take
         // effect, which is easy to forget about otherwise.
-        Assert.Contains("text-danger", cut.Find("[data-testid='web-interface-toggle-button']").ClassList);
+        Assert.Contains("btn-error", cut.Find("[data-testid='web-interface-toggle-button']").ClassList);
         Assert.Empty(cut.FindAll("[data-testid='web-interface-restart-confirm-dialog']"));
 
         cut.Find("[data-testid='web-interface-toggle-button']").Click();
@@ -147,7 +147,7 @@ public class WebInterfaceTogglePanelTests : BunitContext
         cut.Find("[data-testid='web-interface-restart-confirm-yes']").Click();
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-complete']"));
 
-        cut.Find("button").Click();
+        cut.Find("md-filled-button").Click();
 
         Assert.True(finishedRaised);
     }
@@ -165,7 +165,7 @@ public class WebInterfaceTogglePanelTests : BunitContext
 
         cut.WaitForAssertion(() => Assert.Contains("Could not check web interface status.", cut.Find("[data-testid='web-interface-error']").TextContent));
 
-        cut.Find("button").Click();
+        cut.Find("md-filled-button").Click();
 
         cut.WaitForAssertion(() => Assert.Equal("Disable Web Interface", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim()));
     }
@@ -210,7 +210,7 @@ public class WebInterfaceTogglePanelTests : BunitContext
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-error']"));
         Assert.False(_activityMonitor.IsBusy);
 
-        cut.Find("button").Click();
+        cut.Find("md-filled-button").Click();
 
         Assert.True(_activityMonitor.IsBusy);
 
@@ -253,7 +253,7 @@ public class WebInterfaceTogglePanelTests : BunitContext
         cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-error']"));
         Assert.Equal([false], activeStates);
 
-        cut.Find("button").Click();
+        cut.Find("md-filled-button").Click();
 
         cut.WaitForAssertion(() => Assert.Equal([false, true, false], activeStates));
     }

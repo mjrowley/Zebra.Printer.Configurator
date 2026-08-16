@@ -6,7 +6,7 @@
 
 <div class="section-sticky-header">
     <h1>WiFi Configuration</h1>
-    <button type="button" class="btn btn-outline-secondary btn-sm" data-testid="configure-back-button" @onclick="Back">Back</button>
+    <md-outlined-button type="button" data-testid="configure-back-button" @onclick="Back">Back</md-outlined-button>
 
     @if (_loadingHostNetwork)
     {
@@ -48,7 +48,7 @@
                 <ValidationMessage For="() => _model.StaticIpAddress" />
             </div>
 
-            <button type="submit" class="btn btn-primary">Continue</button>
+            <md-filled-button type="submit">Continue</md-filled-button>
         </EditForm>
     }
 </div>

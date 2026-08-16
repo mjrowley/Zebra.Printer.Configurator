@@ -32,9 +32,9 @@
 
     case State.Idle:
     case State.PendingRestart:
-        <button type="button" class="btn btn-outline-secondary @(_state == State.PendingRestart ? "text-danger" : "")" data-testid="web-interface-toggle-button" @onclick="OnButtonClick">
+        <md-outlined-button type="button" class="@(_state == State.PendingRestart ? "btn-error" : "")" data-testid="web-interface-toggle-button" @onclick="OnButtonClick">
             @ButtonLabel
-        </button>
+        </md-outlined-button>
         break;
 
     case State.Applying:
@@ -53,7 +53,7 @@
 
     case State.Failed:
         <p class="text-danger" data-testid="web-interface-error">@_errorMessage</p>
-        <button type="button" class="btn btn-primary" @onclick="Retry">Try Again</button>
+        <md-filled-button type="button" @onclick="Retry">Try Again</md-filled-button>
         break;
 }
 
@@ -66,8 +66,8 @@
                 printer restarts. Restart now?
             </p>
             <div class="confirm-modal-actions">
-                <button type="button" class="btn btn-danger btn-sm" data-testid="web-interface-restart-confirm-yes" @onclick="ConfirmRestartNow">Yes - Restart</button>
-                <button type="button" class="btn btn-secondary btn-sm" data-testid="web-interface-restart-confirm-no" @onclick="DeferRestart">No</button>
+                <md-filled-button type="button" class="btn-error" data-testid="web-interface-restart-confirm-yes" @onclick="ConfirmRestartNow">Yes - Restart</md-filled-button>
+                <md-filled-tonal-button type="button" data-testid="web-interface-restart-confirm-no" @onclick="DeferRestart">No</md-filled-tonal-button>
             </div>
         </div>
     </div>
@@ -81,7 +81,7 @@
                 Printer restarting - the web interface change will take effect shortly.
             </p>
             <div class="confirm-modal-actions">
-                <button type="button" class="btn btn-primary" @onclick="CloseComplete">Close</button>
+                <md-filled-button type="button" @onclick="CloseComplete">Close</md-filled-button>
             </div>
         </div>
     </div>

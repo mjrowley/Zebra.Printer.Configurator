@@ -23,13 +23,13 @@
             <div class="confirm-modal-box" role="alertdialog">
                 <p>This will cancel all operations and open printer connections, are you sure?</p>
                 <div class="confirm-modal-actions">
-                    <button type="button" class="btn btn-danger btn-sm" data-testid="cancel-confirm-yes" @onclick="ConfirmCancel">Yes - Cancel</button>
-                    <button type="button" class="btn btn-secondary btn-sm" data-testid="cancel-confirm-no" @onclick="() => _confirming = false">No - Return</button>
+                    <md-filled-button type="button" class="btn-error" data-testid="cancel-confirm-yes" @onclick="ConfirmCancel">Yes - Cancel</md-filled-button>
+                    <md-filled-tonal-button type="button" data-testid="cancel-confirm-no" @onclick="() => _confirming = false">No - Return</md-filled-tonal-button>
                 </div>
             </div>
         </div>
     }
-    <button type="button" class="btn btn-outline-danger btn-sm" data-testid="cancel-workflow-button" @onclick="() => _confirming = true">Cancel</button>
+    <md-outlined-button type="button" class="btn-error" data-testid="cancel-workflow-button" @onclick="() => _confirming = true">Cancel</md-outlined-button>
 }
 
 @code {

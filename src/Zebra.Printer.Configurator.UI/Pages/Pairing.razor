@@ -44,7 +44,7 @@
                 <p data-testid="discovered-device">
                     Printer found@(_discoveredDevice?.SerialNumber is not null ? $" (serial {_discoveredDevice.SerialNumber})" : ".")
                 </p>
-                <PrinterVersionAlert Device="_discoveredDevice!" WifiIpAddress="@_wifiIpAddress" VersionResult="_printerStatus?.VersionResult" StatusLoading="_statusLoading" BlockingChanged="OnVersionCheckBlockingChanged" OnCancelled="Retry" />
+                <PrinterVersionAlert Device="_discoveredDevice!" WifiIpAddress="@_wifiIpAddress" VersionResult="_printerStatus?.VersionResult" StatusLoading="_statusLoading" OnCancelled="Retry" />
                 @if (_printerStatus?.WebInterfaceState is { } webInterfaceState)
                 {
                     <p data-testid="web-interface-status" class="@(webInterfaceState.BothEnabled ? "text-success" : "text-danger")">
@@ -53,18 +53,23 @@
                 }
             </div>
             <div class="button-row">
-                <button type="button" class="btn btn-primary" data-testid="configure-printer-button" disabled="@(_factoryResetActive || _templatesActive || _versionCheckBlocking || _webInterfaceActive || _statusLoading)" @onclick="Continue">Configure Printer</button>
+                <md-filled-button type="button" data-testid="configure-printer-button" disabled="@ActivityMonitor.IsBusy" @onclick="Continue">Configure Printer</md-filled-button>
                 <FactoryResetPanel Device="_discoveredDevice!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
                 <CheckConfigurationButton State="_checkConfigState" Disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive)" OnRecheck="RecheckConfigurationAsync" />
                 <BagTagTemplatesPanel Device="_discoveredDevice!" IsActiveChanged="OnTemplatesActiveChanged" />
                 <WebInterfaceTogglePanel Device="_discoveredDevice!" InitialState="_printerStatus?.WebInterfaceState" StatusLoading="_statusLoading" IsActiveChanged="OnWebInterfaceActiveChanged" />
-                <button type="button" class="btn btn-outline-secondary" data-testid="start-over-button" disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive)" @onclick="Retry">Start Over</button>
+                <!-- Deliberately NOT ActivityMonitor.IsBusy, unlike Configure Printer above - Start
+                     Over must stay usable as an escape hatch even while a passive status/firmware
+                     check is still in flight (see ClickingStartOver_WhileStatusCheckStillInFlight_
+                     LateResultDoesNotResurfaceStaleData), only blocked by operations that actually
+                     mutate the printer's persistent state. -->
+                <md-outlined-button type="button" data-testid="start-over-button" disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive)" @onclick="Retry">Start Over</md-outlined-button>
             </div>
             break;
 
         case PairingUiState.Failed:
             <p class="text-danger" data-testid="pairing-error">@_errorMessage</p>
-            <button type="button" class="btn btn-primary" @onclick="Retry">Try Again</button>
+            <md-filled-button type="button" @onclick="Retry">Try Again</md-filled-button>
             break;
     }
 </div>
@@ -96,7 +101,6 @@
     private string? _errorMessage;
     private bool _factoryResetActive;
     private bool _templatesActive;
-    private bool _versionCheckBlocking;
     private bool _webInterfaceActive;
     private string? _wifiIpAddress;
     private CheckConfigurationState _checkConfigState = new();
@@ -121,6 +125,13 @@
     // than waiting for a re-tap, since the printer is still bonded either way.
     protected override async Task OnInitializedAsync()
     {
+        // Configure Printer/Start Over/CheckConfigurationButton's Disabled all read
+        // ActivityMonitor.IsBusy directly in markup - without this subscription, this page only
+        // re-evaluates that expression when ITS OWN state changes trigger a render, so a child
+        // component's activity clearing (e.g. PrinterVersionAlert's Firmware Version Check ending)
+        // would never be reflected here until some unrelated render happened to occur afterward.
+        ActivityMonitor.Changed += OnActivityChanged;
+
         if (Session.Device is not null)
         {
             _discoveredDevice = Session.Device;
@@ -333,8 +344,6 @@
 
     private void OnTemplatesActiveChanged(bool active) => _templatesActive = active;
 
-    private void OnVersionCheckBlockingChanged(bool blocking) => _versionCheckBlocking = blocking;
-
     private void OnWebInterfaceActiveChanged(bool active) => _webInterfaceActive = active;
 
     private void Retry()
@@ -346,7 +355,6 @@
         _errorMessage = null;
         _factoryResetActive = false;
         _templatesActive = false;
-        _versionCheckBlocking = false;
         _webInterfaceActive = false;
         _wifiIpAddress = null;
         _printerStatus = null;
@@ -358,9 +366,12 @@
         _state = PairingUiState.WaitingForTap;
     }
 
+    private void OnActivityChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
     public void Dispose()
     {
         DiscoveryService.PrinterDiscovered -= OnPrinterDiscovered;
         DiscoveryService.StopListening();
+        ActivityMonitor.Changed -= OnActivityChanged;
     }
 }

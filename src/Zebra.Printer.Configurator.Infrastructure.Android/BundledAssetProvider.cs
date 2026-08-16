@@ -13,13 +13,20 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// </summary>
 internal static class BundledAssetProvider
 {
-    public static async Task<string> GetLocalFilePathAsync(string logicalAssetPath, CancellationToken cancellationToken = default)
+    /// <param name="forceRefresh">
+    /// Bypasses the cache-hit check and re-extracts even if a file already exists at the
+    /// destination path - for small, frequently-edited assets (bag-tag ZPL templates) where
+    /// correctness matters more than the copy cost. Leave false (the default) for assets that only
+    /// change between app releases, like the firmware bundle and the PDF Direct virtual device file,
+    /// where the whole point of caching is avoiding repeat multi-MB copies.
+    /// </param>
+    public static async Task<string> GetLocalFilePathAsync(string logicalAssetPath, CancellationToken cancellationToken = default, bool forceRefresh = false)
     {
         var cacheDir = Application.Context.CacheDir!.AbsolutePath;
         var fileName = Path.GetFileName(logicalAssetPath);
         var destinationPath = Path.Combine(cacheDir, fileName);
 
-        if (File.Exists(destinationPath))
+        if (!forceRefresh && File.Exists(destinationPath))
         {
             return destinationPath;
         }

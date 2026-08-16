@@ -35,17 +35,17 @@
             <div class="confirm-modal-box" role="alertdialog">
                 <p>Returning to Pair a Printer will abandon this printer and wait for a new NFC tap. Continue?</p>
                 <div class="confirm-modal-actions">
-                    <button type="button" class="btn btn-danger btn-sm" data-testid="back-to-pairing-confirm-yes" @onclick="ConfirmBack">Yes</button>
-                    <button type="button" class="btn btn-secondary btn-sm" data-testid="back-to-pairing-confirm-no" @onclick="() => _confirming = false">No</button>
+                    <md-filled-button type="button" class="btn-error" data-testid="back-to-pairing-confirm-yes" @onclick="ConfirmBack">Yes</md-filled-button>
+                    <md-filled-tonal-button type="button" data-testid="back-to-pairing-confirm-no" @onclick="() => _confirming = false">No</md-filled-tonal-button>
                 </div>
             </div>
         </div>
     }
-    <button type="button" class="btn btn-outline-secondary btn-sm" data-testid="back-to-pairing-button"
+    <md-outlined-button type="button" data-testid="back-to-pairing-button"
             disabled="@IsBusy" title="@(IsBusy ? "Wait for the current operation to finish before leaving this printer." : null)"
             @onclick="() => _confirming = true">
         Back to Pairing
-    </button>
+    </md-outlined-button>
 }
 
 @code {

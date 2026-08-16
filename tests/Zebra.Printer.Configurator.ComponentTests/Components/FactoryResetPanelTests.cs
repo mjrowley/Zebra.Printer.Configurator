@@ -95,7 +95,7 @@ public class FactoryResetPanelTests : BunitContext
         cut.Find("[data-testid='factory-reset-confirm']").Click();
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='factory-reset-complete']")));
 
-        cut.Find("button").Click();
+        cut.Find("md-filled-button").Click();
 
         Assert.True(finishedRaised);
     }
