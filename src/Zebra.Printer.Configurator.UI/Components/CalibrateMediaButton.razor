@@ -1,0 +1,118 @@
+@* Self-contained "calibrate media" button + confirm + run flow for a paired printer, shared between
+   Pairing (right after tap-pairing) and Result (after a successful configuration) - same shape as
+   BagTagTemplatesPanel/FactoryResetPanel. Always confirms first (unlike BagTagTemplatesPanel, which
+   only confirms when something would actually be overwritten) - calibration feeds a few real labels
+   through the printer every single time it runs, which is physical media waste the user should
+   knowingly opt into rather than trigger with an accidental tap. *@
+@implements IDisposable
+@inject IPrinterCalibrationService CalibrationService
+@inject PrinterActivityMonitor ActivityMonitor
+
+<div>
+    <md-outlined-button type="button" data-testid="calibrate-media-button"
+            disabled="@(_state == State.Calibrating)" @onclick="() => SetState(State.Confirming)">
+        @if (_state == State.Calibrating)
+        {
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        }
+        Calibrate Media
+    </md-outlined-button>
+
+    @if (_state == State.Calibrating)
+    {
+        <p data-testid="calibrate-media-progress">Calibrating - the printer will feed a few labels&hellip;</p>
+    }
+    else if (_state == State.Complete)
+    {
+        <p class="text-success" data-testid="calibrate-media-complete">Media calibration complete.</p>
+    }
+    else if (_state == State.Failed)
+    {
+        <p class="text-danger" data-testid="calibrate-media-error">@_errorMessage</p>
+    }
+
+    @if (_state == State.Confirming)
+    {
+        <div class="confirm-modal-backdrop" data-testid="calibrate-media-confirm-dialog">
+            <div class="confirm-modal-box" role="alertdialog">
+                <p>
+                    Calibrating will feed a few labels through the printer to detect media gap
+                    positioning. Continue?
+                </p>
+                <div class="confirm-modal-actions">
+                    <md-filled-button type="button" data-testid="calibrate-media-confirm" @onclick="Calibrate">Calibrate</md-filled-button>
+                    <md-filled-tonal-button type="button" data-testid="calibrate-media-cancel" @onclick="() => SetState(State.Idle)">Cancel</md-filled-tonal-button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private enum State
+    {
+        Idle,
+        Confirming,
+        Calibrating,
+        Complete,
+        Failed,
+    }
+
+    [Parameter, EditorRequired]
+    public PrinterDevice Device { get; set; } = null!;
+
+    /// <summary>
+    /// Raised whenever this panel starts (true) or stops (false) using the printer's Bluetooth/WiFi
+    /// connection, so a host page can disable other actions that would race it - the same reason
+    /// FactoryResetPanel/BagTagTemplatesPanel raise this.
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> IsActiveChanged { get; set; }
+
+    private State _state = State.Idle;
+    private string? _errorMessage;
+    private IDisposable? _activityToken;
+
+    private async Task Calibrate()
+    {
+        _errorMessage = null;
+        await SetState(State.Calibrating);
+
+        try
+        {
+            await CalibrationService.CalibrateAsync(Device);
+            await SetState(State.Complete);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Could not calibrate media: {ex.Message}";
+            await SetState(State.Failed);
+        }
+    }
+
+    private async Task SetState(State state)
+    {
+        var wasActive = IsActive(_state);
+        _state = state;
+        var isActive = IsActive(_state);
+
+        if (wasActive != isActive)
+        {
+            if (isActive)
+            {
+                _activityToken = ActivityMonitor.Begin("Media Calibration");
+            }
+            else
+            {
+                _activityToken?.Dispose();
+                _activityToken = null;
+            }
+
+            await IsActiveChanged.InvokeAsync(isActive);
+        }
+    }
+
+    private static bool IsActive(State state) => state is State.Confirming or State.Calibrating;
+
+    public void Dispose() => _activityToken?.Dispose();
+}

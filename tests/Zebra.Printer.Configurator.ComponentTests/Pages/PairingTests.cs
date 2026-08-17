@@ -29,6 +29,7 @@ public class PairingTests : BunitContext
     private readonly PrinterActivityMonitor _activityMonitor = new();
     private readonly IWebInterfaceService _webInterfaceService = Substitute.For<IWebInterfaceService>();
     private readonly IPrinterStatusReader _statusReader = Substitute.For<IPrinterStatusReader>();
+    private readonly IPrinterCalibrationService _calibrationService = Substitute.For<IPrinterCalibrationService>();
 
     public PairingTests()
     {
@@ -47,6 +48,7 @@ public class PairingTests : BunitContext
         Services.AddSingleton(_activityMonitor);
         Services.AddSingleton(_webInterfaceService);
         Services.AddSingleton(_statusReader);
+        Services.AddSingleton(_calibrationService);
         Services.AddSingleton(new PairingSession());
 
         // _webInterfaceService/_versionCheckService are still legitimately used directly by
@@ -435,6 +437,35 @@ public class PairingTests : BunitContext
             Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled"));
         });
         setEnabledTcs.SetResult();
+    }
+
+    [Fact]
+    public void ReadyState_ShowsCalibrateMediaButton()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        var cut = RenderWithReadyPrinter(device);
+
+        Assert.NotNull(cut.Find("[data-testid='calibrate-media-button']"));
+    }
+
+    [Fact]
+    public void WhileCalibratingMedia_ConfigurePrinterAndCheckConfigurationAndStartOverAreDisabled()
+    {
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        var calibrateTcs = new TaskCompletionSource();
+        _calibrationService.CalibrateAsync(device, Arg.Any<CancellationToken>()).Returns(calibrateTcs.Task);
+        var cut = RenderWithReadyPrinter(device);
+        cut.Find("[data-testid='calibrate-media-button']").Click();
+
+        cut.Find("[data-testid='calibrate-media-confirm']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled"));
+            Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled"));
+            Assert.True(cut.Find("[data-testid='start-over-button']").HasAttribute("disabled"));
+        });
+        calibrateTcs.SetResult();
     }
 
     [Fact]

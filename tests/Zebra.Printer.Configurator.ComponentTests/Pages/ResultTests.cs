@@ -39,6 +39,7 @@ public class ResultTests : BunitContext
     private readonly PrinterActivityMonitor _activityMonitor = new();
     private readonly IWebInterfaceService _webInterfaceService = Substitute.For<IWebInterfaceService>();
     private readonly IPrinterStatusReader _statusReader = Substitute.For<IPrinterStatusReader>();
+    private readonly IPrinterCalibrationService _calibrationService = Substitute.For<IPrinterCalibrationService>();
 
     private static PrinterStatus DefaultPrinterStatus() => new()
     {
@@ -107,6 +108,7 @@ public class ResultTests : BunitContext
         Services.AddSingleton(_activityMonitor);
         Services.AddSingleton(_webInterfaceService);
         Services.AddSingleton(_statusReader);
+        Services.AddSingleton(_calibrationService);
 
         // _webInterfaceService/_versionCheckService are still legitimately used directly by
         // WebInterfaceTogglePanel's Retry()/CloseComplete() self-heal reads and
@@ -229,6 +231,7 @@ public class ResultTests : BunitContext
         Assert.Contains("Reconfigure Printer", cut.Markup);
         Assert.NotNull(cut.Find("[data-testid='factory-reset-button']"));
         Assert.NotNull(cut.Find("[data-testid='check-configuration-button']"));
+        Assert.NotNull(cut.Find("[data-testid='calibrate-media-button']"));
     }
 
     [Theory]

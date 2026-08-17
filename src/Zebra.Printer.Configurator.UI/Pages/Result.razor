@@ -43,8 +43,9 @@
                  usable as an escape hatch even while a passive status/firmware check is still in
                  flight, only blocked by operations that actually mutate the printer's persistent
                  state (see Pairing.razor's Start Over for the same distinction). -->
-            <CheckConfigurationButton State="_checkConfigState" Disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive)" OnRecheck="RecheckConfigurationAsync" />
+            <CheckConfigurationButton State="_checkConfigState" Disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive || _calibratingActive)" OnRecheck="RecheckConfigurationAsync" />
             <BagTagTemplatesPanel Device="Session.Device!" IsActiveChanged="OnTemplatesActiveChanged" />
+            <CalibrateMediaButton Device="Session.Device!" IsActiveChanged="OnCalibrationActiveChanged" />
             <WebInterfaceTogglePanel Device="Session.Device!" InitialState="_webInterfaceState" StatusLoading="_statusLoading" IsActiveChanged="OnWebInterfaceActiveChanged" CurrentStateChanged="OnWebInterfaceStateChanged" />
         </div>
     }
@@ -74,6 +75,7 @@
     private bool _templatesActive;
     private bool _checkingNetwork;
     private bool _webInterfaceActive;
+    private bool _calibratingActive;
     private CheckConfigurationState _checkConfigState = new();
     private PrinterStatus? _printerStatus;
     private WebInterfaceState? _webInterfaceState;
@@ -199,6 +201,8 @@
     private void OnTemplatesActiveChanged(bool active) => _templatesActive = active;
 
     private void OnWebInterfaceActiveChanged(bool active) => _webInterfaceActive = active;
+
+    private void OnCalibrationActiveChanged(bool active) => _calibratingActive = active;
 
     // Keeps the top "Web Interface is currently..." line in sync with what WebInterfaceTogglePanel
     // itself most recently confirmed (Retry()/CloseComplete's self-heal reads) - without this, that

@@ -55,15 +55,16 @@
             <div class="button-row">
                 <md-filled-button type="button" data-testid="configure-printer-button" disabled="@ActivityMonitor.IsBusy" @onclick="Continue">Configure Printer</md-filled-button>
                 <FactoryResetPanel Device="_discoveredDevice!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
-                <CheckConfigurationButton State="_checkConfigState" Disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive)" OnRecheck="RecheckConfigurationAsync" />
+                <CheckConfigurationButton State="_checkConfigState" Disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive || _calibratingActive)" OnRecheck="RecheckConfigurationAsync" />
                 <BagTagTemplatesPanel Device="_discoveredDevice!" IsActiveChanged="OnTemplatesActiveChanged" />
+                <CalibrateMediaButton Device="_discoveredDevice!" IsActiveChanged="OnCalibrationActiveChanged" />
                 <WebInterfaceTogglePanel Device="_discoveredDevice!" InitialState="_webInterfaceState" StatusLoading="_statusLoading" IsActiveChanged="OnWebInterfaceActiveChanged" CurrentStateChanged="OnWebInterfaceStateChanged" />
                 <!-- Deliberately NOT ActivityMonitor.IsBusy, unlike Configure Printer above - Start
                      Over must stay usable as an escape hatch even while a passive status/firmware
                      check is still in flight (see ClickingStartOver_WhileStatusCheckStillInFlight_
                      LateResultDoesNotResurfaceStaleData), only blocked by operations that actually
                      mutate the printer's persistent state. -->
-                <md-outlined-button type="button" data-testid="start-over-button" disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive)" @onclick="Retry">Start Over</md-outlined-button>
+                <md-outlined-button type="button" data-testid="start-over-button" disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive || _calibratingActive)" @onclick="Retry">Start Over</md-outlined-button>
             </div>
             break;
 
@@ -102,6 +103,7 @@
     private bool _factoryResetActive;
     private bool _templatesActive;
     private bool _webInterfaceActive;
+    private bool _calibratingActive;
     private string? _wifiIpAddress;
     private CheckConfigurationState _checkConfigState = new();
     private PrinterStatus? _printerStatus;
@@ -352,6 +354,8 @@
 
     private void OnWebInterfaceActiveChanged(bool active) => _webInterfaceActive = active;
 
+    private void OnCalibrationActiveChanged(bool active) => _calibratingActive = active;
+
     // Keeps the top "Web Interface is currently..." line in sync with what WebInterfaceTogglePanel
     // itself most recently confirmed (Retry()/CloseComplete's self-heal reads) - without this, that
     // line stays frozen at whatever the last merged/Recheck read said even after the panel's own
@@ -368,6 +372,7 @@
         _factoryResetActive = false;
         _templatesActive = false;
         _webInterfaceActive = false;
+        _calibratingActive = false;
         _wifiIpAddress = null;
         _printerStatus = null;
         _webInterfaceState = null;
