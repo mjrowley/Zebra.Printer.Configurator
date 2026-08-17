@@ -17,6 +17,7 @@ public class ProgressTests : BunitContext
         PrinterName = "ZD421",
         Ssid = "Warehouse-WiFi",
         Password = "correcthorsebatterystaple",
+        IpAddressMode = WlanIpAddressMode.Static,
         StaticIpAddress = "192.168.1.50",
         Netmask = "255.255.255.0",
         Gateway = "192.168.1.1",
@@ -42,7 +43,7 @@ public class ProgressTests : BunitContext
     public void OnSuccessfulRun_NavigatesToResult()
     {
         _connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
-            .Returns(ConnectionTestResult.Succeeded("CONNECTED"));
+            .Returns(ConnectionTestResult.Succeeded("CONNECTED", Configuration.StaticIpAddress));
         var workflow = new PairAndConfigureWorkflow(_sessionFactory, _configurationService, _pdfDirectService, _restartService, _connectivityTestService);
         Services.AddSingleton(workflow);
         Services.AddSingleton(new PairingSession { Device = Device, Configuration = Configuration });
@@ -76,6 +77,30 @@ public class ProgressTests : BunitContext
         });
         Assert.Equal(PairingWorkflowState.Failed, workflow.State);
         Assert.Equal("Printer did not respond.", workflow.FailureReason);
+        _wifiMonitor.DidNotReceive().Start(Arg.Any<string>());
+    }
+
+    [Fact]
+    public void OnDhcpRunWithNoResolvedIpAddress_DoesNotStartWifiMonitor()
+    {
+        // A Dhcp configuration that never discovers an address (e.g. connectivity test timed out
+        // before reading one back) has nothing to monitor - unlike Static, there's no "intended" IP
+        // to fall back to.
+        var dhcpConfiguration = Configuration with { IpAddressMode = WlanIpAddressMode.Dhcp, StaticIpAddress = string.Empty };
+        _connectivityTestService.TestConnectionAsync(Device, dhcpConfiguration, Arg.Any<CancellationToken>())
+            .Returns(ConnectionTestResult.Failed("Printer did not respond."));
+        var workflow = new PairAndConfigureWorkflow(_sessionFactory, _configurationService, _pdfDirectService, _restartService, _connectivityTestService);
+        Services.AddSingleton(workflow);
+        Services.AddSingleton(new PairingSession { Device = Device, Configuration = dhcpConfiguration });
+
+        var cut = Render<Progress>();
+
+        cut.WaitForAssertion(() =>
+        {
+            var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+            Assert.EndsWith("/result", navigation.Uri);
+        });
+        _wifiMonitor.DidNotReceive().Start(Arg.Any<string>());
     }
 
     [Fact]

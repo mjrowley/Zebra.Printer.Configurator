@@ -26,6 +26,7 @@ public static class WlanDiagnosticKeys
         "ezpl.media_type",
         "ezpl.print_method",
         "ezpl.print_width",
+        "ip.dhcp.enable",
         "media.printmode",
         "wlan.enable",
         "wlan.essid",

@@ -1,4 +1,6 @@
 @page "/configure"
+@using System.ComponentModel.DataAnnotations
+@using Zebra.Printer.Configurator.Core.Validation
 @inject PairingSession Session
 @inject IHostNetworkInfoService HostNetworkInfoService
 @inject IPrinterModelReader ModelReader
@@ -43,10 +45,31 @@
             </div>
 
             <div class="mb-3">
-                <label for="ip-octet-1">Printer Static IP Address</label>
-                <IpAddressInput @bind-Value="_model.StaticIpAddress" />
-                <ValidationMessage For="() => _model.StaticIpAddress" />
+                <span id="ip-address-mode-label">IP Addressing</span>
+                <div class="radio-group" role="radiogroup" aria-labelledby="ip-address-mode-label">
+                    <label>
+                        <md-radio name="ip-address-mode" data-testid="ip-mode-static"
+                            checked="@(_model.IpAddressMode == WlanIpAddressMode.Static)"
+                            @onclick="() => _model.IpAddressMode = WlanIpAddressMode.Static"></md-radio>
+                        Static
+                    </label>
+                    <label>
+                        <md-radio name="ip-address-mode" data-testid="ip-mode-dhcp"
+                            checked="@(_model.IpAddressMode == WlanIpAddressMode.Dhcp)"
+                            @onclick="() => _model.IpAddressMode = WlanIpAddressMode.Dhcp"></md-radio>
+                        DHCP
+                    </label>
+                </div>
             </div>
+
+            @if (_model.IpAddressMode == WlanIpAddressMode.Static)
+            {
+                <div class="mb-3">
+                    <label for="ip-octet-1">Printer Static IP Address</label>
+                    <IpAddressInput @bind-Value="_model.StaticIpAddress" />
+                    <ValidationMessage For="() => _model.StaticIpAddress" />
+                </div>
+            }
 
             <md-filled-button type="submit">Continue</md-filled-button>
         </EditForm>
@@ -136,6 +159,7 @@
             PrinterName = _model.PrinterName,
             Ssid = _model.Ssid,
             Password = _model.Password,
+            IpAddressMode = _model.IpAddressMode,
             StaticIpAddress = _model.StaticIpAddress,
             Netmask = _hostNetworkInfo.Netmask,
             Gateway = _hostNetworkInfo.Gateway,
@@ -149,7 +173,11 @@
     // there preserves the printer without forcing a re-tap.
     private void Back() => Navigation.NavigateTo("/");
 
-    private sealed class ConfigureFormModel
+    // IValidatableObject (rather than an [IPv4Address] attribute on StaticIpAddress, as before) since
+    // that field's validity is now conditional - it's meaningless and left blank in Dhcp mode, so a
+    // DataAnnotations attribute (which always runs) would incorrectly reject a blank/incomplete IP
+    // even when the user never intends to use it.
+    private sealed class ConfigureFormModel : IValidatableObject
     {
         [PrinterName]
         public string PrinterName { get; set; } = string.Empty;
@@ -160,7 +188,22 @@
         [WifiPassword]
         public string Password { get; set; } = string.Empty;
 
-        [IPv4Address]
+        public WlanIpAddressMode IpAddressMode { get; set; } = WlanIpAddressMode.Static;
+
         public string StaticIpAddress { get; set; } = string.Empty;
+
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            if (IpAddressMode != WlanIpAddressMode.Static)
+            {
+                yield break;
+            }
+
+            var outcome = IPv4Validator.Validate(StaticIpAddress);
+            if (!outcome.IsValid)
+            {
+                yield return new ValidationResult(outcome.ErrorMessage, [nameof(StaticIpAddress)]);
+            }
+        }
     }
 }

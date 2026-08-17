@@ -16,13 +16,14 @@
         <div class="status-card">
             <h2>Success</h2>
             <p data-testid="result-success">
-                The printer is now connected to @Session.Configuration?.Ssid at @Session.Configuration?.StaticIpAddress.
+                The printer is now connected to @Session.Configuration?.Ssid at @Workflow.Result?.ResolvedIpAddress.
             </p>
-            @* The printer now has a confirmed working WiFi connection (Session.Configuration.StaticIpAddress,
-               just verified by the workflow's own connectivity test) - re-surfaces the same version
-               check/update offer here, since Pairing.razor's earlier check may have let a NeedsUpdate
-               result through unblocked if WiFi wasn't available yet at that point. *@
-            <PrinterVersionAlert Device="Session.Device!" WifiIpAddress="@Session.Configuration?.StaticIpAddress" VersionResult="_printerStatus?.VersionResult" StatusLoading="_statusLoading" OnCancelled="Retry" />
+            @* The printer now has a confirmed working WiFi connection (Workflow.Result.ResolvedIpAddress -
+               not Session.Configuration.StaticIpAddress, which is meaningless for a Dhcp configuration -
+               just verified/discovered by the workflow's own connectivity test) - re-surfaces the same
+               version check/update offer here, since Pairing.razor's earlier check may have let a
+               NeedsUpdate result through unblocked if WiFi wasn't available yet at that point. *@
+            <PrinterVersionAlert Device="Session.Device!" WifiIpAddress="@Workflow.Result?.ResolvedIpAddress" VersionResult="_printerStatus?.VersionResult" StatusLoading="_statusLoading" OnCancelled="Retry" />
             @if (_webInterfaceState is { } webInterfaceState)
             {
                 <p data-testid="web-interface-status" class="@(webInterfaceState.BothEnabled ? "text-success" : "text-danger")">
@@ -133,7 +134,10 @@
             return;
         }
 
-        var ipAddress = Session.Configuration?.StaticIpAddress;
+        // Not Session.Configuration?.StaticIpAddress - meaningless for a Dhcp configuration.
+        // Workflow.Result still holds the last successful connectivity test's ResolvedIpAddress for
+        // as long as this page is showing the Succeeded state.
+        var ipAddress = Workflow.Result?.ResolvedIpAddress;
         _checkingNetwork = true;
         try
         {

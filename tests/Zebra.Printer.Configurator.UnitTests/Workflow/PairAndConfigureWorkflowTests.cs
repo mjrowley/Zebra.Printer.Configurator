@@ -14,6 +14,7 @@ public class PairAndConfigureWorkflowTests
         PrinterName = "ZD421",
         Ssid = "Warehouse-WiFi",
         Password = "correcthorsebatterystaple",
+        IpAddressMode = WlanIpAddressMode.Static,
         StaticIpAddress = "192.168.1.50",
         Netmask = "255.255.255.0",
         Gateway = "192.168.1.1",
@@ -44,7 +45,7 @@ public class PairAndConfigureWorkflowTests
     {
         var (_, _, _, _, connectivityTestService, workflow) = CreateWorkflow();
         connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
-            .Returns(ConnectionTestResult.Succeeded("CONNECTED"));
+            .Returns(ConnectionTestResult.Succeeded("CONNECTED", Configuration.StaticIpAddress));
 
         var observedStates = new List<PairingWorkflowState>();
         workflow.StateChanged += (_, _) => observedStates.Add(workflow.State);
@@ -69,7 +70,7 @@ public class PairAndConfigureWorkflowTests
     {
         var (sessionFactory, configurationService, pdfDirectService, restartService, connectivityTestService, workflow) = CreateWorkflow();
         connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
-            .Returns(ConnectionTestResult.Succeeded("CONNECTED"));
+            .Returns(ConnectionTestResult.Succeeded("CONNECTED", Configuration.StaticIpAddress));
 
         await workflow.RunAsync(Device, Configuration);
 
@@ -148,7 +149,7 @@ public class PairAndConfigureWorkflowTests
     {
         var (_, _, _, _, connectivityTestService, workflow) = CreateWorkflow();
         connectivityTestService.TestConnectionAsync(Device, Configuration, Arg.Any<CancellationToken>())
-            .Returns(ConnectionTestResult.Failed("first failure"), ConnectionTestResult.Succeeded("CONNECTED"));
+            .Returns(ConnectionTestResult.Failed("first failure"), ConnectionTestResult.Succeeded("CONNECTED", Configuration.StaticIpAddress));
 
         await workflow.RunAsync(Device, Configuration);
         Assert.Equal(PairingWorkflowState.Failed, workflow.State);

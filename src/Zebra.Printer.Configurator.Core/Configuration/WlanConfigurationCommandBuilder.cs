@@ -34,6 +34,11 @@ namespace Zebra.Printer.Configurator.Core.Configuration;
 /// could authenticate with. The docs also note getvar on wlan.wpa.psk always prints a single "*"
 /// "for protection", regardless of what's stored - so a verification pass must not expect the sent
 /// value to be echoed back for that key alone.
+///
+/// DHCP mode (WlanIpAddressMode.Dhcp) omits wlan.ip.addr/netmask/gateway entirely - the printer
+/// picks its own address - and sends ip.dhcp.enable=on + wlan.ip.protocol=dhcp instead of the
+/// Static branch's off/permanent pair, per a directly-quoted Zebra SGD docs example pairing those
+/// two keys for DHCP configuration.
 /// </summary>
 public static class WlanConfigurationCommandBuilder
 {
@@ -45,12 +50,25 @@ public static class WlanConfigurationCommandBuilder
             // printer while the radio is off, so it must be enabled first, not last.
             ("wlan.enable", "on"),
 
-            // Neither the factory-default fallback address nor DHCP/BOOTP addressing should be in
-            // play once a static IP is configured - both must be turned off/switched to "permanent"
-            // for the wlan.ip.* values below to actually take effect, not just be accepted.
+            // The factory-default fallback address is unrelated to Static-vs-DHCP addressing (it's
+            // what the printer falls back to if neither succeeds) and is always turned off here.
             ("wlan.ip.default_addr_enable", "off"),
-            ("wlan.ip.protocol", "permanent"),
         };
+
+        // Confirmed via Zebra's own SGD docs example pairing these two keys to configure DHCP:
+        // `U1 setvar "ip.dhcp.enable" "on"` followed by `U1 setvar "wlan.ip.protocol" "dhcp"`.
+        // wlan.ip.protocol=permanent is the counterpart that makes a *static* IP actually take
+        // effect (not just be accepted) - see the Static branch below.
+        if (configuration.IpAddressMode == WlanIpAddressMode.Dhcp)
+        {
+            commands.Add(("ip.dhcp.enable", "on"));
+            commands.Add(("wlan.ip.protocol", "dhcp"));
+        }
+        else
+        {
+            commands.Add(("ip.dhcp.enable", "off"));
+            commands.Add(("wlan.ip.protocol", "permanent"));
+        }
 
         if (string.IsNullOrEmpty(configuration.Password))
         {
@@ -67,9 +85,13 @@ public static class WlanConfigurationCommandBuilder
         }
 
         commands.Add(("wlan.essid", configuration.Ssid));
-        commands.Add(("wlan.ip.addr", configuration.StaticIpAddress));
-        commands.Add(("wlan.ip.netmask", configuration.Netmask));
-        commands.Add(("wlan.ip.gateway", configuration.Gateway));
+
+        if (configuration.IpAddressMode == WlanIpAddressMode.Static)
+        {
+            commands.Add(("wlan.ip.addr", configuration.StaticIpAddress));
+            commands.Add(("wlan.ip.netmask", configuration.Netmask));
+            commands.Add(("wlan.ip.gateway", configuration.Gateway));
+        }
 
         return commands;
     }

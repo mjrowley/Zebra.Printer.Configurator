@@ -76,10 +76,17 @@
         }
 
         // Keeps re-checking the printer's WiFi reachability in the background beyond this one-shot
-        // workflow run, for as long as this pairing attempt's target IP is known - covers the
-        // Result screen (and anywhere else) too, without those pages needing to own the polling
-        // loop themselves.
-        WifiMonitor.Start(Session.Configuration.StaticIpAddress);
+        // workflow run, for as long as the printer's actual IP is known - covers the Result screen
+        // (and anywhere else) too, without those pages needing to own the polling loop themselves.
+        // Reads Workflow.Result.ResolvedIpAddress (not Session.Configuration.StaticIpAddress) since
+        // that's meaningless for a Dhcp configuration - ResolvedIpAddress is whatever the
+        // connectivity test actually confirmed/discovered, null if the workflow failed before
+        // learning one (e.g. a Dhcp printer that never came back online).
+        var resolvedIp = Workflow.Result?.ResolvedIpAddress;
+        if (!string.IsNullOrWhiteSpace(resolvedIp))
+        {
+            WifiMonitor.Start(resolvedIp);
+        }
 
         Navigation.NavigateTo("/result", replace: true);
     }

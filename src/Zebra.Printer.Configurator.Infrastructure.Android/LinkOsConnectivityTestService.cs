@@ -18,6 +18,11 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// WLAN settings it's holding, logging each one - the most direct way to see which of the settings
 /// LinkOsPrinterConfigurationService applied didn't actually stick, rather than continuing to guess
 /// from the outside.
+///
+/// WlanConfiguration.IpAddressMode == Dhcp has no known IP to poll this way - TestDhcpConnectionAsync
+/// instead reconnects over Bluetooth after a fixed settling delay and reads wlan.ip.addr back to
+/// discover what the printer was actually assigned, then confirms it with the same TCP reachability
+/// check as the Static path before reporting success.
 /// </summary>
 public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnectivityMonitor connectivityMonitor, PrinterOperationCancellation cancellation) : IPrinterConnectivityTestService
 {
@@ -26,9 +31,27 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnect
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(3);
 
-    public async Task<ConnectionTestResult> TestConnectionAsync(PrinterDevice device, WlanConfiguration configuration, CancellationToken cancellationToken = default)
+    // DHCP mode has no known IP to poll over TCP the way Static mode does below - the printer's new
+    // address can only be learned by reconnecting over Bluetooth and reading wlan.ip.addr back.
+    // BluetoothConnectionRunner.RunAsync already retries internally (3 attempts/~9s) and a
+    // device.reset drops Bluetooth immediately, so a fixed settling delay up front (mirrors
+    // WebInterfaceTogglePanel.RestartSettlingDelay's same reasoning) avoids burning through poll
+    // attempts during the guaranteed-dead window while the printer is still rebooting.
+    private static readonly TimeSpan DhcpSettlingDelay = TimeSpan.FromSeconds(12);
+    private static readonly TimeSpan DhcpPollTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan DhcpPollInterval = TimeSpan.FromSeconds(3);
+
+    public Task<ConnectionTestResult> TestConnectionAsync(PrinterDevice device, WlanConfiguration configuration, CancellationToken cancellationToken = default)
     {
         connectivityMonitor.SetWifi(ConnectionIndicatorState.Connecting);
+
+        return configuration.IpAddressMode == WlanIpAddressMode.Dhcp
+            ? TestDhcpConnectionAsync(device, cancellationToken)
+            : TestStaticConnectionAsync(device, configuration, cancellationToken);
+    }
+
+    private async Task<ConnectionTestResult> TestStaticConnectionAsync(PrinterDevice device, WlanConfiguration configuration, CancellationToken cancellationToken)
+    {
         appLog.Log($"Waiting for printer to rejoin WiFi at {configuration.StaticIpAddress} (up to {PollTimeout.TotalSeconds:N0}s)...");
 
         var reachable = await RetryPoller.PollUntilAsync(
@@ -49,7 +72,7 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnect
             appLog.Log(failure, LogLevel.Error);
             connectivityMonitor.SetWifi(ConnectionIndicatorState.Error);
             await LogPrinterWlanSettingsAsync(device, cancellationToken);
-            return ConnectionTestResult.Failed($"{failure} Check the activity log for the printer's actual WLAN settings.");
+            return ConnectionTestResult.Failed($"{failure} Check the activity log for the printer's actual WLAN settings.", configuration.StaticIpAddress);
         }
 
         appLog.Log($"Printer is reachable at {configuration.StaticIpAddress}:{SgdPort}. Confirming WiFi state...");
@@ -67,12 +90,12 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnect
                 {
                     appLog.Log("Printer responded on the network but wlan.state was empty.", LogLevel.Error);
                     connectivityMonitor.SetWifi(ConnectionIndicatorState.Error);
-                    return ConnectionTestResult.Failed("Printer responded on the network but wlan.state was empty.");
+                    return ConnectionTestResult.Failed("Printer responded on the network but wlan.state was empty.", configuration.StaticIpAddress);
                 }
 
                 appLog.Log($"WiFi state: {wlanState}", LogLevel.Success);
                 connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
-                return ConnectionTestResult.Succeeded(wlanState);
+                return ConnectionTestResult.Succeeded(wlanState, configuration.StaticIpAddress);
             }
             catch (Exception) when (cancellationToken.IsCancellationRequested)
             {
@@ -83,6 +106,68 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnect
                 connection.Close();
             }
         }, cancellationToken);
+    }
+
+    private async Task<ConnectionTestResult> TestDhcpConnectionAsync(PrinterDevice device, CancellationToken cancellationToken)
+    {
+        appLog.Log($"Waiting {DhcpSettlingDelay.TotalSeconds:N0}s for the printer to reboot before reconnecting to read its DHCP-assigned address...");
+        await Task.Delay(DhcpSettlingDelay, cancellationToken);
+
+        string? assignedIp = null;
+        string? wlanState = null;
+
+        var confirmed = await RetryPoller.PollUntilAsync(
+            attempt: async () =>
+            {
+                try
+                {
+                    await BluetoothConnectionRunner.RunAsync(device.BluetoothMacAddress, connection =>
+                    {
+                        assignedIp = SGD.GET("wlan.ip.addr", connection);
+                        wlanState = SGD.GET("wlan.state", connection);
+                    }, appLog, cancellation, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception)
+                {
+                    // Printer still rebooting / Bluetooth not back up yet - not a failure, the poll
+                    // loop below just tries again until DhcpPollTimeout elapses.
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(assignedIp) || assignedIp == "0.0.0.0")
+                {
+                    // wlan.ip.addr reads back blank/unset for a moment even after Bluetooth is back
+                    // up, until the DHCP lease actually completes.
+                    return false;
+                }
+
+                // Confirms the discovered address is actually reachable, matching the same
+                // confidence level as the Static path's own TCP probe above, rather than trusting
+                // the SGD readback alone.
+                return await TcpPortProbe.IsReachableAsync(assignedIp, SgdPort, ProbeTimeout, cancellationToken);
+            },
+            timeout: DhcpPollTimeout,
+            interval: DhcpPollInterval,
+            cancellationToken: cancellationToken);
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!confirmed || string.IsNullOrWhiteSpace(assignedIp))
+        {
+            var failure = $"Printer did not report a reachable DHCP-assigned IP address within {DhcpSettlingDelay.TotalSeconds + DhcpPollTimeout.TotalSeconds:N0}s after restart.";
+            appLog.Log(failure, LogLevel.Error);
+            connectivityMonitor.SetWifi(ConnectionIndicatorState.Error);
+            await LogPrinterWlanSettingsAsync(device, cancellationToken);
+            return ConnectionTestResult.Failed($"{failure} Check the activity log for the printer's actual WLAN settings.");
+        }
+
+        appLog.Log($"Printer is reachable via DHCP at {assignedIp}:{SgdPort}. WiFi state: {wlanState}", LogLevel.Success);
+        connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
+        return ConnectionTestResult.Succeeded(wlanState ?? "unknown", assignedIp);
     }
 
     private async Task LogPrinterWlanSettingsAsync(PrinterDevice device, CancellationToken cancellationToken)

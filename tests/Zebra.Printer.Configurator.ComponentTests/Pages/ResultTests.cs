@@ -21,6 +21,7 @@ public class ResultTests : BunitContext
         PrinterName = "ZD421",
         Ssid = "Warehouse-WiFi",
         Password = "correcthorsebatterystaple",
+        IpAddressMode = WlanIpAddressMode.Static,
         StaticIpAddress = "192.168.1.50",
         Netmask = "255.255.255.0",
         Gateway = "192.168.1.1",
@@ -162,7 +163,7 @@ public class ResultTests : BunitContext
     [Fact]
     public async Task SucceededWorkflow_ShowsConfirmedSsidAndIp()
     {
-        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED", "192.168.1.50"));
 
         var cut = Render<Result>();
 
@@ -179,7 +180,7 @@ public class ResultTests : BunitContext
         // the printer's WiFi has just been confirmed working by the workflow itself, so the update
         // is actually offered for real this time.
         _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
-        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED", "192.168.1.50"));
         StubStatus(outcome: PrinterVersionOutcome.NeedsUpdate, linkOsVersionFound: "7.5.0", firmwareVersionFound: "V93.21.06Z");
 
         var cut = Render<Result>();
@@ -198,7 +199,7 @@ public class ResultTests : BunitContext
         // the full page (not the isolated component via the test-harness parameter API) exercises
         // the actual Razor markup that had the bug.
         _connectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
-        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED", "192.168.1.50"));
         var bundle = new FirmwareBundle
         {
             ModelName = "ZD421",
@@ -233,7 +234,7 @@ public class ResultTests : BunitContext
     [Fact]
     public async Task SucceededWorkflow_ShowsReconfigureButtonAndActionsMenuItems()
     {
-        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED", "192.168.1.50"));
 
         var cut = Render<Result>();
 
@@ -248,7 +249,7 @@ public class ResultTests : BunitContext
     [InlineData(false, "disabled", "text-danger")]
     public async Task SucceededWorkflow_ShowsWebInterfaceStatusLine_ColoredByEnabledState(bool enabled, string expectedWord, string expectedClass)
     {
-        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED", "192.168.1.50"));
         StubStatus(webInterfaceEnabled: enabled);
 
         var cut = Render<Result>();
@@ -267,7 +268,7 @@ public class ResultTests : BunitContext
         // A closed loopback port refuses the probe almost instantly, unlike a real unreachable IP
         // which can take the full probe timeout to fail - keeps this test fast and deterministic.
         var configuration = Configuration with { StaticIpAddress = "127.0.0.1" };
-        var (_, session) = await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"), configuration);
+        var (_, session) = await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED", "127.0.0.1"), configuration);
         var cut = Render<Result>(p => p.Add(c => c.WifiProbePort, GetFreeLoopbackPort()));
 
         cut.Find("[data-testid='reconfigure-button']").Click();
@@ -280,7 +281,7 @@ public class ResultTests : BunitContext
     [Fact]
     public async Task WhileFactoryResetIsSelected_ReconfigurePrinterButtonIsDisabled()
     {
-        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED", "192.168.1.50"));
         var cut = Render<Result>();
 
         OpenActionsMenuAndClickItem(cut, "menu-item-factory-reset");
@@ -293,7 +294,7 @@ public class ResultTests : BunitContext
     {
         using var listener = StartLoopbackListener(out var port);
         var configuration = Configuration with { StaticIpAddress = "127.0.0.1" };
-        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"), configuration);
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED", "127.0.0.1"), configuration);
         var cut = Render<Result>(p => p.Add(c => c.WifiProbePort, port));
 
         cut.Find("[data-testid='reconfigure-button']").Click();
@@ -312,7 +313,7 @@ public class ResultTests : BunitContext
     public async Task ClickingReconfigure_WhenStaticIpIsUnreachable_FallsBackToBluetooth()
     {
         var configuration = Configuration with { StaticIpAddress = "127.0.0.1" };
-        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"), configuration);
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED", "127.0.0.1"), configuration);
         var cut = Render<Result>(p => p.Add(c => c.WifiProbePort, GetFreeLoopbackPort()));
 
         cut.Find("[data-testid='reconfigure-button']").Click();
@@ -324,7 +325,7 @@ public class ResultTests : BunitContext
     [Fact]
     public async Task WhileFactoryResetIsSelected_RecheckConfigurationMenuItemIsDisabled()
     {
-        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED", "192.168.1.50"));
         var cut = Render<Result>();
 
         OpenActionsMenuAndClickItem(cut, "menu-item-factory-reset");
@@ -335,7 +336,7 @@ public class ResultTests : BunitContext
     [Fact]
     public async Task WhileWebInterfaceToggleIsApplying_ReconfigureAndCheckConfigurationAreDisabled()
     {
-        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED", "192.168.1.50"));
         var setEnabledTcs = new TaskCompletionSource();
         _webInterfaceService.SetEnabledAsync(Device, false, Arg.Any<CancellationToken>()).Returns(setEnabledTcs.Task);
         var cut = Render<Result>();
@@ -397,7 +398,7 @@ public class ResultTests : BunitContext
     {
         // The merged read now runs automatically as soon as the page shows the Succeeded state (via
         // OnInitializedAsync), rather than only after a manual "Check Configuration" click.
-        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
+        await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED", "192.168.1.50"));
         StubStatus(configurationValues: [new PrinterConfigurationValue("device.friendly_name", "Warehouse-01")]);
 
         var cut = Render<Result>();

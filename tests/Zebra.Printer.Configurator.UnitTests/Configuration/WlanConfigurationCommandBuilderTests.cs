@@ -10,12 +10,19 @@ public class WlanConfigurationCommandBuilderTests
         PrinterName = "ZD421",
         Ssid = "Warehouse-WiFi",
         Password = "correcthorsebatterystaple",
+        IpAddressMode = WlanIpAddressMode.Static,
         StaticIpAddress = "192.168.1.50",
         Netmask = "255.255.255.0",
         Gateway = "192.168.1.1",
     };
 
     private static readonly WlanConfiguration OpenConfiguration = SecuredConfiguration with { Password = "" };
+
+    private static readonly WlanConfiguration DhcpConfiguration = SecuredConfiguration with
+    {
+        IpAddressMode = WlanIpAddressMode.Dhcp,
+        StaticIpAddress = string.Empty,
+    };
 
     [Fact]
     public void BuildSetCommands_EnablesWlanRadioFirst()
@@ -118,8 +125,8 @@ public class WlanConfigurationCommandBuilderTests
     {
         var commands = WlanConfigurationCommandBuilder.BuildSetCommands(SecuredConfiguration);
 
-        // enable, default_addr_enable, ip.protocol, security, wpa.psk, ssid, ip.addr, netmask, gateway
-        Assert.Equal(9, commands.Count);
+        // enable, default_addr_enable, ip.dhcp.enable, ip.protocol, security, wpa.psk, ssid, ip.addr, netmask, gateway
+        Assert.Equal(10, commands.Count);
     }
 
     [Fact]
@@ -128,6 +135,44 @@ public class WlanConfigurationCommandBuilderTests
         var commands = WlanConfigurationCommandBuilder.BuildSetCommands(OpenConfiguration);
 
         // Same as secured, minus wlan.wpa.psk
-        Assert.Equal(8, commands.Count);
+        Assert.Equal(9, commands.Count);
+    }
+
+    [Fact]
+    public void BuildSetCommands_ForDhcp_SetsDhcpEnableAndIpProtocol()
+    {
+        // Confirmed via Zebra's own SGD docs example pairing these two keys to configure DHCP.
+        var commands = WlanConfigurationCommandBuilder.BuildSetCommands(DhcpConfiguration);
+
+        Assert.Contains(("ip.dhcp.enable", "on"), commands);
+        Assert.Contains(("wlan.ip.protocol", "dhcp"), commands);
+    }
+
+    [Fact]
+    public void BuildSetCommands_ForDhcp_OmitsStaticIpFields()
+    {
+        var commands = WlanConfigurationCommandBuilder.BuildSetCommands(DhcpConfiguration);
+
+        Assert.DoesNotContain(commands, c => c.Key == "wlan.ip.addr");
+        Assert.DoesNotContain(commands, c => c.Key == "wlan.ip.netmask");
+        Assert.DoesNotContain(commands, c => c.Key == "wlan.ip.gateway");
+    }
+
+    [Fact]
+    public void BuildSetCommands_ForStatic_SetsDhcpEnableOffAndIpProtocolPermanent()
+    {
+        var commands = WlanConfigurationCommandBuilder.BuildSetCommands(SecuredConfiguration);
+
+        Assert.Contains(("ip.dhcp.enable", "off"), commands);
+        Assert.Contains(("wlan.ip.protocol", "permanent"), commands);
+    }
+
+    [Fact]
+    public void BuildSetCommands_ReturnsExpectedCountForDhcp()
+    {
+        var commands = WlanConfigurationCommandBuilder.BuildSetCommands(DhcpConfiguration);
+
+        // enable, default_addr_enable, ip.dhcp.enable, ip.protocol, security, wpa.psk, ssid - no static IP fields
+        Assert.Equal(7, commands.Count);
     }
 }

@@ -160,12 +160,83 @@ public class ConfigureTests : BunitContext
         Assert.Equal("ZD421c", _session.Configuration!.PrinterName);
         Assert.Equal("Warehouse-WiFi", _session.Configuration.Ssid);
         Assert.Equal("correcthorsebatterystaple", _session.Configuration.Password);
+        Assert.Equal(WlanIpAddressMode.Static, _session.Configuration.IpAddressMode);
         Assert.Equal("192.168.1.50", _session.Configuration.StaticIpAddress);
         Assert.Equal("255.255.255.0", _session.Configuration.Netmask);
         Assert.Equal("192.168.1.1", _session.Configuration.Gateway);
 
         var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
         Assert.EndsWith("/progress", navigation.Uri);
+    }
+
+    [Fact]
+    public void InitialRender_DefaultsToStaticIpModeWithFieldVisible()
+    {
+        var cut = Render<Configure>();
+
+        Assert.True(cut.Find("[data-testid='ip-mode-static']").HasAttribute("checked"));
+        Assert.False(cut.Find("[data-testid='ip-mode-dhcp']").HasAttribute("checked"));
+        Assert.NotNull(cut.Find("#ip-octet-1"));
+    }
+
+    [Fact]
+    public void ClickingDhcpRadio_HidesStaticIpFieldAndChecksDhcp()
+    {
+        var cut = Render<Configure>();
+
+        cut.Find("[data-testid='ip-mode-dhcp']").Click();
+
+        Assert.True(cut.Find("[data-testid='ip-mode-dhcp']").HasAttribute("checked"));
+        Assert.False(cut.Find("[data-testid='ip-mode-static']").HasAttribute("checked"));
+        Assert.Empty(cut.FindAll("#ip-octet-1"));
+    }
+
+    [Fact]
+    public void ClickingDhcpThenStaticRadio_ShowsStaticIpFieldAgain()
+    {
+        var cut = Render<Configure>();
+        cut.Find("[data-testid='ip-mode-dhcp']").Click();
+
+        cut.Find("[data-testid='ip-mode-static']").Click();
+
+        Assert.NotNull(cut.Find("#ip-octet-1"));
+    }
+
+    [Fact]
+    public async Task Submit_WithDhcpMode_PopulatesSessionWithDhcpModeAndDoesNotRequireAValidStaticIp()
+    {
+        // The host-network prefill leaves StaticIpAddress as an incomplete "192.168.1" (first 3
+        // octets only, see WhenHostNetworkHasIpAddress_PrefillsFirstThreeOctetsOfStaticIp) - an
+        // invalid IPv4Validator.Validate result if it were ever checked, confirming DHCP mode really
+        // does skip that validation rather than just happening to have a valid value lying around.
+        var cut = Render<Configure>();
+        cut.Find("[data-testid='ip-mode-dhcp']").Click();
+        cut.Find("#ssid").Change("Warehouse-WiFi");
+        cut.Find("#password").Change("correcthorsebatterystaple");
+
+        await cut.Find("form").SubmitAsync();
+
+        Assert.NotNull(_session.Configuration);
+        Assert.Equal(WlanIpAddressMode.Dhcp, _session.Configuration!.IpAddressMode);
+        var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        Assert.EndsWith("/progress", navigation.Uri);
+    }
+
+    [Fact]
+    public async Task Submit_WithStaticModeSelected_StillRequiresAValidIp()
+    {
+        var cut = Render<Configure>();
+        cut.Find("#ssid").Change("Warehouse-WiFi");
+        cut.Find("#password").Change("correcthorsebatterystaple");
+        cut.Find("[data-testid='ip-mode-dhcp']").Click();
+        cut.Find("[data-testid='ip-mode-static']").Click();
+        cut.Find("#ip-octet-1").Input("192");
+        cut.Find("#ip-octet-2").Input("168");
+
+        await cut.Find("form").SubmitAsync();
+
+        Assert.Contains("dotted-quad IPv4 format", cut.Markup);
+        Assert.Null(_session.Configuration);
     }
 
     [Fact]
