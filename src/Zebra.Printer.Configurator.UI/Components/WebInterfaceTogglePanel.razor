@@ -140,6 +140,23 @@
     [Parameter]
     public EventCallback<bool> IsActiveChanged { get; set; }
 
+    /// <summary>
+    /// Raised whenever this panel confirms a fresh web interface state via its own read (Retry(),
+    /// CloseComplete()'s self-heal) - lets a host page keep its own summary display (e.g. a top-level
+    /// "Web Interface is currently enabled/disabled" line built from the merged status read) in sync
+    /// with what actually happened here, rather than staying frozen at whatever the last merged read
+    /// said. Not raised for the merged read itself (InitialState) - the host page already owns that
+    /// value directly.
+    /// </summary>
+    [Parameter]
+    public EventCallback<WebInterfaceState?> CurrentStateChanged { get; set; }
+
+    // Overridable (rather than a plain const) so component tests can shrink this to zero instead of
+    // actually waiting out a real settling delay - same reasoning as Pairing.razor/Result.razor's own
+    // WifiProbePort.
+    [Parameter]
+    public TimeSpan RestartSettlingDelay { get; set; } = TimeSpan.FromSeconds(12);
+
     private State _state = State.NotStarted;
     private WebInterfaceState? _currentState;
     private bool _pendingEnabled;
@@ -198,14 +215,26 @@
         }
     }
 
-    private async Task LoadStateAsync()
+    // A device.reset restart command drops the printer's Bluetooth radio almost immediately (it
+    // starts rebooting right away) and a ZD421/ZD621 realistically takes something like 15-25s to
+    // come back up - reconnecting right after CloseComplete's Close click (no delay) reliably hit
+    // that window and failed with a raw connection error before the printer had any real chance to
+    // finish rebooting. settlingDelay lets a caller wait out that window first; Retry() (a deliberate
+    // manual re-check, typically well after any restart) passes none.
+    private async Task LoadStateAsync(TimeSpan settlingDelay = default)
     {
         await SetState(State.Loading);
+
+        if (settlingDelay > TimeSpan.Zero)
+        {
+            await Task.Delay(settlingDelay);
+        }
 
         try
         {
             _currentState = await WebInterfaceService.ReadStateAsync(Device);
             await SetState(State.Idle);
+            await CurrentStateChanged.InvokeAsync(_currentState);
         }
         catch (Exception ex)
         {
@@ -266,7 +295,7 @@
     private async Task CloseComplete()
     {
         await OnFinished.InvokeAsync();
-        await LoadStateAsync();
+        await LoadStateAsync(RestartSettlingDelay);
     }
 
     private async Task SetState(State state)

@@ -321,6 +321,33 @@ public class PairingTests : BunitContext
     }
 
     [Fact]
+    public void WebInterfaceTogglePanelOwnRetry_AfterMergedReadFailure_UpdatesTopStatusLine()
+    {
+        // The top "Web Interface is currently..." line must reflect whatever WebInterfaceTogglePanel
+        // itself most recently confirmed via its own reads (Retry()/CloseComplete()), not just stay
+        // frozen at the last merged/Recheck read - this covers the case where the merged read failed
+        // entirely (so the panel starts in its own Failed/Try-Again state) and the panel's own retry
+        // succeeds.
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        _statusReader.ReadStatusAsync(device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<PrinterStatus>(new InvalidOperationException("simulated status check failure")));
+        _webInterfaceService.ReadStateAsync(device, Arg.Any<CancellationToken>())
+            .Returns(new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true });
+        var cut = RenderWithReadyPrinter(device);
+        cut.WaitForAssertion(() => Assert.Contains("Could not check web interface status.", cut.Find("[data-testid='web-interface-error']").TextContent));
+        Assert.Empty(cut.FindAll("[data-testid='web-interface-status']"));
+
+        cut.FindAll("md-filled-button").First(b => b.TextContent.Trim() == "Try Again").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var statusLine = cut.Find("[data-testid='web-interface-status']");
+            Assert.Contains("currently enabled", statusLine.TextContent);
+            Assert.Contains("text-success", statusLine.ClassList);
+        });
+    }
+
+    [Fact]
     public void ReadyState_AutomaticallyPopulatesConfigurationListWithoutClicking()
     {
         // The single merged Bluetooth read now covers the configuration list too, so it appears as

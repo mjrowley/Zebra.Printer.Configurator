@@ -297,6 +297,56 @@ public class WebInterfaceTogglePanelTests : BunitContext
     }
 
     [Fact]
+    public void Retry_RaisesCurrentStateChanged_WithFreshlyReadState()
+    {
+        _webInterfaceService.ReadStateAsync(Device, Arg.Any<CancellationToken>())
+            .Returns(new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true });
+        WebInterfaceState? notifiedState = null;
+        var cut = Render<WebInterfaceTogglePanel>(p => p
+            .Add(c => c.Device, Device)
+            .Add(c => c.InitialState, (WebInterfaceState?)null)
+            .Add(c => c.StatusLoading, false)
+            .Add(c => c.CurrentStateChanged, EventCallback.Factory.Create<WebInterfaceState?>(this, s => notifiedState = s)));
+        cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-error']"));
+
+        cut.Find("md-filled-button").Click();
+
+        cut.WaitForAssertion(() => Assert.NotNull(notifiedState));
+        Assert.True(notifiedState!.BothEnabled);
+    }
+
+    [Fact]
+    public void CloseComplete_WaitsForRestartSettlingDelay_BeforeReadingState()
+    {
+        // Regression guard for a real on-device failure: closing the completion dialog used to
+        // immediately try to reconnect, which reliably lost the race against the printer's own
+        // reboot (it drops Bluetooth the instant device.reset is sent) and surfaced a raw connection
+        // error instead of the actual post-restart state.
+        _webInterfaceService.ReadStateAsync(Device, Arg.Any<CancellationToken>())
+            .Returns(new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true });
+        var cut = Render<WebInterfaceTogglePanel>(p => p
+            .Add(c => c.Device, Device)
+            .Add(c => c.InitialState, new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false })
+            .Add(c => c.StatusLoading, false)
+            .Add(c => c.RestartSettlingDelay, TimeSpan.FromMilliseconds(200)));
+        cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-toggle-button']"));
+        cut.Find("[data-testid='web-interface-toggle-button']").Click();
+        cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-restart-confirm-dialog']"));
+        cut.Find("[data-testid='web-interface-restart-confirm-yes']").Click();
+        cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-complete']"));
+
+        cut.Find("md-filled-button").Click();
+
+        // Immediately after Close, the settling delay should still be running - the read must not
+        // have fired yet.
+        _webInterfaceService.DidNotReceive().ReadStateAsync(Device, Arg.Any<CancellationToken>());
+
+        cut.WaitForAssertion(
+            () => Assert.Equal("Disable Web Interface", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim()),
+            TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
     public void WhileStatusLoadingIsTrue_DoesNotShowItsOwnLoadingIndicator()
     {
         // The page's own merged-status read is what's driving StatusLoading here - PrinterVersionAlert

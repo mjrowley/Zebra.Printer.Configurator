@@ -45,7 +45,7 @@
                     Printer found@(_discoveredDevice?.SerialNumber is not null ? $" (serial {_discoveredDevice.SerialNumber})" : ".")
                 </p>
                 <PrinterVersionAlert Device="_discoveredDevice!" WifiIpAddress="@_wifiIpAddress" VersionResult="_printerStatus?.VersionResult" StatusLoading="_statusLoading" OnCancelled="Retry" />
-                @if (_printerStatus?.WebInterfaceState is { } webInterfaceState)
+                @if (_webInterfaceState is { } webInterfaceState)
                 {
                     <p data-testid="web-interface-status" class="@(webInterfaceState.BothEnabled ? "text-success" : "text-danger")">
                         Web Interface is currently @(webInterfaceState.BothEnabled ? "enabled" : "disabled").
@@ -57,7 +57,7 @@
                 <FactoryResetPanel Device="_discoveredDevice!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
                 <CheckConfigurationButton State="_checkConfigState" Disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive)" OnRecheck="RecheckConfigurationAsync" />
                 <BagTagTemplatesPanel Device="_discoveredDevice!" IsActiveChanged="OnTemplatesActiveChanged" />
-                <WebInterfaceTogglePanel Device="_discoveredDevice!" InitialState="_printerStatus?.WebInterfaceState" StatusLoading="_statusLoading" IsActiveChanged="OnWebInterfaceActiveChanged" />
+                <WebInterfaceTogglePanel Device="_discoveredDevice!" InitialState="_webInterfaceState" StatusLoading="_statusLoading" IsActiveChanged="OnWebInterfaceActiveChanged" CurrentStateChanged="OnWebInterfaceStateChanged" />
                 <!-- Deliberately NOT ActivityMonitor.IsBusy, unlike Configure Printer above - Start
                      Over must stay usable as an escape hatch even while a passive status/firmware
                      check is still in flight (see ClickingStartOver_WhileStatusCheckStillInFlight_
@@ -105,6 +105,7 @@
     private string? _wifiIpAddress;
     private CheckConfigurationState _checkConfigState = new();
     private PrinterStatus? _printerStatus;
+    private WebInterfaceState? _webInterfaceState;
     private bool _statusLoading;
     private int _statusRequestVersion;
 
@@ -291,6 +292,7 @@
             }
 
             _printerStatus = status;
+            _webInterfaceState = status.WebInterfaceState;
             _checkConfigState.SetResults(_printerStatus.ConfigurationValues);
         }
         catch (Exception ex)
@@ -300,6 +302,10 @@
                 return;
             }
 
+            // _webInterfaceState is deliberately left untouched here - a failed merged read doesn't
+            // invalidate a web interface state that was already confirmed (whether from an earlier
+            // merged read or from WebInterfaceTogglePanel's own follow-up reads), it just means this
+            // particular attempt to refresh it didn't pan out.
             _printerStatus = null;
             _checkConfigState.SetError($"Could not check printer status: {ex.Message}");
         }
@@ -346,6 +352,12 @@
 
     private void OnWebInterfaceActiveChanged(bool active) => _webInterfaceActive = active;
 
+    // Keeps the top "Web Interface is currently..." line in sync with what WebInterfaceTogglePanel
+    // itself most recently confirmed (Retry()/CloseComplete's self-heal reads) - without this, that
+    // line stays frozen at whatever the last merged/Recheck read said even after the panel's own
+    // toggle-and-restart flow successfully changes and re-confirms the real state.
+    private void OnWebInterfaceStateChanged(WebInterfaceState? state) => _webInterfaceState = state;
+
     private void Retry()
     {
         // Invalidates any LoadPrinterStatusAsync call still in flight (e.g. "Start Over" clicked
@@ -358,6 +370,7 @@
         _webInterfaceActive = false;
         _wifiIpAddress = null;
         _printerStatus = null;
+        _webInterfaceState = null;
         _statusLoading = false;
         _checkConfigState = new CheckConfigurationState();
         ConnectivityMonitor.Reset();
