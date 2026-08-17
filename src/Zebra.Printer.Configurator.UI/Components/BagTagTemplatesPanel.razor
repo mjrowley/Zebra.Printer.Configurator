@@ -1,26 +1,19 @@
-@* Self-contained "push bag tag templates" button + existence-check + confirm-overwrite + deploy flow
-   for a paired printer, shared between Pairing (right after tap-pairing) and Result (after a
-   successful configuration). These are small (<2KB each) bundled ZPL format templates that work fine
-   over whichever transport is currently active (Bluetooth or WiFi), unlike the firmware update which
+@* Self-contained "push bag tag templates" existence-check + confirm-overwrite + deploy flow for a
+   paired printer, shared between Pairing (right after tap-pairing) and Result (after a successful
+   configuration). These are small (<2KB each) bundled ZPL format templates that work fine over
+   whichever transport is currently active (Bluetooth or WiFi), unlike the firmware update which
    specifically requires WiFi - see LinkOsBagTagTemplateService's own doc comment.
 
-   The button stays visible and re-usable (like CheckConfigurationButton) rather than being replaced
-   by a terminal state the user has to dismiss (like FactoryResetPanel) - deploying templates isn't
-   destructive or one-shot, so there's no reason to block pressing it again. *@
+   The trigger itself lives in the host page's PrinterActionsMenu overflow menu (RequestDeployAsync,
+   called via @ref) rather than a button here - see PrinterActionsMenu's own doc comment for why. *@
 @implements IDisposable
 @inject IBagTagTemplateService TemplateService
 @inject PrinterActivityMonitor ActivityMonitor
 
 <div>
-    <md-outlined-button type="button" data-testid="deploy-templates-button"
-            disabled="@(_state is State.Checking or State.Deploying)" @onclick="StartDeploy">
-        @if (_state is State.Checking or State.Deploying)
-        {
-            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-        }
-        Push Bag Tag Templates
-    </md-outlined-button>
-
+    @* The trigger now lives in the host page's PrinterActionsMenu overflow menu, which calls
+       RequestDeployAsync() below via @ref - this component only renders once it's actually doing
+       something (Checking onward). *@
     @if (_state == State.Checking)
     {
         <p data-testid="deploy-templates-checking">Checking printer for existing templates&hellip;</p>
@@ -82,6 +75,9 @@
     private string? _errorMessage;
     private IDisposable? _activityToken;
 
+    /// <summary>Starts the deploy flow - called via @ref by the host page's overflow menu item.</summary>
+    public Task RequestDeployAsync() => StartDeploy();
+
     private async Task StartDeploy()
     {
         _errorMessage = null;
@@ -125,11 +121,17 @@
 
     private Task Cancel() => SetState(State.Idle);
 
+    // Explicit StateHasChanged() - can no longer rely on Blazor's automatic post-event-handler
+    // render, since RequestDeployAsync (and everything else that calls this) is now typically
+    // invoked externally (PrinterActionsMenu's menu item calling it via @ref), not from this
+    // component's own @onclick the way it used to be - a parent's event handler re-rendering
+    // doesn't cascade into re-rendering this component too unless its own parameters changed.
     private async Task SetState(State state)
     {
         var wasActive = IsActive(_state);
         _state = state;
         var isActive = IsActive(_state);
+        StateHasChanged();
 
         if (wasActive != isActive)
         {

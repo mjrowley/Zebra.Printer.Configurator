@@ -130,6 +130,17 @@ public class PairingTests : BunitContext
         return cut;
     }
 
+    // Factory Reset/Recheck Configuration/Push Bag Tag Templates/Calibrate Media/Start Over all now
+    // live behind PrinterActionsMenu's overflow menu rather than their own visible buttons - opens it
+    // then clicks the given item, matching the real two-tap user flow (bUnit doesn't enforce real
+    // visibility rules, so skipping the open click would still technically work, but this stays
+    // faithful to what a user actually does).
+    private static void OpenActionsMenuAndClickItem(IRenderedComponent<Pairing> cut, string menuItemTestId)
+    {
+        cut.Find("[data-testid='printer-actions-menu-button']").Click();
+        cut.Find($"[data-testid='{menuItemTestId}']").Click();
+    }
+
     private static TcpListener StartLoopbackListener(out int port)
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -276,7 +287,7 @@ public class PairingTests : BunitContext
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
         var cut = RenderWithReadyPrinter(device);
 
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        OpenActionsMenuAndClickItem(cut, "menu-item-factory-reset");
 
         Assert.NotNull(cut.Find("[data-testid='factory-reset-warning']"));
     }
@@ -286,7 +297,7 @@ public class PairingTests : BunitContext
     {
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
         var cut = RenderWithReadyPrinter(device);
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        OpenActionsMenuAndClickItem(cut, "menu-item-factory-reset");
 
         cut.Find("[data-testid='factory-reset-cancel']").Click();
 
@@ -296,12 +307,12 @@ public class PairingTests : BunitContext
     }
 
     [Fact]
-    public void ReadyState_ShowsCheckConfigurationButton()
+    public void ReadyState_ShowsRecheckConfigurationMenuItem()
     {
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
         var cut = RenderWithReadyPrinter(device);
 
-        Assert.NotNull(cut.Find("[data-testid='check-configuration-button']"));
+        Assert.NotNull(cut.Find("[data-testid='menu-item-recheck-configuration']"));
     }
 
     [Theory]
@@ -394,9 +405,9 @@ public class PairingTests : BunitContext
         cut.WaitForAssertion(() => Assert.Equal("Enable Web Interface", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim()));
         cut.WaitForAssertion(() => Assert.Contains("Before-Recheck", cut.Find("[data-testid='check-configuration-results']").TextContent));
 
-        cut.Find("[data-testid='check-configuration-button']").Click();
+        OpenActionsMenuAndClickItem(cut, "menu-item-recheck-configuration");
 
-        cut.WaitForAssertion(() => Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled")));
+        cut.WaitForAssertion(() => Assert.True(cut.Find("[data-testid='menu-item-recheck-configuration']").HasAttribute("disabled")));
 
         rechecktcs.SetResult(secondStatus);
 
@@ -414,10 +425,10 @@ public class PairingTests : BunitContext
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
         var cut = RenderWithReadyPrinter(device);
 
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        OpenActionsMenuAndClickItem(cut, "menu-item-factory-reset");
 
         Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled"));
-        Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled"));
+        Assert.True(cut.Find("[data-testid='menu-item-recheck-configuration']").HasAttribute("disabled"));
     }
 
     [Fact]
@@ -434,18 +445,18 @@ public class PairingTests : BunitContext
         cut.WaitForAssertion(() =>
         {
             Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled"));
-            Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled"));
+            Assert.True(cut.Find("[data-testid='menu-item-recheck-configuration']").HasAttribute("disabled"));
         });
         setEnabledTcs.SetResult();
     }
 
     [Fact]
-    public void ReadyState_ShowsCalibrateMediaButton()
+    public void ReadyState_ShowsCalibrateMediaMenuItem()
     {
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
         var cut = RenderWithReadyPrinter(device);
 
-        Assert.NotNull(cut.Find("[data-testid='calibrate-media-button']"));
+        Assert.NotNull(cut.Find("[data-testid='menu-item-calibrate-media']"));
     }
 
     [Fact]
@@ -455,15 +466,15 @@ public class PairingTests : BunitContext
         var calibrateTcs = new TaskCompletionSource();
         _calibrationService.CalibrateAsync(device, Arg.Any<CancellationToken>()).Returns(calibrateTcs.Task);
         var cut = RenderWithReadyPrinter(device);
-        cut.Find("[data-testid='calibrate-media-button']").Click();
+        OpenActionsMenuAndClickItem(cut, "menu-item-calibrate-media");
 
         cut.Find("[data-testid='calibrate-media-confirm']").Click();
 
         cut.WaitForAssertion(() =>
         {
             Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled"));
-            Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled"));
-            Assert.True(cut.Find("[data-testid='start-over-button']").HasAttribute("disabled"));
+            Assert.True(cut.Find("[data-testid='menu-item-recheck-configuration']").HasAttribute("disabled"));
+            Assert.True(cut.Find("[data-testid='menu-item-start-over']").HasAttribute("disabled"));
         });
         calibrateTcs.SetResult();
     }
@@ -474,9 +485,9 @@ public class PairingTests : BunitContext
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
         var cut = RenderWithReadyPrinter(device);
 
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        OpenActionsMenuAndClickItem(cut, "menu-item-factory-reset");
 
-        Assert.True(cut.Find("[data-testid='start-over-button']").HasAttribute("disabled"));
+        Assert.True(cut.Find("[data-testid='menu-item-start-over']").HasAttribute("disabled"));
     }
 
     [Fact]
@@ -490,7 +501,7 @@ public class PairingTests : BunitContext
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
         var cut = RenderWithReadyPrinter(device);
 
-        cut.Find("[data-testid='start-over-button']").Click();
+        OpenActionsMenuAndClickItem(cut, "menu-item-start-over");
 
         Assert.Contains("Tap this device to the printer", cut.Markup);
         Assert.Equal(ConnectionIndicatorState.Disconnected, _connectivityMonitor.Bluetooth);
@@ -509,9 +520,9 @@ public class PairingTests : BunitContext
         var statusTcs = new TaskCompletionSource<PrinterStatus>();
         _statusReader.ReadStatusAsync(device, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(statusTcs.Task);
         var cut = RenderWithReadyPrinter(device);
-        cut.WaitForAssertion(() => Assert.False(cut.Find("[data-testid='start-over-button']").HasAttribute("disabled")));
+        cut.WaitForAssertion(() => Assert.False(cut.Find("[data-testid='menu-item-start-over']").HasAttribute("disabled")));
 
-        cut.Find("[data-testid='start-over-button']").Click();
+        OpenActionsMenuAndClickItem(cut, "menu-item-start-over");
         Assert.Contains("Tap this device to the printer", cut.Markup);
 
         statusTcs.SetResult(DefaultPrinterStatus());
@@ -526,7 +537,7 @@ public class PairingTests : BunitContext
     {
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
         var cut = RenderWithReadyPrinter(device);
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        OpenActionsMenuAndClickItem(cut, "menu-item-factory-reset");
 
         cut.Find("[data-testid='factory-reset-cancel']").Click();
 
@@ -538,7 +549,7 @@ public class PairingTests : BunitContext
     {
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
         var cut = RenderWithReadyPrinter(device);
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        OpenActionsMenuAndClickItem(cut, "menu-item-factory-reset");
 
         cut.Find("[data-testid='factory-reset-confirm']").Click();
 
@@ -553,7 +564,7 @@ public class PairingTests : BunitContext
         _factoryResetService.ShouldThrow = true;
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
         var cut = RenderWithReadyPrinter(device);
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        OpenActionsMenuAndClickItem(cut, "menu-item-factory-reset");
 
         cut.Find("[data-testid='factory-reset-confirm']").Click();
 

@@ -24,33 +24,33 @@ public class FactoryResetPanelTests : BunitContext
     }
 
     [Fact]
-    public void InitialRender_ShowsFactoryResetButtonOnly()
+    public void InitialRender_ShowsNothing()
     {
+        // The trigger now lives in the host page's PrinterActionsMenu overflow menu (RequestConfirmAsync,
+        // called via @ref) - this component only renders once actually triggered.
         var cut = Render<FactoryResetPanel>(p => p.Add(c => c.Device, Device));
 
-        Assert.NotNull(cut.Find("[data-testid='factory-reset-button']"));
         Assert.Empty(cut.FindAll("[data-testid='factory-reset-warning']"));
     }
 
     [Fact]
-    public void ClickingFactoryReset_ShowsConfirmationWarning()
+    public async Task RequestConfirmAsync_ShowsConfirmationWarning()
     {
         var cut = Render<FactoryResetPanel>(p => p.Add(c => c.Device, Device));
 
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestConfirmAsync());
 
         Assert.NotNull(cut.Find("[data-testid='factory-reset-warning']"));
     }
 
     [Fact]
-    public void CancellingConfirmation_ReturnsToIdle()
+    public async Task CancellingConfirmation_ReturnsToIdle()
     {
         var cut = Render<FactoryResetPanel>(p => p.Add(c => c.Device, Device));
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestConfirmAsync());
 
         cut.Find("[data-testid='factory-reset-cancel']").Click();
 
-        Assert.NotNull(cut.Find("[data-testid='factory-reset-button']"));
         Assert.Empty(cut.FindAll("[data-testid='factory-reset-warning']"));
     }
 
@@ -58,7 +58,7 @@ public class FactoryResetPanelTests : BunitContext
     public async Task ConfirmingReset_CallsFactoryResetThenRemovesBondAndShowsCompletion()
     {
         var cut = Render<FactoryResetPanel>(p => p.Add(c => c.Device, Device));
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestConfirmAsync());
 
         cut.Find("[data-testid='factory-reset-confirm']").Click();
 
@@ -71,27 +71,27 @@ public class FactoryResetPanelTests : BunitContext
     }
 
     [Fact]
-    public void WhenResetFails_ShowsErrorAndDoesNotRemoveBond()
+    public async Task WhenResetFails_ShowsErrorAndDoesNotRemoveBond()
     {
         _factoryResetService.ResetToFactoryDefaultsAsync(Device, Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("simulated failure")));
         var cut = Render<FactoryResetPanel>(p => p.Add(c => c.Device, Device));
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestConfirmAsync());
 
         cut.Find("[data-testid='factory-reset-confirm']").Click();
 
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='factory-reset-error']")));
-        _pairingService.DidNotReceive().RemoveBondAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        _ = _pairingService.DidNotReceive().RemoveBondAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public void ClickingStartOverAfterCompletion_RaisesOnFinished()
+    public async Task ClickingCloseAfterCompletion_RaisesOnFinished()
     {
         var finishedRaised = false;
         var cut = Render<FactoryResetPanel>(p => p
             .Add(c => c.Device, Device)
             .Add(c => c.OnFinished, () => finishedRaised = true));
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestConfirmAsync());
         cut.Find("[data-testid='factory-reset-confirm']").Click();
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='factory-reset-complete']")));
 
@@ -101,26 +101,26 @@ public class FactoryResetPanelTests : BunitContext
     }
 
     [Fact]
-    public void ClickingFactoryReset_RaisesIsActiveChangedTrue()
+    public async Task RequestConfirmAsync_RaisesIsActiveChangedTrue()
     {
         var activeStates = new List<bool>();
         var cut = Render<FactoryResetPanel>(p => p
             .Add(c => c.Device, Device)
             .Add(c => c.IsActiveChanged, active => activeStates.Add(active)));
 
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestConfirmAsync());
 
         Assert.Equal([true], activeStates);
     }
 
     [Fact]
-    public void CancellingConfirmation_RaisesIsActiveChangedFalse()
+    public async Task CancellingConfirmation_RaisesIsActiveChangedFalse()
     {
         var activeStates = new List<bool>();
         var cut = Render<FactoryResetPanel>(p => p
             .Add(c => c.Device, Device)
             .Add(c => c.IsActiveChanged, active => activeStates.Add(active)));
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestConfirmAsync());
 
         cut.Find("[data-testid='factory-reset-cancel']").Click();
 
@@ -128,13 +128,13 @@ public class FactoryResetPanelTests : BunitContext
     }
 
     [Fact]
-    public void ConfirmingReset_StaysActiveThroughCompletion()
+    public async Task ConfirmingReset_StaysActiveThroughCompletion()
     {
         var activeStates = new List<bool>();
         var cut = Render<FactoryResetPanel>(p => p
             .Add(c => c.Device, Device)
             .Add(c => c.IsActiveChanged, active => activeStates.Add(active)));
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestConfirmAsync());
 
         cut.Find("[data-testid='factory-reset-confirm']").Click();
 
@@ -145,20 +145,20 @@ public class FactoryResetPanelTests : BunitContext
     }
 
     [Fact]
-    public void ClickingFactoryReset_MarksActivityMonitorBusy()
+    public async Task RequestConfirmAsync_MarksActivityMonitorBusy()
     {
         var cut = Render<FactoryResetPanel>(p => p.Add(c => c.Device, Device));
 
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestConfirmAsync());
 
         Assert.True(_activityMonitor.IsBusy);
     }
 
     [Fact]
-    public void CancellingConfirmation_ClearsActivityMonitorBusy()
+    public async Task CancellingConfirmation_ClearsActivityMonitorBusy()
     {
         var cut = Render<FactoryResetPanel>(p => p.Add(c => c.Device, Device));
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestConfirmAsync());
 
         cut.Find("[data-testid='factory-reset-cancel']").Click();
 

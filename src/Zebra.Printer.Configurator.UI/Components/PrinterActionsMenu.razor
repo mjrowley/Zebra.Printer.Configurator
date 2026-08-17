@@ -1,0 +1,96 @@
+@* Material 3 overflow menu (md-menu, anchored off an md-icon-button "more actions" trigger) consolidating
+   the less-frequently-used per-printer actions - Recheck Configuration, Push Bag Tag Templates,
+   Calibrate Media, Factory Reset, and (Pairing.razor only) Start Over - so both pages' button rows
+   don't keep growing every time a new maintenance action is added (they'd reached ~7 buttons before
+   this). Configure/Reconfigure Printer and the Web Interface toggle stay directly visible outside this
+   menu - see WebInterfaceTogglePanel's own doc comment for why the toggle specifically isn't here.
+
+   FactoryResetPanel/BagTagTemplatesPanel/CalibrateMediaButton no longer render their own trigger
+   buttons - the host page still renders those three components directly (elsewhere in its markup, so
+   their own confirm dialogs/progress/results still show up in the normal page flow, not swallowed by
+   this menu closing), and passes @ref-captured references here so this menu's items can call each
+   one's public Request*Async() trigger method.
+
+   Shared between Pairing.razor and Result.razor rather than duplicating the md-menu markup (anchor
+   wiring, the "more_vert" icon) on both.
+
+   _open sync: md-menu closes itself on item click/outside click/Escape via real browser JS this app
+   never executes in tests, and Blazor's short "@onclosed" syntax only binds well-known DOM events -
+   a genuinely custom event like md-menu's "closed" needs an explicit JS interop event registration to
+   bind at all (confirmed: it silently no-ops otherwise), which felt like too much machinery to add
+   for this. So instead, every ITEM click below also explicitly sets _open = false itself (covering the
+   overwhelmingly common "selected an action" case exactly) - only the narrower "dismissed via outside
+   click/Escape without selecting anything" path can leave _open stale, in which case the very next
+   anchor tap is a no-op (toggles an already-effectively-closed menu) and the tap after that reopens it
+   correctly. Accepted as a minor, rare-path rough edge rather than adding a JS interop module to a
+   project that otherwise has none beyond the vendored Material Web bundle. *@
+<span class="printer-actions-menu-anchor">
+    <md-icon-button id="@AnchorId" data-testid="printer-actions-menu-button" aria-label="More actions" @onclick="() => _open = !_open">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+            <path fill="currentColor" d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
+        </svg>
+    </md-icon-button>
+    <md-menu anchor="@AnchorId" open="@(_open)" data-testid="printer-actions-menu">
+        <md-menu-item data-testid="menu-item-recheck-configuration" disabled="@RecheckConfigurationDisabled" @onclick="() => Select(OnRecheckConfiguration)">
+            <div slot="headline">Recheck Configuration</div>
+        </md-menu-item>
+        <md-menu-item data-testid="menu-item-push-bag-tag-templates" @onclick="() => Select(OnPushBagTagTemplates)">
+            <div slot="headline">Push Bag Tag Templates</div>
+        </md-menu-item>
+        <md-menu-item data-testid="menu-item-calibrate-media" @onclick="() => Select(OnCalibrateMedia)">
+            <div slot="headline">Calibrate Media</div>
+        </md-menu-item>
+        <md-menu-item data-testid="menu-item-factory-reset" @onclick="() => Select(OnFactoryReset)">
+            <div slot="headline">Factory Reset</div>
+        </md-menu-item>
+        @if (ShowStartOver)
+        {
+            <md-menu-item data-testid="menu-item-start-over" disabled="@StartOverDisabled" @onclick="() => Select(OnStartOver)">
+                <div slot="headline">Start Over</div>
+            </md-menu-item>
+        }
+    </md-menu>
+</span>
+
+@code {
+    /// <summary>
+    /// The anchor md-icon-button's element id, referenced by md-menu's own "anchor" attribute -
+    /// each host page passes its own literal id (never two of these menus render at once, so a
+    /// fixed string per page is fine).
+    /// </summary>
+    [Parameter, EditorRequired]
+    public string AnchorId { get; set; } = null!;
+
+    [Parameter, EditorRequired]
+    public EventCallback OnRecheckConfiguration { get; set; }
+
+    [Parameter]
+    public bool RecheckConfigurationDisabled { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnPushBagTagTemplates { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnCalibrateMedia { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnFactoryReset { get; set; }
+
+    /// <summary>Result.razor has no "abandon this printer" affordance - only Pairing.razor does.</summary>
+    [Parameter]
+    public bool ShowStartOver { get; set; }
+
+    [Parameter]
+    public EventCallback OnStartOver { get; set; }
+
+    [Parameter]
+    public bool StartOverDisabled { get; set; }
+
+    private bool _open;
+
+    private Task Select(EventCallback callback)
+    {
+        _open = false;
+        return callback.InvokeAsync();
+    }
+}

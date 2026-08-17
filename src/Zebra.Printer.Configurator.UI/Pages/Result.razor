@@ -38,16 +38,20 @@
                 }
                 Reconfigure Printer
             </md-filled-button>
-            <FactoryResetPanel Device="Session.Device!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
-            <!-- Deliberately NOT ActivityMonitor.IsBusy, unlike Reconfigure Printer above - stays
-                 usable as an escape hatch even while a passive status/firmware check is still in
-                 flight, only blocked by operations that actually mutate the printer's persistent
-                 state (see Pairing.razor's Start Over for the same distinction). -->
-            <CheckConfigurationButton State="_checkConfigState" Disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive || _calibratingActive)" OnRecheck="RecheckConfigurationAsync" />
-            <BagTagTemplatesPanel Device="Session.Device!" IsActiveChanged="OnTemplatesActiveChanged" />
-            <CalibrateMediaButton Device="Session.Device!" IsActiveChanged="OnCalibrationActiveChanged" />
             <WebInterfaceTogglePanel Device="Session.Device!" InitialState="_webInterfaceState" StatusLoading="_statusLoading" IsActiveChanged="OnWebInterfaceActiveChanged" CurrentStateChanged="OnWebInterfaceStateChanged" />
+            <PrinterActionsMenu AnchorId="result-actions-menu-anchor"
+                OnRecheckConfiguration="RecheckConfigurationAsync"
+                RecheckConfigurationDisabled="@(_checkConfigState.Loading || _factoryResetActive || _templatesActive || _webInterfaceActive || _calibratingActive)"
+                OnPushBagTagTemplates="() => _bagTagTemplatesPanel!.RequestDeployAsync()"
+                OnCalibrateMedia="() => _calibrateMediaButton!.RequestConfirmAsync()"
+                OnFactoryReset="() => _factoryResetPanel!.RequestConfirmAsync()" />
         </div>
+        @* Rendered here (not inside the menu itself) so their confirm dialogs/progress/results stay
+           visible in the normal page flow once PrinterActionsMenu's items trigger them via @ref -
+           each renders nothing at all until actually triggered. *@
+        <FactoryResetPanel @ref="_factoryResetPanel" Device="Session.Device!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
+        <BagTagTemplatesPanel @ref="_bagTagTemplatesPanel" Device="Session.Device!" IsActiveChanged="OnTemplatesActiveChanged" />
+        <CalibrateMediaButton @ref="_calibrateMediaButton" Device="Session.Device!" IsActiveChanged="OnCalibrationActiveChanged" />
     }
     else
     {
@@ -80,6 +84,9 @@
     private PrinterStatus? _printerStatus;
     private WebInterfaceState? _webInterfaceState;
     private bool _statusLoading;
+    private FactoryResetPanel? _factoryResetPanel;
+    private BagTagTemplatesPanel? _bagTagTemplatesPanel;
+    private CalibrateMediaButton? _calibrateMediaButton;
 
     // Sets the loading flags synchronously, before Blazor's first render - this page's markup
     // (unlike Pairing.razor's _state-gated switch) already shows the Succeeded button-row on its
@@ -89,11 +96,11 @@
     // synchronously, which setting a plain bool always does).
     protected override void OnInitialized()
     {
-        // Reconfigure Printer/CheckConfigurationButton's Disabled both read ActivityMonitor.IsBusy
-        // directly in markup - without this subscription, this page only re-evaluates that
-        // expression when ITS OWN state changes trigger a render, so a child component's activity
-        // clearing (e.g. PrinterVersionAlert's Firmware Version Check ending) would never be
-        // reflected here until some unrelated render happened to occur afterward.
+        // Reconfigure Printer's disabled attribute reads ActivityMonitor.IsBusy directly in markup -
+        // without this subscription, this page only re-evaluates that expression when ITS OWN state
+        // changes trigger a render, so a child component's activity clearing (e.g. PrinterVersionAlert's
+        // Firmware Version Check ending) would never be reflected here until some unrelated render
+        // happened to occur afterward.
         ActivityMonitor.Changed += OnActivityChanged;
 
         if (Workflow.State is not (PairingWorkflowState.Succeeded or PairingWorkflowState.Failed))

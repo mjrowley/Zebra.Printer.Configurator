@@ -1,23 +1,19 @@
-@* Self-contained "calibrate media" button + confirm + run flow for a paired printer, shared between
-   Pairing (right after tap-pairing) and Result (after a successful configuration) - same shape as
-   BagTagTemplatesPanel/FactoryResetPanel. Always confirms first (unlike BagTagTemplatesPanel, which
-   only confirms when something would actually be overwritten) - calibration feeds a few real labels
-   through the printer every single time it runs, which is physical media waste the user should
-   knowingly opt into rather than trigger with an accidental tap. *@
+@* Self-contained "calibrate media" confirm + run flow for a paired printer, shared between Pairing
+   (right after tap-pairing) and Result (after a successful configuration) - same shape as
+   BagTagTemplatesPanel/FactoryResetPanel. The trigger itself lives in the host page's
+   PrinterActionsMenu overflow menu (RequestConfirmAsync, called via @ref) rather than a button
+   here - see PrinterActionsMenu's own doc comment for why. Always confirms first (unlike
+   BagTagTemplatesPanel, which only confirms when something would actually be overwritten) -
+   calibration feeds a few real labels through the printer every single time it runs, which is
+   physical media waste the user should knowingly opt into rather than trigger with an accidental tap. *@
 @implements IDisposable
 @inject IPrinterCalibrationService CalibrationService
 @inject PrinterActivityMonitor ActivityMonitor
 
 <div>
-    <md-outlined-button type="button" data-testid="calibrate-media-button"
-            disabled="@(_state == State.Calibrating)" @onclick="() => SetState(State.Confirming)">
-        @if (_state == State.Calibrating)
-        {
-            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-        }
-        Calibrate Media
-    </md-outlined-button>
-
+    @* The trigger now lives in the host page's PrinterActionsMenu overflow menu, which calls
+       RequestConfirmAsync() below via @ref - this component only renders once it's actually doing
+       something (Confirming onward). *@
     @if (_state == State.Calibrating)
     {
         <p data-testid="calibrate-media-progress">Calibrating - the printer will feed a few labels&hellip;</p>
@@ -73,6 +69,9 @@
     private string? _errorMessage;
     private IDisposable? _activityToken;
 
+    /// <summary>Starts the confirm flow - called via @ref by the host page's overflow menu item.</summary>
+    public Task RequestConfirmAsync() => SetState(State.Confirming);
+
     private async Task Calibrate()
     {
         _errorMessage = null;
@@ -90,11 +89,17 @@
         }
     }
 
+    // Explicit StateHasChanged() - can no longer rely on Blazor's automatic post-event-handler
+    // render, since RequestConfirmAsync (and everything else that calls this) is now typically
+    // invoked externally (PrinterActionsMenu's menu item calling it via @ref), not from this
+    // component's own @onclick the way it used to be - a parent's event handler re-rendering
+    // doesn't cascade into re-rendering this component too unless its own parameters changed.
     private async Task SetState(State state)
     {
         var wasActive = IsActive(_state);
         _state = state;
         var isActive = IsActive(_state);
+        StateHasChanged();
 
         if (wasActive != isActive)
         {

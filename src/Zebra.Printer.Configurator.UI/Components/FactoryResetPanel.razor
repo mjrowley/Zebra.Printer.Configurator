@@ -1,6 +1,8 @@
-@* Self-contained factory-reset button + confirm/progress/result flow for a paired printer. Shared
-   between Pairing (right after tap-pairing) and Result (after a successful reconfiguration), rather
-   than duplicating the same confirm-then-reset-then-remove-bond state machine on both pages. *@
+@* Self-contained factory-reset confirm/progress/result flow for a paired printer. Shared between
+   Pairing (right after tap-pairing) and Result (after a successful reconfiguration), rather than
+   duplicating the same confirm-then-reset-then-remove-bond state machine on both pages. The trigger
+   itself lives in the host page's PrinterActionsMenu overflow menu (RequestConfirmAsync, called via
+   @ref) rather than a button here - see PrinterActionsMenu's own doc comment for why. *@
 @implements IDisposable
 @inject IPrinterFactoryResetService FactoryResetService
 @inject IBluetoothPairingService BluetoothPairingService
@@ -9,7 +11,9 @@
 @switch (_state)
 {
     case State.Idle:
-        <md-outlined-button type="button" class="btn-error" data-testid="factory-reset-button" @onclick="() => SetState(State.Confirming)">Factory Reset</md-outlined-button>
+        // Nothing rendered here - the trigger now lives in the host page's PrinterActionsMenu
+        // overflow menu, which calls RequestConfirmAsync() below via @ref. This component only
+        // renders once it's actually doing something (Confirming onward).
         break;
 
     case State.Confirming:
@@ -77,6 +81,9 @@
     private string? _errorMessage;
     private IDisposable? _activityToken;
 
+    /// <summary>Starts the confirm flow - called via @ref by the host page's overflow menu item.</summary>
+    public Task RequestConfirmAsync() => SetState(State.Confirming);
+
     private async Task ConfirmFactoryReset()
     {
         await SetState(State.Resetting);
@@ -99,11 +106,17 @@
         }
     }
 
+    // Explicit StateHasChanged() - can no longer rely on Blazor's automatic post-event-handler
+    // render, since RequestConfirmAsync (and everything else that calls this) is now typically
+    // invoked externally (PrinterActionsMenu's menu item calling it via @ref), not from this
+    // component's own @onclick the way it used to be - a parent's event handler re-rendering
+    // doesn't cascade into re-rendering this component too unless its own parameters changed.
     private async Task SetState(State state)
     {
         var wasActive = _state != State.Idle;
         _state = state;
         var isActive = _state != State.Idle;
+        StateHasChanged();
 
         if (wasActive != isActive)
         {

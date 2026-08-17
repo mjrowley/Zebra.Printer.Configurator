@@ -22,32 +22,33 @@ public class CalibrateMediaButtonTests : BunitContext
     }
 
     [Fact]
-    public void InitialRender_ShowsButtonOnly()
+    public void InitialRender_ShowsNothing()
     {
+        // The trigger now lives in the host page's PrinterActionsMenu overflow menu (RequestConfirmAsync,
+        // called via @ref) - this component only renders once actually triggered.
         var cut = Render<CalibrateMediaButton>(p => p.Add(c => c.Device, Device));
 
-        Assert.NotNull(cut.Find("[data-testid='calibrate-media-button']"));
         Assert.Empty(cut.FindAll("[data-testid='calibrate-media-confirm-dialog']"));
     }
 
     [Fact]
-    public void ClickingButton_AlwaysShowsConfirmDialog_AndDoesNotCalibrateYet()
+    public async Task RequestConfirmAsync_AlwaysShowsConfirmDialog_AndDoesNotCalibrateYet()
     {
         // Unlike BagTagTemplatesPanel (which only confirms when something would be overwritten),
         // calibration always confirms first - it feeds real labels through the printer every time.
         var cut = Render<CalibrateMediaButton>(p => p.Add(c => c.Device, Device));
 
-        cut.Find("[data-testid='calibrate-media-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestConfirmAsync());
 
         Assert.NotNull(cut.Find("[data-testid='calibrate-media-confirm-dialog']"));
-        _calibrationService.DidNotReceive().CalibrateAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>());
+        _ = _calibrationService.DidNotReceive().CalibrateAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task ConfirmingCalibration_CalibratesAndShowsCompletion()
     {
         var cut = Render<CalibrateMediaButton>(p => p.Add(c => c.Device, Device));
-        cut.Find("[data-testid='calibrate-media-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestConfirmAsync());
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='calibrate-media-confirm-dialog']")));
 
         cut.Find("[data-testid='calibrate-media-confirm']").Click();
@@ -58,26 +59,25 @@ public class CalibrateMediaButtonTests : BunitContext
     }
 
     [Fact]
-    public void CancellingConfirmation_ReturnsToIdle_AndDoesNotCalibrate()
+    public async Task CancellingConfirmation_ReturnsToIdle_AndDoesNotCalibrate()
     {
         var cut = Render<CalibrateMediaButton>(p => p.Add(c => c.Device, Device));
-        cut.Find("[data-testid='calibrate-media-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestConfirmAsync());
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='calibrate-media-confirm-dialog']")));
 
         cut.Find("[data-testid='calibrate-media-cancel']").Click();
 
         Assert.Empty(cut.FindAll("[data-testid='calibrate-media-confirm-dialog']"));
-        Assert.NotNull(cut.Find("[data-testid='calibrate-media-button']"));
-        _calibrationService.DidNotReceive().CalibrateAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>());
+        _ = _calibrationService.DidNotReceive().CalibrateAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public void WhenCalibrationFails_ShowsError()
+    public async Task WhenCalibrationFails_ShowsError()
     {
         _calibrationService.CalibrateAsync(Device, Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("simulated calibration failure")));
         var cut = Render<CalibrateMediaButton>(p => p.Add(c => c.Device, Device));
-        cut.Find("[data-testid='calibrate-media-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestConfirmAsync());
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='calibrate-media-confirm-dialog']")));
 
         cut.Find("[data-testid='calibrate-media-confirm']").Click();
@@ -86,14 +86,14 @@ public class CalibrateMediaButtonTests : BunitContext
     }
 
     [Fact]
-    public void ClickingButtonThenConfirming_RaisesIsActiveChangedTrue_ThenFalseOnceComplete()
+    public async Task RequestConfirmAsyncThenConfirming_RaisesIsActiveChangedTrue_ThenFalseOnceComplete()
     {
         var activeStates = new List<bool>();
         var cut = Render<CalibrateMediaButton>(p => p
             .Add(c => c.Device, Device)
             .Add(c => c.IsActiveChanged, active => activeStates.Add(active)));
 
-        cut.Find("[data-testid='calibrate-media-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestConfirmAsync());
         // Confirming already counts as active - it's an unresolved decision the user needs to act on,
         // same as BagTagTemplatesPanel's own overwrite-confirm dialog.
         Assert.Equal([true], activeStates);
@@ -105,13 +105,13 @@ public class CalibrateMediaButtonTests : BunitContext
     }
 
     [Fact]
-    public void CancellingConfirmation_BecomesInactiveAgain()
+    public async Task CancellingConfirmation_BecomesInactiveAgain()
     {
         var activeStates = new List<bool>();
         var cut = Render<CalibrateMediaButton>(p => p
             .Add(c => c.Device, Device)
             .Add(c => c.IsActiveChanged, active => activeStates.Add(active)));
-        cut.Find("[data-testid='calibrate-media-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestConfirmAsync());
 
         cut.Find("[data-testid='calibrate-media-cancel']").Click();
 
@@ -119,12 +119,12 @@ public class CalibrateMediaButtonTests : BunitContext
     }
 
     [Fact]
-    public void ConfirmingCalibration_MarksActivityMonitorBusyUntilComplete()
+    public async Task ConfirmingCalibration_MarksActivityMonitorBusyUntilComplete()
     {
         var calibrateTcs = new TaskCompletionSource();
         _calibrationService.CalibrateAsync(Device, Arg.Any<CancellationToken>()).Returns(calibrateTcs.Task);
         var cut = Render<CalibrateMediaButton>(p => p.Add(c => c.Device, Device));
-        cut.Find("[data-testid='calibrate-media-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestConfirmAsync());
 
         cut.Find("[data-testid='calibrate-media-confirm']").Click();
 

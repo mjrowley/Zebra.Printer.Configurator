@@ -5,7 +5,7 @@ namespace Zebra.Printer.Configurator.Core.Workflow;
 /// need to know this regardless of which page is showing - e.g. BackToPairingButton, rendered in
 /// the header and visible on every page. Complements (doesn't replace) the page-local
 /// IsActiveChanged/BlockingChanged callbacks that FactoryResetPanel/BagTagTemplatesPanel/
-/// CheckConfigurationButton/PrinterVersionAlert already report to their hosting page - those still
+/// CalibrateMediaButton/PrinterVersionAlert already report to their hosting page - those still
 /// drive each page's own sibling-button disabling, but were never visible outside that page.
 ///
 /// PairAndConfigureWorkflow.State and FirmwareUpdateStatusMonitor.State are already app-wide

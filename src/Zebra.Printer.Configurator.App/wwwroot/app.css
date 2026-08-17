@@ -151,6 +151,14 @@ a, .btn-link {
    actually defined outside a rendered <md-*> component's own shadow scope and would silently just
    fall back to a hardcoded default here regardless; --color-surface/--color-text are this app's
    own tokens and are genuinely live at :root. */
+/* Wraps PrinterActionsMenu's md-icon-button + md-menu pair - position: relative is required so
+   md-menu's default "absolute" positioning mode anchors correctly to its sibling button (per
+   @material/web's own menu documentation). */
+.printer-actions-menu-anchor {
+    position: relative;
+    display: inline-block;
+}
+
 .confirm-modal-backdrop {
     position: fixed;
     inset: 0;

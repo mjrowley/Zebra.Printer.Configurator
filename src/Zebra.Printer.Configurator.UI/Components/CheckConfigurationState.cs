@@ -3,11 +3,11 @@ using Zebra.Printer.Configurator.Core.Models;
 namespace Zebra.Printer.Configurator.UI.Components;
 
 /// <summary>
-/// Shared state between CheckConfigurationButton (the trigger, kept in a page's sticky header
-/// alongside its other primary buttons) and CheckConfigurationResults (the potentially-long output
-/// table, kept in the page's scrollable content area) - split into two components so the button and
-/// function name stay pinned at the top of the section while a long results table scrolls
-/// independently, per the section-2 layout requirement.
+/// Drives CheckConfigurationResults (the potentially-long output table, kept in the page's
+/// scrollable content area) - the host page (Pairing.razor/Result.razor) owns an instance directly
+/// and calls SetLoading/SetResults/SetError itself from its own merged-status-read methods, rather
+/// than routing through a dedicated trigger component; the "Recheck Configuration" trigger now lives
+/// in PrinterActionsMenu's overflow menu instead.
 /// </summary>
 public sealed class CheckConfigurationState
 {

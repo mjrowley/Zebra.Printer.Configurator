@@ -1,8 +1,9 @@
-@* Renders whatever CheckConfigurationButton (sharing the same CheckConfigurationState) most
-   recently produced. Kept as a separate component from the button so a page can place this in its
-   scrollable content area while the button stays in the sticky header - see CheckConfigurationState
-   for why. Each value is coloured by ConfigurationValueMatch: green if it matches what this app
-   expects, red if it doesn't, default text colour for values this app doesn't set (Informational). *@
+@* Renders whatever the host page's own CheckConfigurationState instance most recently produced
+   (populated directly by Pairing.razor/Result.razor's merged-status-read methods, and refreshed by
+   PrinterActionsMenu's "Recheck Configuration" menu item) - see CheckConfigurationState for why this
+   lives in its own component rather than the button that used to trigger it. Each value is coloured
+   by ConfigurationValueMatch: green if it matches what this app expects, red if it doesn't, default
+   text colour for values this app doesn't set (Informational). *@
 @using Zebra.Printer.Configurator.Core.Configuration
 @implements IDisposable
 

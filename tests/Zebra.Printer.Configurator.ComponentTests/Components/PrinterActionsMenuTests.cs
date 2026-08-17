@@ -1,0 +1,174 @@
+using Bunit;
+using Microsoft.AspNetCore.Components;
+using Zebra.Printer.Configurator.UI.Components;
+
+namespace Zebra.Printer.Configurator.ComponentTests.Components;
+
+// bUnit renders Blazor's own output (plain HTML/attributes) without ever executing a real browser's
+// JS - so @material/web's actual menu open/close animation, positioning, and "closed" event never
+// run here. What IS tested: the Blazor-level contract - the anchor toggles the "open" attribute this
+// component tracks, each menu item's @onclick invokes the right callback, disabled/ShowStartOver
+// reflect correctly, and the "closed" event handler (manually raised via TriggerEventAsync, since
+// bUnit has no real menu to close it for us) resets the tracked open state.
+public class PrinterActionsMenuTests : BunitContext
+{
+    private IRenderedComponent<PrinterActionsMenu> RenderMenu(
+        bool showStartOver = false,
+        EventCallback? onRecheckConfiguration = null,
+        EventCallback? onPushBagTagTemplates = null,
+        EventCallback? onCalibrateMedia = null,
+        EventCallback? onFactoryReset = null,
+        EventCallback? onStartOver = null,
+        bool recheckConfigurationDisabled = false,
+        bool startOverDisabled = false)
+    {
+        return Render<PrinterActionsMenu>(p =>
+        {
+            p.Add(c => c.AnchorId, "test-actions-menu-anchor");
+            p.Add(c => c.OnRecheckConfiguration, onRecheckConfiguration ?? EventCallback.Empty);
+            p.Add(c => c.RecheckConfigurationDisabled, recheckConfigurationDisabled);
+            p.Add(c => c.OnPushBagTagTemplates, onPushBagTagTemplates ?? EventCallback.Empty);
+            p.Add(c => c.OnCalibrateMedia, onCalibrateMedia ?? EventCallback.Empty);
+            p.Add(c => c.OnFactoryReset, onFactoryReset ?? EventCallback.Empty);
+            p.Add(c => c.ShowStartOver, showStartOver);
+            p.Add(c => c.OnStartOver, onStartOver ?? EventCallback.Empty);
+            p.Add(c => c.StartOverDisabled, startOverDisabled);
+        });
+    }
+
+    [Fact]
+    public void InitialRender_MenuIsClosed_AndShowsExpectedItems()
+    {
+        var cut = RenderMenu();
+
+        Assert.False(cut.Find("[data-testid='printer-actions-menu']").HasAttribute("open"));
+        Assert.NotNull(cut.Find("[data-testid='menu-item-recheck-configuration']"));
+        Assert.NotNull(cut.Find("[data-testid='menu-item-push-bag-tag-templates']"));
+        Assert.NotNull(cut.Find("[data-testid='menu-item-calibrate-media']"));
+        Assert.NotNull(cut.Find("[data-testid='menu-item-factory-reset']"));
+    }
+
+    [Fact]
+    public void ShowStartOverFalse_HidesStartOverItem()
+    {
+        var cut = RenderMenu(showStartOver: false);
+
+        Assert.Empty(cut.FindAll("[data-testid='menu-item-start-over']"));
+    }
+
+    [Fact]
+    public void ShowStartOverTrue_ShowsStartOverItem()
+    {
+        var cut = RenderMenu(showStartOver: true);
+
+        Assert.NotNull(cut.Find("[data-testid='menu-item-start-over']"));
+    }
+
+    [Fact]
+    public void ClickingAnchor_OpensMenu()
+    {
+        var cut = RenderMenu();
+
+        cut.Find("[data-testid='printer-actions-menu-button']").Click();
+
+        Assert.True(cut.Find("[data-testid='printer-actions-menu']").HasAttribute("open"));
+    }
+
+    [Fact]
+    public void ClickingAnchorTwice_ClosesMenuAgain()
+    {
+        var cut = RenderMenu();
+        cut.Find("[data-testid='printer-actions-menu-button']").Click();
+
+        cut.Find("[data-testid='printer-actions-menu-button']").Click();
+
+        Assert.False(cut.Find("[data-testid='printer-actions-menu']").HasAttribute("open"));
+    }
+
+    [Fact]
+    public void ClickingAMenuItem_ClosesTheMenu()
+    {
+        // md-menu closes itself on item selection via real @material/web JS this app never executes
+        // in tests - Select() below closes it from the Blazor side too (see PrinterActionsMenu's own
+        // doc comment on why it can't just rely on md-menu's "closed" event), so this is real,
+        // testable behavior rather than something only the untested JS provides.
+        var cut = RenderMenu(onCalibrateMedia: EventCallback.Factory.Create(this, () => { }));
+        cut.Find("[data-testid='printer-actions-menu-button']").Click();
+        Assert.True(cut.Find("[data-testid='printer-actions-menu']").HasAttribute("open"));
+
+        cut.Find("[data-testid='menu-item-calibrate-media']").Click();
+
+        Assert.False(cut.Find("[data-testid='printer-actions-menu']").HasAttribute("open"));
+    }
+
+    [Fact]
+    public void ClickingRecheckConfigurationItem_InvokesCallback()
+    {
+        var invoked = false;
+        var cut = RenderMenu(onRecheckConfiguration: EventCallback.Factory.Create(this, () => invoked = true));
+
+        cut.Find("[data-testid='menu-item-recheck-configuration']").Click();
+
+        Assert.True(invoked);
+    }
+
+    [Fact]
+    public void ClickingPushBagTagTemplatesItem_InvokesCallback()
+    {
+        var invoked = false;
+        var cut = RenderMenu(onPushBagTagTemplates: EventCallback.Factory.Create(this, () => invoked = true));
+
+        cut.Find("[data-testid='menu-item-push-bag-tag-templates']").Click();
+
+        Assert.True(invoked);
+    }
+
+    [Fact]
+    public void ClickingCalibrateMediaItem_InvokesCallback()
+    {
+        var invoked = false;
+        var cut = RenderMenu(onCalibrateMedia: EventCallback.Factory.Create(this, () => invoked = true));
+
+        cut.Find("[data-testid='menu-item-calibrate-media']").Click();
+
+        Assert.True(invoked);
+    }
+
+    [Fact]
+    public void ClickingFactoryResetItem_InvokesCallback()
+    {
+        var invoked = false;
+        var cut = RenderMenu(onFactoryReset: EventCallback.Factory.Create(this, () => invoked = true));
+
+        cut.Find("[data-testid='menu-item-factory-reset']").Click();
+
+        Assert.True(invoked);
+    }
+
+    [Fact]
+    public void ClickingStartOverItem_InvokesCallback()
+    {
+        var invoked = false;
+        var cut = RenderMenu(showStartOver: true, onStartOver: EventCallback.Factory.Create(this, () => invoked = true));
+
+        cut.Find("[data-testid='menu-item-start-over']").Click();
+
+        Assert.True(invoked);
+    }
+
+    [Fact]
+    public void RecheckConfigurationDisabled_ReflectsOnItem()
+    {
+        var cut = RenderMenu(recheckConfigurationDisabled: true);
+
+        Assert.True(cut.Find("[data-testid='menu-item-recheck-configuration']").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void StartOverDisabled_ReflectsOnItem()
+    {
+        var cut = RenderMenu(showStartOver: true, startOverDisabled: true);
+
+        Assert.True(cut.Find("[data-testid='menu-item-start-over']").HasAttribute("disabled"));
+    }
+}

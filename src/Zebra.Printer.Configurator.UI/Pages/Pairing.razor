@@ -54,18 +54,28 @@
             </div>
             <div class="button-row">
                 <md-filled-button type="button" data-testid="configure-printer-button" disabled="@ActivityMonitor.IsBusy" @onclick="Continue">Configure Printer</md-filled-button>
-                <FactoryResetPanel Device="_discoveredDevice!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
-                <CheckConfigurationButton State="_checkConfigState" Disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive || _calibratingActive)" OnRecheck="RecheckConfigurationAsync" />
-                <BagTagTemplatesPanel Device="_discoveredDevice!" IsActiveChanged="OnTemplatesActiveChanged" />
-                <CalibrateMediaButton Device="_discoveredDevice!" IsActiveChanged="OnCalibrationActiveChanged" />
                 <WebInterfaceTogglePanel Device="_discoveredDevice!" InitialState="_webInterfaceState" StatusLoading="_statusLoading" IsActiveChanged="OnWebInterfaceActiveChanged" CurrentStateChanged="OnWebInterfaceStateChanged" />
-                <!-- Deliberately NOT ActivityMonitor.IsBusy, unlike Configure Printer above - Start
-                     Over must stay usable as an escape hatch even while a passive status/firmware
-                     check is still in flight (see ClickingStartOver_WhileStatusCheckStillInFlight_
-                     LateResultDoesNotResurfaceStaleData), only blocked by operations that actually
-                     mutate the printer's persistent state. -->
-                <md-outlined-button type="button" data-testid="start-over-button" disabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive || _calibratingActive)" @onclick="Retry">Start Over</md-outlined-button>
+                <!-- StartOverDisabled is deliberately NOT ActivityMonitor.IsBusy, unlike Configure
+                     Printer above - Start Over must stay usable as an escape hatch even while a
+                     passive status/firmware check is still in flight (see
+                     ClickingStartOver_WhileStatusCheckStillInFlight_LateResultDoesNotResurfaceStaleData),
+                     only blocked by operations that actually mutate the printer's persistent state. -->
+                <PrinterActionsMenu AnchorId="pairing-actions-menu-anchor"
+                    OnRecheckConfiguration="RecheckConfigurationAsync"
+                    RecheckConfigurationDisabled="@(_checkConfigState.Loading || _factoryResetActive || _templatesActive || _webInterfaceActive || _calibratingActive)"
+                    OnPushBagTagTemplates="() => _bagTagTemplatesPanel!.RequestDeployAsync()"
+                    OnCalibrateMedia="() => _calibrateMediaButton!.RequestConfirmAsync()"
+                    OnFactoryReset="() => _factoryResetPanel!.RequestConfirmAsync()"
+                    ShowStartOver="true"
+                    OnStartOver="Retry"
+                    StartOverDisabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive || _calibratingActive)" />
             </div>
+            @* Rendered here (not inside the menu itself) so their confirm dialogs/progress/results
+               stay visible in the normal page flow once PrinterActionsMenu's items trigger them via
+               @ref - each renders nothing at all until actually triggered. *@
+            <FactoryResetPanel @ref="_factoryResetPanel" Device="_discoveredDevice!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
+            <BagTagTemplatesPanel @ref="_bagTagTemplatesPanel" Device="_discoveredDevice!" IsActiveChanged="OnTemplatesActiveChanged" />
+            <CalibrateMediaButton @ref="_calibrateMediaButton" Device="_discoveredDevice!" IsActiveChanged="OnCalibrationActiveChanged" />
             break;
 
         case PairingUiState.Failed:
@@ -110,6 +120,9 @@
     private WebInterfaceState? _webInterfaceState;
     private bool _statusLoading;
     private int _statusRequestVersion;
+    private FactoryResetPanel? _factoryResetPanel;
+    private BagTagTemplatesPanel? _bagTagTemplatesPanel;
+    private CalibrateMediaButton? _calibrateMediaButton;
 
     private string FunctionName => _state switch
     {
@@ -128,11 +141,11 @@
     // than waiting for a re-tap, since the printer is still bonded either way.
     protected override async Task OnInitializedAsync()
     {
-        // Configure Printer/Start Over/CheckConfigurationButton's Disabled all read
-        // ActivityMonitor.IsBusy directly in markup - without this subscription, this page only
-        // re-evaluates that expression when ITS OWN state changes trigger a render, so a child
-        // component's activity clearing (e.g. PrinterVersionAlert's Firmware Version Check ending)
-        // would never be reflected here until some unrelated render happened to occur afterward.
+        // Configure Printer's disabled attribute reads ActivityMonitor.IsBusy directly in markup -
+        // without this subscription, this page only re-evaluates that expression when ITS OWN state
+        // changes trigger a render, so a child component's activity clearing (e.g. PrinterVersionAlert's
+        // Firmware Version Check ending) would never be reflected here until some unrelated render
+        // happened to occur afterward.
         ActivityMonitor.Changed += OnActivityChanged;
 
         if (Session.Device is not null)

@@ -133,6 +133,15 @@ public class ResultTests : BunitContext
         return (workflow, session);
     }
 
+    // Factory Reset/Recheck Configuration/Push Bag Tag Templates/Calibrate Media all now live behind
+    // PrinterActionsMenu's overflow menu rather than their own visible buttons - opens it then clicks
+    // the given item, matching the real two-tap user flow.
+    private static void OpenActionsMenuAndClickItem(IRenderedComponent<Result> cut, string menuItemTestId)
+    {
+        cut.Find("[data-testid='printer-actions-menu-button']").Click();
+        cut.Find($"[data-testid='{menuItemTestId}']").Click();
+    }
+
     private static TcpListener StartLoopbackListener(out int port)
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -222,16 +231,16 @@ public class ResultTests : BunitContext
     }
 
     [Fact]
-    public async Task SucceededWorkflow_ShowsReconfigureFactoryResetAndCheckConfigurationButtons()
+    public async Task SucceededWorkflow_ShowsReconfigureButtonAndActionsMenuItems()
     {
         await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
 
         var cut = Render<Result>();
 
         Assert.Contains("Reconfigure Printer", cut.Markup);
-        Assert.NotNull(cut.Find("[data-testid='factory-reset-button']"));
-        Assert.NotNull(cut.Find("[data-testid='check-configuration-button']"));
-        Assert.NotNull(cut.Find("[data-testid='calibrate-media-button']"));
+        Assert.NotNull(cut.Find("[data-testid='menu-item-factory-reset']"));
+        Assert.NotNull(cut.Find("[data-testid='menu-item-recheck-configuration']"));
+        Assert.NotNull(cut.Find("[data-testid='menu-item-calibrate-media']"));
     }
 
     [Theory]
@@ -274,7 +283,7 @@ public class ResultTests : BunitContext
         await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
         var cut = Render<Result>();
 
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        OpenActionsMenuAndClickItem(cut, "menu-item-factory-reset");
 
         Assert.True(cut.Find("[data-testid='reconfigure-button']").HasAttribute("disabled"));
     }
@@ -313,14 +322,14 @@ public class ResultTests : BunitContext
     }
 
     [Fact]
-    public async Task WhileFactoryResetIsSelected_CheckConfigurationButtonIsDisabled()
+    public async Task WhileFactoryResetIsSelected_RecheckConfigurationMenuItemIsDisabled()
     {
         await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED"));
         var cut = Render<Result>();
 
-        cut.Find("[data-testid='factory-reset-button']").Click();
+        OpenActionsMenuAndClickItem(cut, "menu-item-factory-reset");
 
-        Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled"));
+        Assert.True(cut.Find("[data-testid='menu-item-recheck-configuration']").HasAttribute("disabled"));
     }
 
     [Fact]
@@ -337,7 +346,7 @@ public class ResultTests : BunitContext
         cut.WaitForAssertion(() =>
         {
             Assert.True(cut.Find("[data-testid='reconfigure-button']").HasAttribute("disabled"));
-            Assert.True(cut.Find("[data-testid='check-configuration-button']").HasAttribute("disabled"));
+            Assert.True(cut.Find("[data-testid='menu-item-recheck-configuration']").HasAttribute("disabled"));
         });
         setEnabledTcs.SetResult();
     }

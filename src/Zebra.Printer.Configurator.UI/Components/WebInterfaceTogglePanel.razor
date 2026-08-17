@@ -1,6 +1,9 @@
 @* Self-contained web-interface enable/disable button + restart-confirm flow for a paired printer.
    Shared between Pairing (right after tap-pairing) and Result (after a successful configuration),
-   matching FactoryResetPanel/BagTagTemplatesPanel/CheckConfigurationButton.
+   matching FactoryResetPanel/BagTagTemplatesPanel/CalibrateMediaButton in shape - unlike those three,
+   this stays a directly-visible button rather than moving into PrinterActionsMenu's overflow menu,
+   since its label conveys live state ("Enable"/"Disable"/"Requires Restart") that's worth surfacing
+   at a glance rather than hiding behind a menu tap.
 
    The toggle itself (SetEnabledAsync) takes effect immediately in the printer's stored settings,
    but the web server that actually serves ip.https/ip.http only picks up the change on its next

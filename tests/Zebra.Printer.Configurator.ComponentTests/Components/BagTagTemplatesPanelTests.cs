@@ -24,20 +24,21 @@ public class BagTagTemplatesPanelTests : BunitContext
     }
 
     [Fact]
-    public void InitialRender_ShowsButtonOnly()
+    public void InitialRender_ShowsNothing()
     {
+        // The trigger now lives in the host page's PrinterActionsMenu overflow menu (RequestDeployAsync,
+        // called via @ref) - this component only renders once actually triggered.
         var cut = Render<BagTagTemplatesPanel>(p => p.Add(c => c.Device, Device));
 
-        Assert.NotNull(cut.Find("[data-testid='deploy-templates-button']"));
         Assert.Empty(cut.FindAll("[data-testid='deploy-templates-confirm-dialog']"));
     }
 
     [Fact]
-    public async Task ClickingButton_WhenNoExistingTemplates_DeploysDirectlyWithoutConfirming()
+    public async Task RequestDeployAsync_WhenNoExistingTemplates_DeploysDirectlyWithoutConfirming()
     {
         var cut = Render<BagTagTemplatesPanel>(p => p.Add(c => c.Device, Device));
 
-        cut.Find("[data-testid='deploy-templates-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestDeployAsync());
 
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='deploy-templates-complete']")));
         Assert.Empty(cut.FindAll("[data-testid='deploy-templates-confirm-dialog']"));
@@ -45,20 +46,20 @@ public class BagTagTemplatesPanelTests : BunitContext
     }
 
     [Fact]
-    public void ClickingButton_WhenTemplatesAlreadyExist_ShowsConfirmDialogListingThem_AndDoesNotDeployYet()
+    public async Task RequestDeployAsync_WhenTemplatesAlreadyExist_ShowsConfirmDialogListingThem_AndDoesNotDeployYet()
     {
         _templateService.GetExistingTemplateFileNamesAsync(Device, Arg.Any<CancellationToken>())
             .Returns(new[] { "FetchCCT.ZPL", "FetchFDT.ZPL" });
         var cut = Render<BagTagTemplatesPanel>(p => p.Add(c => c.Device, Device));
 
-        cut.Find("[data-testid='deploy-templates-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestDeployAsync());
 
         cut.WaitForAssertion(() =>
         {
             var text = cut.Find("[data-testid='deploy-templates-confirm-message']").TextContent;
             Assert.Contains("FetchCCT.ZPL, FetchFDT.ZPL", text);
         });
-        _templateService.DidNotReceive().DeployTemplatesAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>());
+        _ = _templateService.DidNotReceive().DeployTemplatesAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -67,7 +68,7 @@ public class BagTagTemplatesPanelTests : BunitContext
         _templateService.GetExistingTemplateFileNamesAsync(Device, Arg.Any<CancellationToken>())
             .Returns(new[] { "FetchCCT.ZPL" });
         var cut = Render<BagTagTemplatesPanel>(p => p.Add(c => c.Device, Device));
-        cut.Find("[data-testid='deploy-templates-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestDeployAsync());
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='deploy-templates-confirm-dialog']")));
 
         cut.Find("[data-testid='deploy-templates-confirm']").Click();
@@ -77,62 +78,61 @@ public class BagTagTemplatesPanelTests : BunitContext
     }
 
     [Fact]
-    public void CancellingOverwriteConfirmation_ReturnsToIdle_AndDoesNotDeploy()
+    public async Task CancellingOverwriteConfirmation_ReturnsToIdle_AndDoesNotDeploy()
     {
         _templateService.GetExistingTemplateFileNamesAsync(Device, Arg.Any<CancellationToken>())
             .Returns(new[] { "FetchCCT.ZPL" });
         var cut = Render<BagTagTemplatesPanel>(p => p.Add(c => c.Device, Device));
-        cut.Find("[data-testid='deploy-templates-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestDeployAsync());
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='deploy-templates-confirm-dialog']")));
 
         cut.Find("[data-testid='deploy-templates-cancel']").Click();
 
         Assert.Empty(cut.FindAll("[data-testid='deploy-templates-confirm-dialog']"));
-        Assert.NotNull(cut.Find("[data-testid='deploy-templates-button']"));
-        _templateService.DidNotReceive().DeployTemplatesAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>());
+        _ = _templateService.DidNotReceive().DeployTemplatesAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public void WhenCheckFails_ShowsErrorAndDoesNotDeploy()
+    public async Task WhenCheckFails_ShowsErrorAndDoesNotDeploy()
     {
         _templateService.GetExistingTemplateFileNamesAsync(Device, Arg.Any<CancellationToken>())
             .Returns(Task.FromException<IReadOnlyList<string>>(new InvalidOperationException("simulated check failure")));
         var cut = Render<BagTagTemplatesPanel>(p => p.Add(c => c.Device, Device));
 
-        cut.Find("[data-testid='deploy-templates-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestDeployAsync());
 
         cut.WaitForAssertion(() => Assert.Contains("simulated check failure", cut.Find("[data-testid='deploy-templates-error']").TextContent));
-        _templateService.DidNotReceive().DeployTemplatesAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>());
+        _ = _templateService.DidNotReceive().DeployTemplatesAsync(Arg.Any<PrinterDevice>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public void WhenDeployFails_ShowsError()
+    public async Task WhenDeployFails_ShowsError()
     {
         _templateService.DeployTemplatesAsync(Device, Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("simulated deploy failure")));
         var cut = Render<BagTagTemplatesPanel>(p => p.Add(c => c.Device, Device));
 
-        cut.Find("[data-testid='deploy-templates-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestDeployAsync());
 
         cut.WaitForAssertion(() => Assert.Contains("simulated deploy failure", cut.Find("[data-testid='deploy-templates-error']").TextContent));
     }
 
     [Fact]
-    public void ClickingButton_RaisesIsActiveChangedTrue_ThenFalseOnceComplete()
+    public async Task RequestDeployAsync_RaisesIsActiveChangedTrue_ThenFalseOnceComplete()
     {
         var activeStates = new List<bool>();
         var cut = Render<BagTagTemplatesPanel>(p => p
             .Add(c => c.Device, Device)
             .Add(c => c.IsActiveChanged, active => activeStates.Add(active)));
 
-        cut.Find("[data-testid='deploy-templates-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestDeployAsync());
 
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='deploy-templates-complete']")));
         Assert.Equal([true, false], activeStates);
     }
 
     [Fact]
-    public void ConfirmingDialog_StaysActiveThroughoutThenBecomesInactiveOnCancel()
+    public async Task ConfirmingDialog_StaysActiveThroughoutThenBecomesInactiveOnCancel()
     {
         _templateService.GetExistingTemplateFileNamesAsync(Device, Arg.Any<CancellationToken>())
             .Returns(new[] { "FetchCCT.ZPL" });
@@ -140,7 +140,7 @@ public class BagTagTemplatesPanelTests : BunitContext
         var cut = Render<BagTagTemplatesPanel>(p => p
             .Add(c => c.Device, Device)
             .Add(c => c.IsActiveChanged, active => activeStates.Add(active)));
-        cut.Find("[data-testid='deploy-templates-button']").Click();
+        await cut.InvokeAsync(() => cut.Instance.RequestDeployAsync());
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='deploy-templates-confirm-dialog']")));
 
         cut.Find("[data-testid='deploy-templates-cancel']").Click();
@@ -151,15 +151,21 @@ public class BagTagTemplatesPanelTests : BunitContext
     }
 
     [Fact]
-    public void ClickingButton_MarksActivityMonitorBusyUntilComplete()
+    public void RequestDeployAsync_MarksActivityMonitorBusyUntilComplete()
     {
+        // Deliberately NOT awaited - RequestDeployAsync's own call chain (via Deploy()) genuinely
+        // hangs at deployTcs until SetResult() below runs, so awaiting it here would deadlock this
+        // test against itself. cut.InvokeAsync still dispatches it onto the renderer's own
+        // synchronization context (matching how a real @onclick dispatch would), it just isn't
+        // waited on to fully finish before the test continues - the same way bUnit's own .Click()
+        // doesn't block on a handler that's still pending a real async gap.
         var deployTcs = new TaskCompletionSource();
         _templateService.DeployTemplatesAsync(Device, Arg.Any<CancellationToken>()).Returns(deployTcs.Task);
         var cut = Render<BagTagTemplatesPanel>(p => p.Add(c => c.Device, Device));
 
-        cut.Find("[data-testid='deploy-templates-button']").Click();
+        _ = cut.InvokeAsync(() => cut.Instance.RequestDeployAsync());
 
-        Assert.True(_activityMonitor.IsBusy);
+        cut.WaitForAssertion(() => Assert.True(_activityMonitor.IsBusy));
 
         deployTcs.SetResult();
 
