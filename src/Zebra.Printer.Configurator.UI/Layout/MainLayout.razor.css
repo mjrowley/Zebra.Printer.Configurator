@@ -82,32 +82,70 @@
     margin: 0.25rem 0;
 }
 
+/* Collapsed (default): just the toggle bar, sized to its own content - no longer permanently
+   reserves a fixed share of the viewport. Expanded: taken out of the flex flow entirely and
+   overlays the whole screen instead, so it doesn't resize/reflow function-section's own layout
+   while open. */
 .log-panel {
-    flex: 1 1 25%;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     min-height: 0;
     background: #0a0a0a;
     color: #ddd;
-    padding: 0.5rem 1rem 0.75rem;
     border-radius: 20px 20px 0 0;
     box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
     z-index: 1;
 }
 
-.log-panel h2 {
+.log-panel-expanded {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    border-radius: 0;
+}
+
+.log-panel-toggle {
+    all: unset;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    cursor: pointer;
     flex-shrink: 0;
+    padding: 0.5rem 1rem 0.25rem;
+}
+
+.log-panel-toggle h2 {
+    margin: 0;
     font-size: 0.85rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: #999;
-    margin: 0.25rem 0 0.5rem 0;
+}
+
+.log-panel-toggle-icon {
+    flex-shrink: 0;
+    color: #999;
+    transition: transform 150ms ease;
+}
+
+/* Points up when collapsed ("tap to expand"), flips to point down once expanded ("tap to collapse"). */
+.log-panel-expanded .log-panel-toggle-icon {
+    transform: rotate(180deg);
+}
+
+.log-panel-collapsed .log-entries {
+    display: none;
 }
 
 .log-entries {
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
     font-size: 0.8rem;
+    padding: 0 1rem 0.75rem;
 }
 
 .log-entry {

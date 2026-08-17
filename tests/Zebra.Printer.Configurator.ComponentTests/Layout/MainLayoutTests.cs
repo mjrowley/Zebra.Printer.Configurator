@@ -117,6 +117,69 @@ public class MainLayoutTests : BunitContext
         });
     }
 
+    [Fact]
+    public void InitialRender_LogPanelIsCollapsed()
+    {
+        var cut = Render<MainLayout>();
+
+        Assert.Contains("log-panel-collapsed", cut.Find("[data-testid='log-panel']").ClassList);
+        Assert.Empty(cut.FindAll("[data-testid='log-panel'].log-panel-expanded"));
+    }
+
+    [Fact]
+    public void ClickingToggle_ExpandsThePanel()
+    {
+        var cut = Render<MainLayout>();
+
+        cut.Find("[data-testid='log-panel-toggle']").Click();
+
+        Assert.Contains("log-panel-expanded", cut.Find("[data-testid='log-panel']").ClassList);
+    }
+
+    [Fact]
+    public void ClickingToggleTwice_CollapsesItAgain()
+    {
+        var cut = Render<MainLayout>();
+        cut.Find("[data-testid='log-panel-toggle']").Click();
+
+        cut.Find("[data-testid='log-panel-toggle']").Click();
+
+        Assert.Contains("log-panel-collapsed", cut.Find("[data-testid='log-panel']").ClassList);
+    }
+
+    [Fact]
+    public void CollapsedOrExpanded_EntriesStayInTheDom()
+    {
+        // Toggling only changes CSS visibility (display: none while collapsed) rather than removing
+        // log-entries from the render tree - so it's already scrolled-to-latest/populated the moment
+        // it's next expanded, not re-built from scratch.
+        var cut = Render<MainLayout>();
+        _appLog.Log("Waiting for NFC tap...");
+        cut.WaitForAssertion(() => Assert.Contains("Waiting for NFC tap...", cut.Find("[data-testid='log-entries']").TextContent));
+
+        cut.Find("[data-testid='log-panel-toggle']").Click();
+
+        Assert.Contains("Waiting for NFC tap...", cut.Find("[data-testid='log-entries']").TextContent);
+    }
+
+    [Fact]
+    public void InitialRender_ToggleReflectsAriaExpandedFalse()
+    {
+        var cut = Render<MainLayout>();
+
+        Assert.Equal("false", cut.Find("[data-testid='log-panel-toggle']").GetAttribute("aria-expanded"));
+    }
+
+    [Fact]
+    public void ClickingToggle_UpdatesAriaExpandedTrue()
+    {
+        var cut = Render<MainLayout>();
+
+        cut.Find("[data-testid='log-panel-toggle']").Click();
+
+        Assert.Equal("true", cut.Find("[data-testid='log-panel-toggle']").GetAttribute("aria-expanded"));
+    }
+
     private sealed class FakeAppVersionProvider : IAppVersionProvider
     {
         public string VersionLabel => "v1.2 (3)";

@@ -30,7 +30,12 @@
             <path fill="currentColor" d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
         </svg>
     </md-icon-button>
-    <md-menu anchor="@AnchorId" open="@(_open)" data-testid="printer-actions-menu">
+    @* positioning="fixed" (not the default "absolute") - the anchor lives inside
+       MainLayout's .function-section, which scrolls its own overflow; an "absolute"-positioned
+       popup is clipped at that container's boundary once it has enough items to run past the
+       visible viewport, making the lower items unreachable with no way to scroll to them. "fixed"
+       positions relative to the viewport instead, escaping that clipping entirely. *@
+    <md-menu anchor="@AnchorId" open="@(_open)" positioning="fixed" data-testid="printer-actions-menu">
         <md-menu-item data-testid="menu-item-recheck-configuration" disabled="@RecheckConfigurationDisabled" @onclick="() => Select(OnRecheckConfiguration)">
             <div slot="headline">Recheck Configuration</div>
         </md-menu-item>

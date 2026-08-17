@@ -20,9 +20,24 @@
         @Body
     </section>
 
-    <section class="log-panel" data-testid="log-panel">
-        <h2>Activity Log</h2>
-        <div class="log-entries">
+    @* Starts collapsed (just the toggle bar) - the log used to permanently reserve 25% of the
+       viewport, which on smaller screens left too little room below it for a page's own content to
+       scroll into view (confirmed: PrinterActionsMenu's dropdown got clipped by function-section's
+       own scroll boundary with the log eating a quarter of the remaining height). Expanded, it
+       overlays the whole screen (position: fixed, not pushing function-section's layout around)
+       with its own scrollable entry list - toggling doesn't remove log-entries from the DOM, just
+       hides it via CSS, so it's still populated/scrolled-to-latest whenever it's next opened. *@
+    <section class="log-panel @(_logExpanded ? "log-panel-expanded" : "log-panel-collapsed")" data-testid="log-panel">
+        <button type="button" class="log-panel-toggle" data-testid="log-panel-toggle"
+                aria-expanded="@(_logExpanded ? "true" : "false")"
+                aria-label="@(_logExpanded ? "Collapse Activity Log" : "Expand Activity Log")"
+                @onclick="() => _logExpanded = !_logExpanded">
+            <h2>Activity Log</h2>
+            <svg class="log-panel-toggle-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                <path fill="currentColor" d="M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z" />
+            </svg>
+        </button>
+        <div class="log-entries" data-testid="log-entries">
             @if (AppLog.Entries.Count == 0)
             {
                 <p class="log-empty">No activity yet.</p>
@@ -42,6 +57,8 @@
 </div>
 
 @code {
+    private bool _logExpanded;
+
     protected override void OnInitialized()
     {
         AppLog.EntryLogged += OnEntryLogged;

@@ -42,6 +42,10 @@ public class PrinterActionsMenuTests : BunitContext
         var cut = RenderMenu();
 
         Assert.False(cut.Find("[data-testid='printer-actions-menu']").HasAttribute("open"));
+        // "fixed" (not the default "absolute") - the anchor lives inside a scrolling container
+        // (MainLayout's .function-section), and an "absolute"-positioned popup gets clipped at that
+        // container's boundary with no way to scroll to the rest of it once it has enough items.
+        Assert.Equal("fixed", cut.Find("[data-testid='printer-actions-menu']").GetAttribute("positioning"));
         Assert.NotNull(cut.Find("[data-testid='menu-item-recheck-configuration']"));
         Assert.NotNull(cut.Find("[data-testid='menu-item-push-bag-tag-templates']"));
         Assert.NotNull(cut.Find("[data-testid='menu-item-calibrate-media']"));
