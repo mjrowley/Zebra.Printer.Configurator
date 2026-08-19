@@ -42,6 +42,26 @@
     }
 </div>
 
+@* Shown the moment NFC discovers a printer, before the actual Bluetooth pairing negotiation starts -
+   mirrors Zebra's own Nucleus Connector app, which gates on the same "move away" confirmation here.
+   The phone is necessarily right up against the printer's NFC antenna at the point of tap, and this
+   printer bonds over BLE and Classic/BR-EDR independently (see [[bluetooth-pairing-dual-transport]]) -
+   starting that negotiation while still in the NFC field is the most likely explanation for why Zebra
+   gates it behind an explicit user action instead of proceeding automatically, though this app has no
+   direct on-device confirmation of that mechanism itself. *@
+@if (_showNfcTapDialog)
+{
+    <div class="confirm-modal-backdrop" data-testid="nfc-tap-received-dialog">
+        <div class="confirm-modal-box" role="alertdialog">
+            <h2>NFC Tap Received</h2>
+            <p>We received your NFC tap. Please move your device away from the printer to proceed.</p>
+            <div class="confirm-modal-actions">
+                <md-filled-button type="button" data-testid="nfc-tap-received-continue" @onclick="ContinuePairing">Continue</md-filled-button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private enum PairingUiState
     {
@@ -52,6 +72,8 @@
 
     private PairingUiState _state = PairingUiState.WaitingForTap;
     private string? _errorMessage;
+    private bool _showNfcTapDialog;
+    private PrinterDevice? _pendingDevice;
 
     private string FunctionName => _state switch
     {
@@ -86,45 +108,69 @@
 
     private void OnPrinterDiscovered(object? sender, PrinterDevice device)
     {
-        InvokeAsync(async () =>
+        InvokeAsync(() =>
         {
             // A single physical NFC tap has been observed dispatching more than one intent
             // (confirmed on-device: the printer displayed two different pairing codes and
             // Android's pairing dialog appeared twice) - a second discovery arriving while one is
-            // already being handled is ignored rather than starting a concurrent CreateBond()
-            // attempt against the same printer. State is set to Pairing below before the only
-            // await point in this method, so a second call queued via InvokeAsync always sees it
-            // by the time it runs.
-            if (_state != PairingUiState.WaitingForTap)
+            // already being handled (including while the NFC Tap Received dialog is still up,
+            // waiting on the user) is ignored rather than starting a concurrent CreateBond()
+            // attempt against the same printer. _showNfcTapDialog is set below before this method
+            // returns, so a second call queued via InvokeAsync always sees it by the time it runs.
+            if (_state != PairingUiState.WaitingForTap || _showNfcTapDialog)
             {
                 AppLog.Log("Ignoring duplicate NFC discovery - already pairing.", LogLevel.Warning);
                 return;
             }
 
-            _state = PairingUiState.Pairing;
-            ConnectivityMonitor.SetBluetooth(ConnectionIndicatorState.Connecting);
-            StateHasChanged();
-
-            var paired = await BluetoothPairingService.EnsurePairedAsync(device.BluetoothMacAddress);
-
-            ConnectivityMonitor.SetBluetooth(paired ? ConnectionIndicatorState.Connected : ConnectionIndicatorState.Error);
-
-            if (paired)
-            {
-                Session.Device = device;
-                Navigation.NavigateTo("/dashboard");
-                return;
-            }
-
-            _errorMessage = "Could not pair with the printer. Make sure it's powered on and in range, then try again.";
-            _state = PairingUiState.Failed;
+            _pendingDevice = device;
+            _showNfcTapDialog = true;
             StateHasChanged();
         });
+    }
+
+    // "Continue" on the NFC Tap Received dialog - only past this point does the actual Bluetooth
+    // pairing negotiation begin.
+    private Task ContinuePairing()
+    {
+        if (_pendingDevice is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var device = _pendingDevice;
+        _pendingDevice = null;
+        _showNfcTapDialog = false;
+        return StartPairingAsync(device);
+    }
+
+    private async Task StartPairingAsync(PrinterDevice device)
+    {
+        _state = PairingUiState.Pairing;
+        ConnectivityMonitor.SetBluetooth(ConnectionIndicatorState.Connecting);
+        StateHasChanged();
+
+        var paired = await BluetoothPairingService.EnsurePairedAsync(device.BluetoothMacAddress);
+
+        ConnectivityMonitor.SetBluetooth(paired ? ConnectionIndicatorState.Connected : ConnectionIndicatorState.Error);
+
+        if (paired)
+        {
+            Session.Device = device;
+            Navigation.NavigateTo("/dashboard");
+            return;
+        }
+
+        _errorMessage = "Could not pair with the printer. Make sure it's powered on and in range, then try again.";
+        _state = PairingUiState.Failed;
+        StateHasChanged();
     }
 
     private void Retry()
     {
         _errorMessage = null;
+        _showNfcTapDialog = false;
+        _pendingDevice = null;
         ConnectivityMonitor.Reset();
         WifiMonitor.Stop();
         ConnectionModeProvider.UseBluetooth();

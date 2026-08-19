@@ -34,6 +34,17 @@ public class PairingTests : BunitContext
         Services.AddSingleton(new PairingSession());
     }
 
+    // Raises discovery, waits for the resulting NFC Tap Received dialog, then dismisses it via
+    // Continue - the shared "get past the dialog" step every test below that actually needs pairing
+    // to start uses, mirroring the real two-step user flow (tap, then confirm) rather than assuming
+    // pairing starts the instant a printer is discovered.
+    private static void DiscoverAndContinue(IRenderedComponent<Pairing> cut, FakePrinterDiscoveryService discoveryService, PrinterDevice device)
+    {
+        discoveryService.RaisePrinterDiscovered(device);
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='nfc-tap-received-dialog']")));
+        cut.Find("[data-testid='nfc-tap-received-continue']").Click();
+    }
+
     [Fact]
     public void InitialRender_ShowsWaitingInstructionAndStartsListening()
     {
@@ -52,10 +63,8 @@ public class PairingTests : BunitContext
     }
 
     [Fact]
-    public void WhenPrinterDiscovered_ShowsNfcBtPairingFunctionNameAndSetsBluetoothConnecting()
+    public void WhenPrinterDiscovered_ShowsNfcTapReceivedDialog_WithoutStartingPairingYet()
     {
-        var pairingTcs = new TaskCompletionSource<bool>();
-        _pairingService.EnsurePairedHandler = _ => pairingTcs.Task;
         var cut = Render<Pairing>();
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
 
@@ -63,6 +72,46 @@ public class PairingTests : BunitContext
 
         cut.WaitForAssertion(() =>
         {
+            var dialog = cut.Find("[data-testid='nfc-tap-received-dialog']");
+            Assert.Contains("move your device away from the printer", dialog.TextContent);
+        });
+        // Still waiting - the actual Bluetooth pairing negotiation hasn't started yet, so the
+        // function name/indicator haven't changed from their WaitingForTap values.
+        Assert.Contains("Pair a Printer", cut.Find("h1").TextContent);
+        Assert.Equal(ConnectionIndicatorState.Disconnected, _connectivityMonitor.Bluetooth);
+    }
+
+    [Fact]
+    public void WhenSecondTapArrivesWhileDialogIsShowing_IsIgnored()
+    {
+        // Same duplicate-intent regression this app has already hit once (a single physical NFC tap
+        // dispatching more than one intent) - now needs guarding at the dialog stage too, before
+        // pairing itself has even started.
+        var cut = Render<Pairing>();
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        _discoveryService.RaisePrinterDiscovered(device);
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='nfc-tap-received-dialog']")));
+
+        _discoveryService.RaisePrinterDiscovered(device);
+
+        Assert.Single(cut.FindAll("[data-testid='nfc-tap-received-dialog']"));
+    }
+
+    [Fact]
+    public void ClickingContinue_StartsPairingAndShowsNfcBtPairingFunctionName()
+    {
+        var pairingTcs = new TaskCompletionSource<bool>();
+        _pairingService.EnsurePairedHandler = _ => pairingTcs.Task;
+        var cut = Render<Pairing>();
+        var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
+        _discoveryService.RaisePrinterDiscovered(device);
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='nfc-tap-received-dialog']")));
+
+        cut.Find("[data-testid='nfc-tap-received-continue']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Empty(cut.FindAll("[data-testid='nfc-tap-received-dialog']"));
             Assert.Contains("NFC/BT Pairing", cut.Find("h1").TextContent);
             Assert.Equal(ConnectionIndicatorState.Connecting, _connectivityMonitor.Bluetooth);
         });
@@ -72,11 +121,13 @@ public class PairingTests : BunitContext
     }
 
     [Fact]
-    public void WhenPrinterDiscoveredTwiceInQuickSuccession_OnlyAttemptsPairingOnce()
+    public void WhenPrinterDiscoveredTwiceInQuickSuccessionAfterContinue_OnlyAttemptsPairingOnce()
     {
         // Regression test for a real bug: a single NFC tap sometimes dispatched two intents,
         // starting two concurrent CreateBond() attempts against the same printer - visible
-        // on-device as two different pairing codes and two OS pairing dialogs.
+        // on-device as two different pairing codes and two OS pairing dialogs. Covers the case
+        // where the duplicate arrives after Continue (during the actual pairing negotiation) -
+        // WhenSecondTapArrivesWhileDialogIsShowing_IsIgnored covers the earlier window.
         var pairingAttempts = 0;
         var pairingTcs = new TaskCompletionSource<bool>();
         _pairingService.EnsurePairedHandler = _ =>
@@ -86,11 +137,11 @@ public class PairingTests : BunitContext
         };
         var cut = Render<Pairing>();
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
-
-        _discoveryService.RaisePrinterDiscovered(device);
-        _discoveryService.RaisePrinterDiscovered(device);
-
+        DiscoverAndContinue(cut, _discoveryService, device);
         cut.WaitForAssertion(() => Assert.Contains("NFC/BT Pairing", cut.Find("h1").TextContent));
+
+        _discoveryService.RaisePrinterDiscovered(device);
+
         Assert.Equal(1, pairingAttempts);
 
         pairingTcs.SetResult(true);
@@ -105,7 +156,7 @@ public class PairingTests : BunitContext
         var cut = Render<Pairing>();
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
 
-        _discoveryService.RaisePrinterDiscovered(device);
+        DiscoverAndContinue(cut, _discoveryService, device);
 
         cut.WaitForAssertion(() => Assert.Equal(ConnectionIndicatorState.Error, _connectivityMonitor.Bluetooth));
     }
@@ -116,7 +167,7 @@ public class PairingTests : BunitContext
         var cut = Render<Pairing>();
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF", SerialNumber = "12345" };
 
-        _discoveryService.RaisePrinterDiscovered(device);
+        DiscoverAndContinue(cut, _discoveryService, device);
 
         var session = Services.GetRequiredService<PairingSession>();
         var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
@@ -134,7 +185,7 @@ public class PairingTests : BunitContext
         var cut = Render<Pairing>();
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
 
-        _discoveryService.RaisePrinterDiscovered(device);
+        DiscoverAndContinue(cut, _discoveryService, device);
 
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='pairing-error']")));
 
@@ -150,7 +201,7 @@ public class PairingTests : BunitContext
         _pairingService.EnsurePairedHandler = _ => Task.FromResult(false);
         var cut = Render<Pairing>();
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
-        _discoveryService.RaisePrinterDiscovered(device);
+        DiscoverAndContinue(cut, _discoveryService, device);
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='pairing-error']")));
 
         cut.Find("md-filled-button").Click(); // "Try Again"

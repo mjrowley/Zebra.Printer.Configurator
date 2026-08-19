@@ -10,6 +10,9 @@
 }
 
 .stepper-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
     padding: 0.75rem 1rem;
     border-bottom: 1px solid var(--color-border, #e5e5ea);
     color: var(--color-text-secondary, #6b6b70);
@@ -29,8 +32,18 @@
     color: var(--color-text, #1c1c1e);
 }
 
-.stepper-item.done::before {
-    content: "\2713 ";
+/* Always reserves this width (empty for a pending step, a spinner for active, a checkmark for done
+   via ::before) so the label text next to it never shifts as a step's own state changes. */
+.stepper-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 1.1rem;
+    width: 1.1rem;
+}
+
+.stepper-item.done .stepper-icon::before {
+    content: "\2713";
     color: var(--color-primary, #1c75bc);
     font-weight: 700;
 }

@@ -9,33 +9,44 @@
 <div class="section-sticky-header">
     <h1>@FunctionName</h1>
 
+    @* .stepper-icon is always rendered (empty for a pending step) so its reserved width never
+       changes as a step gains a spinner (active) or a checkmark (done, via CSS ::before) - without
+       it, the label text visibly jumped right the moment either appeared. *@
     <div class="stepper" data-testid="progress-steps">
         <div class="stepper-item @StepClass(PairingWorkflowState.ApplyingConfiguration)" data-testid="step-applying-configuration">
-            @if (Workflow.State == PairingWorkflowState.ApplyingConfiguration)
-            {
-                <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
-            }
+            <span class="stepper-icon">
+                @if (Workflow.State == PairingWorkflowState.ApplyingConfiguration)
+                {
+                    <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
+                }
+            </span>
             Connecting and applying configuration
         </div>
         <div class="stepper-item @StepClass(PairingWorkflowState.EnablingPdfDirect)" data-testid="step-enabling-pdf-direct">
-            @if (Workflow.State == PairingWorkflowState.EnablingPdfDirect)
-            {
-                <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
-            }
+            <span class="stepper-icon">
+                @if (Workflow.State == PairingWorkflowState.EnablingPdfDirect)
+                {
+                    <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
+                }
+            </span>
             Enabling PDF Direct
         </div>
         <div class="stepper-item @StepClass(PairingWorkflowState.Restarting)" data-testid="step-restarting">
-            @if (Workflow.State == PairingWorkflowState.Restarting)
-            {
-                <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
-            }
+            <span class="stepper-icon">
+                @if (Workflow.State == PairingWorkflowState.Restarting)
+                {
+                    <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
+                }
+            </span>
             Restarting printer
         </div>
         <div class="stepper-item @StepClass(PairingWorkflowState.TestingConnection)" data-testid="step-testing-connection">
-            @if (Workflow.State == PairingWorkflowState.TestingConnection)
-            {
-                <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
-            }
+            <span class="stepper-icon">
+                @if (Workflow.State == PairingWorkflowState.TestingConnection)
+                {
+                    <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
+                }
+            </span>
             Waiting for printer to rejoin WiFi
         </div>
     </div>
