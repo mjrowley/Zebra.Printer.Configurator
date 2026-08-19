@@ -1,225 +1,35 @@
 @page "/result"
-@implements IDisposable
 @inject PairAndConfigureWorkflow Workflow
 @inject PairingSession Session
 @inject PrinterConnectivityMonitor ConnectivityMonitor
-@inject PrinterActivityMonitor ActivityMonitor
 @inject IWifiConnectivityMonitor WifiMonitor
 @inject IPrinterConnectionModeProvider ConnectionModeProvider
-@inject IPrinterStatusReader StatusReader
 @inject NavigationManager Navigation
 
+@* Only ever actually renders the Failed branch - a Succeeded workflow redirects straight to
+   PrinterDashboard.razor (which shows its own "Connected to Ssid at ResolvedIpAddress" success
+   banner by checking Workflow.State itself) instead of duplicating that whole status-card/
+   PrinterVersionAlert/WebInterfaceTogglePanel/PrinterActionsMenu layout here a second time. *@
 <div class="section-sticky-header">
-    @if (Workflow.State == PairingWorkflowState.Succeeded)
-    {
-        <h1>Success</h1>
-        <div class="status-card">
-            <h2>Success</h2>
-            <p data-testid="result-success">
-                The printer is now connected to @Session.Configuration?.Ssid at @Workflow.Result?.ResolvedIpAddress.
-            </p>
-            @* The printer now has a confirmed working WiFi connection (Workflow.Result.ResolvedIpAddress -
-               not Session.Configuration.StaticIpAddress, which is meaningless for a Dhcp configuration -
-               just verified/discovered by the workflow's own connectivity test) - re-surfaces the same
-               version check/update offer here, since Pairing.razor's earlier check may have let a
-               NeedsUpdate result through unblocked if WiFi wasn't available yet at that point. *@
-            <PrinterVersionAlert Device="Session.Device!" WifiIpAddress="@Workflow.Result?.ResolvedIpAddress" VersionResult="_printerStatus?.VersionResult" StatusLoading="_statusLoading" OnCancelled="Retry" />
-            @if (_webInterfaceState is { } webInterfaceState)
-            {
-                <p data-testid="web-interface-status" class="@(webInterfaceState.BothEnabled ? "status-text-success" : "status-text-error")">
-                    Web Interface is currently @(webInterfaceState.BothEnabled ? "enabled" : "disabled").
-                </p>
-            }
-        </div>
-        <div class="button-row">
-            <md-filled-button type="button" data-testid="reconfigure-button" disabled="@(ActivityMonitor.IsBusy || _checkingNetwork)" @onclick="Reconfigure">
-                @if (_checkingNetwork)
-                {
-                    <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
-                }
-                Reconfigure Printer
-            </md-filled-button>
-            <WebInterfaceTogglePanel Device="Session.Device!" InitialState="_webInterfaceState" StatusLoading="_statusLoading" IsActiveChanged="OnWebInterfaceActiveChanged" CurrentStateChanged="OnWebInterfaceStateChanged" />
-            <PrinterActionsMenu AnchorId="result-actions-menu-anchor"
-                OnRecheckConfiguration="RecheckConfigurationAsync"
-                RecheckConfigurationDisabled="@(_checkConfigState.Loading || _factoryResetActive || _templatesActive || _webInterfaceActive || _calibratingActive)"
-                OnPushBagTagTemplates="() => _bagTagTemplatesPanel!.RequestDeployAsync()"
-                OnCalibrateMedia="() => _calibrateMediaButton!.RequestConfirmAsync()"
-                OnFactoryReset="() => _factoryResetPanel!.RequestConfirmAsync()" />
-        </div>
-        @* Rendered here (not inside the menu itself) so their confirm dialogs/progress/results stay
-           visible in the normal page flow once PrinterActionsMenu's items trigger them via @ref -
-           each renders nothing at all until actually triggered. *@
-        <FactoryResetPanel @ref="_factoryResetPanel" Device="Session.Device!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
-        <BagTagTemplatesPanel @ref="_bagTagTemplatesPanel" Device="Session.Device!" IsActiveChanged="OnTemplatesActiveChanged" />
-        <CalibrateMediaButton @ref="_calibrateMediaButton" Device="Session.Device!" IsActiveChanged="OnCalibrationActiveChanged" />
-    }
-    else
-    {
-        <h1>Configuration Failed</h1>
-        <p data-testid="result-failure">@(Workflow.FailureReason ?? "An unknown error occurred.")</p>
-        <md-filled-button type="button" @onclick="Retry">Retry</md-filled-button>
-    }
+    <h1>Configuration Failed</h1>
+    <p data-testid="result-failure">@(Workflow.FailureReason ?? "An unknown error occurred.")</p>
+    <md-filled-button type="button" @onclick="Retry">Retry</md-filled-button>
 </div>
 
-@if (Workflow.State == PairingWorkflowState.Succeeded)
-{
-    <CheckConfigurationResults State="_checkConfigState" />
-}
-
 @code {
-    private const int DefaultWifiProbePort = 6101;
-    private static readonly TimeSpan NetworkProbeTimeout = TimeSpan.FromSeconds(3);
-
-    // Overridable (rather than a plain const) so component tests can point the reachability probe
-    // at a local TcpListener on a free port instead of the real, fixed SGD port.
-    [Parameter]
-    public int WifiProbePort { get; set; } = DefaultWifiProbePort;
-
-    private bool _factoryResetActive;
-    private bool _templatesActive;
-    private bool _checkingNetwork;
-    private bool _webInterfaceActive;
-    private bool _calibratingActive;
-    private CheckConfigurationState _checkConfigState = new();
-    private PrinterStatus? _printerStatus;
-    private WebInterfaceState? _webInterfaceState;
-    private bool _statusLoading;
-    private FactoryResetPanel? _factoryResetPanel;
-    private BagTagTemplatesPanel? _bagTagTemplatesPanel;
-    private CalibrateMediaButton? _calibrateMediaButton;
-
-    // Sets the loading flags synchronously, before Blazor's first render - this page's markup
-    // (unlike Pairing.razor's _state-gated switch) already shows the Succeeded button-row on its
-    // very first render with no intermediate loading gate, so PrinterVersionAlert/
-    // WebInterfaceTogglePanel's first parameter-set must already see StatusLoading = true here, not
-    // in OnInitializedAsync (too late - that only delays rendering if it doesn't finish
-    // synchronously, which setting a plain bool always does).
     protected override void OnInitialized()
     {
-        // Reconfigure Printer's disabled attribute reads ActivityMonitor.IsBusy directly in markup -
-        // without this subscription, this page only re-evaluates that expression when ITS OWN state
-        // changes trigger a render, so a child component's activity clearing (e.g. PrinterVersionAlert's
-        // Firmware Version Check ending) would never be reflected here until some unrelated render
-        // happened to occur afterward.
-        ActivityMonitor.Changed += OnActivityChanged;
-
-        if (Workflow.State is not (PairingWorkflowState.Succeeded or PairingWorkflowState.Failed))
-        {
-            Navigation.NavigateTo("/", replace: true);
-            return;
-        }
-
         if (Workflow.State == PairingWorkflowState.Succeeded)
         {
-            _statusLoading = true;
-            _checkConfigState.SetLoading();
-        }
-    }
-
-    protected override Task OnInitializedAsync() =>
-        Workflow.State == PairingWorkflowState.Succeeded
-            ? LoadPrinterStatusAsync(Session.Device!, allowBleFallback: true)
-            : Task.CompletedTask;
-
-    // Mirrors Zebra's own Printer Setup Utility's documented connection search order - network
-    // first, Bluetooth after - for reconfiguring a printer this app already successfully configured
-    // and confirmed on WiFi this session, so the static IP it was just given is the obvious thing to
-    // try first rather than reconnecting over Bluetooth by default. First-time pairing (Pairing.razor)
-    // deliberately skips this: a never-configured printer has no WiFi yet, so there's no IP to probe.
-    private async Task Reconfigure()
-    {
-        if (_factoryResetActive || _templatesActive || _checkingNetwork)
-        {
+            Navigation.NavigateTo("/dashboard", replace: true);
             return;
         }
 
-        // Not Session.Configuration?.StaticIpAddress - meaningless for a Dhcp configuration.
-        // Workflow.Result still holds the last successful connectivity test's ResolvedIpAddress for
-        // as long as this page is showing the Succeeded state.
-        var ipAddress = Workflow.Result?.ResolvedIpAddress;
-        _checkingNetwork = true;
-        try
+        if (Workflow.State != PairingWorkflowState.Failed)
         {
-            if (!string.IsNullOrWhiteSpace(ipAddress) && await TcpPortProbe.IsReachableAsync(ipAddress, WifiProbePort, NetworkProbeTimeout))
-            {
-                ConnectionModeProvider.UseWifi(ipAddress);
-                ConnectivityMonitor.SetBluetooth(ConnectionIndicatorState.Disconnected);
-                ConnectivityMonitor.SetWifi(ConnectionIndicatorState.Connected);
-                WifiMonitor.Start(ipAddress);
-            }
-            else
-            {
-                ConnectionModeProvider.UseBluetooth();
-            }
-        }
-        finally
-        {
-            _checkingNetwork = false;
-        }
-
-        Navigation.NavigateTo("/configure");
-    }
-
-    // Reads firmware version + web interface state + the full configuration list in one connection
-    // (see PrinterStatus's own doc comment) - populates PrinterVersionAlert/WebInterfaceTogglePanel
-    // via their VersionResult/InitialState + StatusLoading parameters, and CheckConfigurationResults
-    // via _checkConfigState, so the configuration list appears automatically rather than only after
-    // a manual click.
-    private async Task LoadPrinterStatusAsync(PrinterDevice device, bool allowBleFallback)
-    {
-        using var _ = ActivityMonitor.Begin("Printer Status Check");
-        try
-        {
-            _printerStatus = await StatusReader.ReadStatusAsync(device, allowBleFallback);
-            _webInterfaceState = _printerStatus.WebInterfaceState;
-            _checkConfigState.SetResults(_printerStatus.ConfigurationValues);
-        }
-        catch (Exception ex)
-        {
-            // _webInterfaceState is deliberately left untouched here - a failed merged read doesn't
-            // invalidate a web interface state that was already confirmed (whether from an earlier
-            // merged read or from WebInterfaceTogglePanel's own follow-up reads), it just means this
-            // particular attempt to refresh it didn't pan out.
-            _printerStatus = null;
-            _checkConfigState.SetError($"Could not check printer status: {ex.Message}");
-        }
-        finally
-        {
-            _statusLoading = false;
-            StateHasChanged();
+            Navigation.NavigateTo("/", replace: true);
         }
     }
-
-    // "Recheck Configuration" button - re-runs the same merged read as the automatic first check,
-    // refreshing the firmware status/web interface state/configuration list together.
-    private Task RecheckConfigurationAsync()
-    {
-        if (Session.Device is null)
-        {
-            return Task.CompletedTask;
-        }
-
-        _printerStatus = null;
-        _statusLoading = true;
-        _checkConfigState.SetLoading();
-        StateHasChanged();
-        return LoadPrinterStatusAsync(Session.Device, allowBleFallback: true);
-    }
-
-    private void OnFactoryResetActiveChanged(bool active) => _factoryResetActive = active;
-
-    private void OnTemplatesActiveChanged(bool active) => _templatesActive = active;
-
-    private void OnWebInterfaceActiveChanged(bool active) => _webInterfaceActive = active;
-
-    private void OnCalibrationActiveChanged(bool active) => _calibratingActive = active;
-
-    // Keeps the top "Web Interface is currently..." line in sync with what WebInterfaceTogglePanel
-    // itself most recently confirmed (Retry()/CloseComplete's self-heal reads) - without this, that
-    // line stays frozen at whatever the last merged/Recheck read said even after the panel's own
-    // toggle-and-restart flow successfully changes and re-confirms the real state.
-    private void OnWebInterfaceStateChanged(WebInterfaceState? state) => _webInterfaceState = state;
 
     private void Retry()
     {
@@ -229,8 +39,4 @@
         ConnectionModeProvider.UseBluetooth();
         Navigation.NavigateTo("/", replace: true);
     }
-
-    private void OnActivityChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
-
-    public void Dispose() => ActivityMonitor.Changed -= OnActivityChanged;
 }

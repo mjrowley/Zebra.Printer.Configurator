@@ -1,18 +1,18 @@
 @* Material 3 overflow menu (md-menu, anchored off an md-icon-button "more actions" trigger) consolidating
    the less-frequently-used per-printer actions - Recheck Configuration, Push Bag Tag Templates,
-   Calibrate Media, Factory Reset, and (Pairing.razor only) Start Over - so both pages' button rows
-   don't keep growing every time a new maintenance action is added (they'd reached ~7 buttons before
-   this). Configure/Reconfigure Printer and the Web Interface toggle stay directly visible outside this
-   menu - see WebInterfaceTogglePanel's own doc comment for why the toggle specifically isn't here.
+   Calibrate Media, Factory Reset - so PrinterDashboard.razor's button row doesn't keep growing every
+   time a new maintenance action is added (it'd reached ~7 buttons across the two pages this replaced
+   before this). Configure/Reconfigure Printer and the Web Interface toggle stay directly visible
+   outside this menu - see WebInterfaceTogglePanel's own doc comment for why the toggle specifically
+   isn't here. "Abandon this printer" is PrinterDashboard's own standalone "Disconnect Printer" button,
+   not a menu item here - this menu used to also carry a Pairing.razor-only "Start Over" item for that
+   before the dashboard consolidation gave every arrival path the same button instead.
 
    FactoryResetPanel/BagTagTemplatesPanel/CalibrateMediaButton no longer render their own trigger
    buttons - the host page still renders those three components directly (elsewhere in its markup, so
    their own confirm dialogs/progress/results still show up in the normal page flow, not swallowed by
    this menu closing), and passes @ref-captured references here so this menu's items can call each
    one's public Request*Async() trigger method.
-
-   Shared between Pairing.razor and Result.razor rather than duplicating the md-menu markup (anchor
-   wiring, the "more_vert" icon) on both.
 
    _open sync: md-menu closes itself on item click/outside click/Escape via real browser JS this app
    never executes in tests, and Blazor's short "@onclosed" syntax only binds well-known DOM events -
@@ -48,12 +48,6 @@
         <md-menu-item data-testid="menu-item-factory-reset" @onclick="() => Select(OnFactoryReset)">
             <div slot="headline">Factory Reset</div>
         </md-menu-item>
-        @if (ShowStartOver)
-        {
-            <md-menu-item data-testid="menu-item-start-over" disabled="@StartOverDisabled" @onclick="() => Select(OnStartOver)">
-                <div slot="headline">Start Over</div>
-            </md-menu-item>
-        }
     </md-menu>
 </span>
 
@@ -80,16 +74,6 @@
 
     [Parameter, EditorRequired]
     public EventCallback OnFactoryReset { get; set; }
-
-    /// <summary>Result.razor has no "abandon this printer" affordance - only Pairing.razor does.</summary>
-    [Parameter]
-    public bool ShowStartOver { get; set; }
-
-    [Parameter]
-    public EventCallback OnStartOver { get; set; }
-
-    [Parameter]
-    public bool StartOverDisabled { get; set; }
 
     private bool _open;
 

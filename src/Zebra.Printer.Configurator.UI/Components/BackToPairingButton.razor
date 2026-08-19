@@ -13,10 +13,12 @@
    (Cancel is actionable exactly when this is disabled), and staying visible-but-disabled explains
    "why can't I leave right now" better than silently vanishing would.
 
-   Session.Device is only ever populated by Pairing.razor's Continue() when navigating to
-   /configure, so this is correctly hidden both before a printer is ever paired (WaitingForTap) and
-   while already sitting on Pairing.razor's own Ready state - there's no reason to show "go back to
-   pairing" on the page it returns to. *@
+   Session.Device is populated as soon as pairing itself succeeds (Pairing.razor's OnPrinterDiscovered,
+   before it navigates to PrinterDashboard) rather than deferred until a later "Configure Printer"
+   click - so this is hidden only before a printer is ever paired (WaitingForTap/Pairing), and visible
+   everywhere afterward, including PrinterDashboard.razor itself, where it sits alongside that page's
+   own "Disconnect Printer" button as a global equivalent reachable from any page (e.g. mid-Configure),
+   not just the dashboard. *@
 @implements IDisposable
 @inject PairAndConfigureWorkflow Workflow
 @inject FirmwareUpdateStatusMonitor UpdateStatus

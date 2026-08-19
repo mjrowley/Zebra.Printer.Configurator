@@ -1,0 +1,10 @@
+/* Bottom-pinned, full-width destructive action - deliberately outside .button-row (which packs
+   buttons at their natural width) so this reads as a single, separated "leave this screen" action
+   the way the reference dashboard's own Disconnect button does. */
+.dashboard-disconnect {
+    margin-top: 1.5rem;
+}
+
+.dashboard-disconnect ::deep md-filled-button {
+    width: 100%;
+}

@@ -7,20 +7,16 @@ namespace Zebra.Printer.Configurator.ComponentTests.Components;
 // bUnit renders Blazor's own output (plain HTML/attributes) without ever executing a real browser's
 // JS - so @material/web's actual menu open/close animation, positioning, and "closed" event never
 // run here. What IS tested: the Blazor-level contract - the anchor toggles the "open" attribute this
-// component tracks, each menu item's @onclick invokes the right callback, disabled/ShowStartOver
-// reflect correctly, and the "closed" event handler (manually raised via TriggerEventAsync, since
-// bUnit has no real menu to close it for us) resets the tracked open state.
+// component tracks, each menu item's @onclick invokes the right callback, and disabled reflects
+// correctly.
 public class PrinterActionsMenuTests : BunitContext
 {
     private IRenderedComponent<PrinterActionsMenu> RenderMenu(
-        bool showStartOver = false,
         EventCallback? onRecheckConfiguration = null,
         EventCallback? onPushBagTagTemplates = null,
         EventCallback? onCalibrateMedia = null,
         EventCallback? onFactoryReset = null,
-        EventCallback? onStartOver = null,
-        bool recheckConfigurationDisabled = false,
-        bool startOverDisabled = false)
+        bool recheckConfigurationDisabled = false)
     {
         return Render<PrinterActionsMenu>(p =>
         {
@@ -30,9 +26,6 @@ public class PrinterActionsMenuTests : BunitContext
             p.Add(c => c.OnPushBagTagTemplates, onPushBagTagTemplates ?? EventCallback.Empty);
             p.Add(c => c.OnCalibrateMedia, onCalibrateMedia ?? EventCallback.Empty);
             p.Add(c => c.OnFactoryReset, onFactoryReset ?? EventCallback.Empty);
-            p.Add(c => c.ShowStartOver, showStartOver);
-            p.Add(c => c.OnStartOver, onStartOver ?? EventCallback.Empty);
-            p.Add(c => c.StartOverDisabled, startOverDisabled);
         });
     }
 
@@ -50,22 +43,6 @@ public class PrinterActionsMenuTests : BunitContext
         Assert.NotNull(cut.Find("[data-testid='menu-item-push-bag-tag-templates']"));
         Assert.NotNull(cut.Find("[data-testid='menu-item-calibrate-media']"));
         Assert.NotNull(cut.Find("[data-testid='menu-item-factory-reset']"));
-    }
-
-    [Fact]
-    public void ShowStartOverFalse_HidesStartOverItem()
-    {
-        var cut = RenderMenu(showStartOver: false);
-
-        Assert.Empty(cut.FindAll("[data-testid='menu-item-start-over']"));
-    }
-
-    [Fact]
-    public void ShowStartOverTrue_ShowsStartOverItem()
-    {
-        var cut = RenderMenu(showStartOver: true);
-
-        Assert.NotNull(cut.Find("[data-testid='menu-item-start-over']"));
     }
 
     [Fact]
@@ -150,29 +127,10 @@ public class PrinterActionsMenuTests : BunitContext
     }
 
     [Fact]
-    public void ClickingStartOverItem_InvokesCallback()
-    {
-        var invoked = false;
-        var cut = RenderMenu(showStartOver: true, onStartOver: EventCallback.Factory.Create(this, () => invoked = true));
-
-        cut.Find("[data-testid='menu-item-start-over']").Click();
-
-        Assert.True(invoked);
-    }
-
-    [Fact]
     public void RecheckConfigurationDisabled_ReflectsOnItem()
     {
         var cut = RenderMenu(recheckConfigurationDisabled: true);
 
         Assert.True(cut.Find("[data-testid='menu-item-recheck-configuration']").HasAttribute("disabled"));
-    }
-
-    [Fact]
-    public void StartOverDisabled_ReflectsOnItem()
-    {
-        var cut = RenderMenu(showStartOver: true, startOverDisabled: true);
-
-        Assert.True(cut.Find("[data-testid='menu-item-start-over']").HasAttribute("disabled"));
     }
 }

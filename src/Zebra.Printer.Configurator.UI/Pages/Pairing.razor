@@ -2,12 +2,9 @@
 @implements IDisposable
 @inject IPrinterDiscoveryService DiscoveryService
 @inject IBluetoothPairingService BluetoothPairingService
-@inject IPrinterConfigurationReader ConfigurationReader
-@inject IPrinterStatusReader StatusReader
 @inject IAppLog AppLog
 @inject PairingSession Session
 @inject PrinterConnectivityMonitor ConnectivityMonitor
-@inject PrinterActivityMonitor ActivityMonitor
 @inject IWifiConnectivityMonitor WifiMonitor
 @inject IPrinterConnectionModeProvider ConnectionModeProvider
 @inject NavigationManager Navigation
@@ -38,46 +35,6 @@
             </p>
             break;
 
-        case PairingUiState.Ready:
-            <div class="status-card">
-                <h2>Printer Paired</h2>
-                <p data-testid="discovered-device">
-                    Printer found@(_discoveredDevice?.SerialNumber is not null ? $" (serial {_discoveredDevice.SerialNumber})" : ".")
-                </p>
-                <PrinterVersionAlert Device="_discoveredDevice!" WifiIpAddress="@_wifiIpAddress" VersionResult="_printerStatus?.VersionResult" StatusLoading="_statusLoading" OnCancelled="Retry" />
-                @if (_webInterfaceState is { } webInterfaceState)
-                {
-                    <p data-testid="web-interface-status" class="@(webInterfaceState.BothEnabled ? "status-text-success" : "status-text-error")">
-                        Web Interface is currently @(webInterfaceState.BothEnabled ? "enabled" : "disabled").
-                    </p>
-                }
-            </div>
-            <div class="button-row">
-                <md-filled-button type="button" data-testid="configure-printer-button" disabled="@ActivityMonitor.IsBusy" @onclick="Continue">Configure Printer</md-filled-button>
-                <WebInterfaceTogglePanel Device="_discoveredDevice!" InitialState="_webInterfaceState" StatusLoading="_statusLoading" IsActiveChanged="OnWebInterfaceActiveChanged" CurrentStateChanged="OnWebInterfaceStateChanged" />
-                <!-- StartOverDisabled is deliberately NOT ActivityMonitor.IsBusy, unlike Configure
-                     Printer above - Start Over must stay usable as an escape hatch even while a
-                     passive status/firmware check is still in flight (see
-                     ClickingStartOver_WhileStatusCheckStillInFlight_LateResultDoesNotResurfaceStaleData),
-                     only blocked by operations that actually mutate the printer's persistent state. -->
-                <PrinterActionsMenu AnchorId="pairing-actions-menu-anchor"
-                    OnRecheckConfiguration="RecheckConfigurationAsync"
-                    RecheckConfigurationDisabled="@(_checkConfigState.Loading || _factoryResetActive || _templatesActive || _webInterfaceActive || _calibratingActive)"
-                    OnPushBagTagTemplates="() => _bagTagTemplatesPanel!.RequestDeployAsync()"
-                    OnCalibrateMedia="() => _calibrateMediaButton!.RequestConfirmAsync()"
-                    OnFactoryReset="() => _factoryResetPanel!.RequestConfirmAsync()"
-                    ShowStartOver="true"
-                    OnStartOver="Retry"
-                    StartOverDisabled="@(_factoryResetActive || _templatesActive || _webInterfaceActive || _calibratingActive)" />
-            </div>
-            @* Rendered here (not inside the menu itself) so their confirm dialogs/progress/results
-               stay visible in the normal page flow once PrinterActionsMenu's items trigger them via
-               @ref - each renders nothing at all until actually triggered. *@
-            <FactoryResetPanel @ref="_factoryResetPanel" Device="_discoveredDevice!" OnFinished="Retry" IsActiveChanged="OnFactoryResetActiveChanged" />
-            <BagTagTemplatesPanel @ref="_bagTagTemplatesPanel" Device="_discoveredDevice!" IsActiveChanged="OnTemplatesActiveChanged" />
-            <CalibrateMediaButton @ref="_calibrateMediaButton" Device="_discoveredDevice!" IsActiveChanged="OnCalibrationActiveChanged" />
-            break;
-
         case PairingUiState.Failed:
             <p class="status-text-error" data-testid="pairing-error">@_errorMessage</p>
             <md-filled-button type="button" @onclick="Retry">Try Again</md-filled-button>
@@ -85,81 +42,37 @@
     }
 </div>
 
-@if (_state == PairingUiState.Ready)
-{
-    <CheckConfigurationResults State="_checkConfigState" />
-}
-
 @code {
     private enum PairingUiState
     {
         WaitingForTap,
         Pairing,
-        Ready,
         Failed,
     }
 
-    private const int DefaultWifiProbePort = 6101;
-    private static readonly TimeSpan WifiProbeTimeout = TimeSpan.FromSeconds(3);
-
-    // Overridable (rather than a plain const) so component tests can point the reachability probe
-    // at a local TcpListener on a free port instead of the real, fixed SGD port.
-    [Parameter]
-    public int WifiProbePort { get; set; } = DefaultWifiProbePort;
-
     private PairingUiState _state = PairingUiState.WaitingForTap;
-    private PrinterDevice? _discoveredDevice;
     private string? _errorMessage;
-    private bool _factoryResetActive;
-    private bool _templatesActive;
-    private bool _webInterfaceActive;
-    private bool _calibratingActive;
-    private string? _wifiIpAddress;
-    private CheckConfigurationState _checkConfigState = new();
-    private PrinterStatus? _printerStatus;
-    private WebInterfaceState? _webInterfaceState;
-    private bool _statusLoading;
-    private int _statusRequestVersion;
-    private FactoryResetPanel? _factoryResetPanel;
-    private BagTagTemplatesPanel? _bagTagTemplatesPanel;
-    private CalibrateMediaButton? _calibrateMediaButton;
 
     private string FunctionName => _state switch
     {
         PairingUiState.WaitingForTap => "Pair a Printer",
         PairingUiState.Pairing => "NFC/BT Pairing",
-        PairingUiState.Ready => "Printer Paired",
         PairingUiState.Failed => "Pairing Failed",
         _ => "Pair a Printer",
     };
 
-    // Session.Device is only ever populated by Continue() below, so landing here with one already
-    // set means some other page (Configure.razor's Back button today) navigated back to an
-    // already-paired printer rather than this being a fresh app launch or an explicit Retry/Cancel -
-    // those clear Session.Device themselves before navigating here specifically so this still takes
-    // the fresh-scan path below. Restoring goes straight to Ready with a re-run WiFi check rather
-    // than waiting for a re-tap, since the printer is still bonded either way.
-    protected override async Task OnInitializedAsync()
+    // Session.Device is only ever populated once pairing actually succeeds below (or was already set
+    // by an earlier pairing attempt this session) - landing here with one already set means some
+    // other page (Configure.razor's Back button today) navigated back rather than this being a fresh
+    // app launch or an explicit Disconnect/Cancel - those clear Session.Device themselves before
+    // navigating here specifically so this still takes the fresh-scan path below. Restoring goes
+    // straight to the dashboard rather than waiting for a re-tap, since the printer is still bonded
+    // either way.
+    protected override void OnInitialized()
     {
-        // Configure Printer's disabled attribute reads ActivityMonitor.IsBusy directly in markup -
-        // without this subscription, this page only re-evaluates that expression when ITS OWN state
-        // changes trigger a render, so a child component's activity clearing (e.g. PrinterVersionAlert's
-        // Firmware Version Check ending) would never be reflected here until some unrelated render
-        // happened to occur afterward.
-        ActivityMonitor.Changed += OnActivityChanged;
-
         if (Session.Device is not null)
         {
-            _discoveredDevice = Session.Device;
-            _checkConfigState = new CheckConfigurationState();
-            _checkConfigState.SetLoading();
-            _printerStatus = null;
-            _statusLoading = true;
-            _state = PairingUiState.Ready;
-            ConnectivityMonitor.SetBluetooth(ConnectionIndicatorState.Connected);
-            StateHasChanged();
-            await CheckWifiConnectivityAsync(_discoveredDevice);
-            await LoadPrinterStatusAsync(_discoveredDevice, allowBleFallback: false);
+            Navigation.NavigateTo("/dashboard", replace: true);
             return;
         }
 
@@ -188,8 +101,6 @@
                 return;
             }
 
-            _discoveredDevice = device;
-            _checkConfigState = new CheckConfigurationState();
             _state = PairingUiState.Pairing;
             ConnectivityMonitor.SetBluetooth(ConnectionIndicatorState.Connecting);
             StateHasChanged();
@@ -197,212 +108,32 @@
             var paired = await BluetoothPairingService.EnsurePairedAsync(device.BluetoothMacAddress);
 
             ConnectivityMonitor.SetBluetooth(paired ? ConnectionIndicatorState.Connected : ConnectionIndicatorState.Error);
-            _errorMessage = paired
-                ? null
-                : "Could not pair with the printer. Make sure it's powered on and in range, then try again.";
+
+            if (paired)
+            {
+                Session.Device = device;
+                Navigation.NavigateTo("/dashboard");
+                return;
+            }
+
+            _errorMessage = "Could not pair with the printer. Make sure it's powered on and in range, then try again.";
+            _state = PairingUiState.Failed;
             StateHasChanged();
-
-            if (paired)
-            {
-                // Runs before entering Ready - which is when PrinterVersionAlert/WebInterfaceTogglePanel
-                // mount. Bluetooth Classic only reliably supports one active connection to this
-                // printer at a time, so this and the merged status read below must not run
-                // concurrently (confirmed on-device: running two Bluetooth reads in parallel here
-                // produced a corrupted/empty WiFi IP address that then broke the firmware update's
-                // TcpConnection with a cryptic "hostname nor servname provided" error).
-                await CheckWifiConnectivityAsync(device);
-            }
-
-            if (paired)
-            {
-                _printerStatus = null;
-                _statusLoading = true;
-                _checkConfigState.SetLoading();
-            }
-            _state = paired ? PairingUiState.Ready : PairingUiState.Failed;
-            StateHasChanged();
-
-            if (paired)
-            {
-                await LoadPrinterStatusAsync(device, allowBleFallback: false);
-            }
         });
     }
 
-    // Runs automatically whenever a tap either freshly pairs or finds a printer already bonded -
-    // covers both a brand-new printer and re-tapping one that was already configured on WiFi in an
-    // earlier session, where Bluetooth pairing alone gives no indication of WiFi reachability at all.
-    // Uses the Bluetooth link that's already just been confirmed to ask the printer for its own
-    // wlan.ip.addr, rather than requiring the user to press "Check Configuration" first.
-    private async Task CheckWifiConnectivityAsync(PrinterDevice device)
-    {
-        ConnectivityMonitor.SetWifi(ConnectionIndicatorState.Connecting);
-        StateHasChanged();
-
-        try
-        {
-            // allowBleFallback: false - this runs immediately after a fresh Bluetooth bond, and a
-            // BLE fallback attempted that soon can silently trigger a second, unexpected OS pairing
-            // dialog (see PrinterConnectionRunner's own doc comment).
-            var values = await ConfigurationReader.ReadConfigurationAsync(device, allowBleFallback: false);
-            var ipAddress = values.FirstOrDefault(v => v.Key == "wlan.ip.addr")?.Value;
-
-            if (string.IsNullOrWhiteSpace(ipAddress) || ipAddress == "0.0.0.0")
-            {
-                AppLog.Log("Printer does not have a WiFi connection configured.", LogLevel.Warning);
-                ConnectivityMonitor.SetWifi(ConnectionIndicatorState.Error);
-                StateHasChanged();
-                return;
-            }
-
-            _wifiIpAddress = ipAddress;
-            var reachable = await TcpPortProbe.IsReachableAsync(ipAddress, WifiProbePort, WifiProbeTimeout);
-            AppLog.Log(
-                reachable
-                    ? $"Printer is reachable via WiFi at {ipAddress}."
-                    : $"Printer is not currently reachable via WiFi at {ipAddress}.",
-                reachable ? LogLevel.Success : LogLevel.Warning);
-            ConnectivityMonitor.SetWifi(reachable ? ConnectionIndicatorState.Connected : ConnectionIndicatorState.Error);
-            StateHasChanged();
-
-            // Keeps the indicator live afterward regardless of this first result - the printer may
-            // still be finishing its own WiFi association right after a reboot/re-tap.
-            WifiMonitor.Start(ipAddress);
-        }
-        catch (Exception ex)
-        {
-            AppLog.Log($"Could not check WiFi connectivity: {ex.Message}", LogLevel.Warning);
-            ConnectivityMonitor.SetWifi(ConnectionIndicatorState.Error);
-            StateHasChanged();
-        }
-    }
-
-    // Reads firmware version + web interface state + the full configuration list in one connection
-    // (see PrinterStatus's own doc comment for why) - populates PrinterVersionAlert/
-    // WebInterfaceTogglePanel via their VersionResult/InitialState + StatusLoading parameters, and
-    // CheckConfigurationResults via _checkConfigState, so the configuration list appears
-    // automatically rather than only after a manual click. Callers set _statusLoading = true and
-    // _checkConfigState.SetLoading() *before* the render that mounts Ready's children (not in here)
-    // so those children's very first parameter-set already reflects "loading", never a transient
-    // false window.
-    //
-    // _statusRequestVersion guards against a stale result: "Start Over" lets the user abandon this
-    // printer (and reset _checkConfigState to a brand new instance) while this read is still in
-    // flight - actually interrupting the underlying blocking Bluetooth call is out of scope (see
-    // LinkOsPrinterVersionCheckService's own note on this), so the read itself keeps running in the
-    // background regardless. Without this guard, its eventual completion would still write into
-    // whatever _printerStatus/_checkConfigState happen to be live by then - either the fields Retry()
-    // just reset, or (worse) a different printer's if the user has already re-tapped - rather than
-    // being silently discarded as the abandoned attempt it is.
-    private async Task LoadPrinterStatusAsync(PrinterDevice device, bool allowBleFallback)
-    {
-        var requestVersion = ++_statusRequestVersion;
-        using var _ = ActivityMonitor.Begin("Printer Status Check");
-        try
-        {
-            var status = await StatusReader.ReadStatusAsync(device, allowBleFallback);
-            if (requestVersion != _statusRequestVersion)
-            {
-                return;
-            }
-
-            _printerStatus = status;
-            _webInterfaceState = status.WebInterfaceState;
-            _checkConfigState.SetResults(_printerStatus.ConfigurationValues);
-        }
-        catch (Exception ex)
-        {
-            if (requestVersion != _statusRequestVersion)
-            {
-                return;
-            }
-
-            // _webInterfaceState is deliberately left untouched here - a failed merged read doesn't
-            // invalidate a web interface state that was already confirmed (whether from an earlier
-            // merged read or from WebInterfaceTogglePanel's own follow-up reads), it just means this
-            // particular attempt to refresh it didn't pan out.
-            _printerStatus = null;
-            _checkConfigState.SetError($"Could not check printer status: {ex.Message}");
-        }
-        finally
-        {
-            if (requestVersion == _statusRequestVersion)
-            {
-                _statusLoading = false;
-                StateHasChanged();
-            }
-        }
-    }
-
-    // "Recheck Configuration" button - re-runs the same merged read as the automatic first check,
-    // refreshing the firmware status/web interface state/configuration list together.
-    private Task RecheckConfigurationAsync()
-    {
-        if (_discoveredDevice is null)
-        {
-            return Task.CompletedTask;
-        }
-
-        _printerStatus = null;
-        _statusLoading = true;
-        _checkConfigState.SetLoading();
-        StateHasChanged();
-        return LoadPrinterStatusAsync(_discoveredDevice, allowBleFallback: true);
-    }
-
-    private void Continue()
-    {
-        if (_discoveredDevice is null || _factoryResetActive)
-        {
-            return;
-        }
-
-        Session.Device = _discoveredDevice;
-        Navigation.NavigateTo("/configure");
-    }
-
-    private void OnFactoryResetActiveChanged(bool active) => _factoryResetActive = active;
-
-    private void OnTemplatesActiveChanged(bool active) => _templatesActive = active;
-
-    private void OnWebInterfaceActiveChanged(bool active) => _webInterfaceActive = active;
-
-    private void OnCalibrationActiveChanged(bool active) => _calibratingActive = active;
-
-    // Keeps the top "Web Interface is currently..." line in sync with what WebInterfaceTogglePanel
-    // itself most recently confirmed (Retry()/CloseComplete's self-heal reads) - without this, that
-    // line stays frozen at whatever the last merged/Recheck read said even after the panel's own
-    // toggle-and-restart flow successfully changes and re-confirms the real state.
-    private void OnWebInterfaceStateChanged(WebInterfaceState? state) => _webInterfaceState = state;
-
     private void Retry()
     {
-        // Invalidates any LoadPrinterStatusAsync call still in flight (e.g. "Start Over" clicked
-        // mid-check) - see that method's own comment on _statusRequestVersion.
-        _statusRequestVersion++;
-        _discoveredDevice = null;
         _errorMessage = null;
-        _factoryResetActive = false;
-        _templatesActive = false;
-        _webInterfaceActive = false;
-        _calibratingActive = false;
-        _wifiIpAddress = null;
-        _printerStatus = null;
-        _webInterfaceState = null;
-        _statusLoading = false;
-        _checkConfigState = new CheckConfigurationState();
         ConnectivityMonitor.Reset();
         WifiMonitor.Stop();
         ConnectionModeProvider.UseBluetooth();
         _state = PairingUiState.WaitingForTap;
     }
 
-    private void OnActivityChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
-
     public void Dispose()
     {
         DiscoveryService.PrinterDiscovered -= OnPrinterDiscovered;
         DiscoveryService.StopListening();
-        ActivityMonitor.Changed -= OnActivityChanged;
     }
 }

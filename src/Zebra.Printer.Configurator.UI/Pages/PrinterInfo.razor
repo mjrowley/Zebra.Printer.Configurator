@@ -1,0 +1,91 @@
+@page "/dashboard/info"
+@inject PairingSession Session
+@inject IPrinterStatusReader StatusReader
+@inject NavigationManager Navigation
+
+@* Read-only "About Printer" drill-in - General/Connectivity sections built entirely from data this
+   app already reads today (PrinterStatus's merged VersionResult/ConfigurationValues, plus
+   PrinterDevice's own fields). Deliberately does NOT include a "Printing information" section
+   (Status/Mode/Speed/Darkness, Media Width/Length, Odometers) or the Bluetooth-specific fields beyond
+   the MAC address (min security mode, bonding, enable reconnect, controller mode) shown in some
+   reference dashboards - this app has no SGD read for any of those today, and inventing UI for data
+   that doesn't exist would misrepresent what the printer actually reports. Adding them would need new
+   evidence-based SGD key research (per this project's own established convention - never guess a
+   physical-device SGD key, verify via docs.zebra.com first) as a clearly separate future step. *@
+<div class="section-sticky-header">
+    <h1>About Printer</h1>
+    <md-outlined-button type="button" data-testid="printer-info-back-button" @onclick="Back">Back</md-outlined-button>
+</div>
+
+@if (_loading)
+{
+    <p data-testid="printer-info-loading">
+        <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
+        Loading printer information&hellip;
+    </p>
+}
+else if (_errorMessage is not null)
+{
+    <p class="status-text-error" data-testid="printer-info-error">@_errorMessage</p>
+}
+else
+{
+    <PrinterInfoSection Title="General" Rows="@GeneralRows()" />
+    <PrinterInfoSection Title="Connectivity" Rows="@ConnectivityRows()" />
+}
+
+@code {
+    private PrinterStatus? _status;
+    private bool _loading = true;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Session.Device is null)
+        {
+            Navigation.NavigateTo("/", replace: true);
+            return;
+        }
+
+        try
+        {
+            // allowBleFallback: true - matches PrinterDashboard's own Configure-arrival/Recheck
+            // Configuration reads, both of which run well outside the fresh-bond race window this
+            // flag exists for (see PrinterConnectionRunner's own doc comment).
+            _status = await StatusReader.ReadStatusAsync(Session.Device, allowBleFallback: true);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Could not load printer information: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string? Value(string key) => _status?.ConfigurationValues.FirstOrDefault(v => v.Key == key)?.Value;
+
+    private IReadOnlyList<(string Label, string Value)> GeneralRows() =>
+    [
+        ("Printer Name", Value("device.friendly_name") ?? "Unknown"),
+        ("Link-OS Version", _status?.VersionResult.LinkOsVersionFound ?? "Unknown"),
+        ("Firmware Version", _status?.VersionResult.FirmwareVersionFound ?? "Unknown"),
+        ("Serial Number", Session.Device?.SerialNumber ?? "Unknown"),
+    ];
+
+    private IReadOnlyList<(string Label, string Value)> ConnectivityRows() =>
+    [
+        ("WiFi SSID", Value("wlan.essid") ?? "Unknown"),
+        ("Security Mode", Value("wlan.security") ?? "Unknown"),
+        ("WiFi State", Value("wlan.state") ?? "Unknown"),
+        ("IP Address", Value("wlan.ip.addr") ?? "Unknown"),
+        ("Subnet Mask", Value("wlan.ip.netmask") ?? "Unknown"),
+        ("Gateway", Value("wlan.ip.gateway") ?? "Unknown"),
+        ("IP Address Protocol", Value("wlan.ip.protocol") ?? "Unknown"),
+        ("DHCP Enabled", Value("ip.dhcp.enable") ?? "Unknown"),
+        ("Bluetooth MAC Address", Session.Device?.BluetoothMacAddress ?? "Unknown"),
+    ];
+
+    private void Back() => Navigation.NavigateTo("/dashboard");
+}

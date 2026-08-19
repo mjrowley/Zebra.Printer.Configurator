@@ -1,0 +1,23 @@
+@* A titled card of read-only key/value rows, reusing the same .status-card/.config-list markup
+   CheckConfigurationResults.razor already established for this exact visual pattern rather than
+   inventing a new one - PrinterInfo.razor uses this twice (General/Connectivity). *@
+<div class="status-card" data-testid="printer-info-section">
+    <h2>@Title</h2>
+    <div class="config-list">
+        @foreach (var (label, value) in Rows)
+        {
+            <div class="config-list-row">
+                <span>@label</span>
+                <span class="config-list-value">@value</span>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<(string Label, string Value)> Rows { get; set; } = [];
+}
