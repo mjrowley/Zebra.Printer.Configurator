@@ -11,7 +11,10 @@ namespace Zebra.Printer.Configurator.Core.Connectivity;
 /// </summary>
 public sealed class WifiConnectivityMonitor(PrinterConnectivityMonitor connectivityMonitor, IAppLog appLog) : IWifiConnectivityMonitor
 {
-    private const int DefaultSgdPort = 6101;
+    // General SGD/status traffic - see PrinterConnectionRunner's own doc comment (Infrastructure.Android)
+    // for why this differs from the file-transfer-only port (6101), confirmed via direct on-device
+    // port testing against the printer (2026-08-19).
+    private const int DefaultSgdPort = 9100;
 
     // Mutable (not const/readonly) so integration tests can point this at a local TcpListener on an
     // arbitrary free port, and shrink the interval/timeout for fast, deterministic polling instead

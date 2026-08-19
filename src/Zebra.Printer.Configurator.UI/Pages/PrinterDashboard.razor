@@ -106,7 +106,10 @@
 }
 
 @code {
-    private const int DefaultWifiProbePort = 6101;
+    // General SGD/status traffic - see PrinterConnectionRunner's own doc comment
+    // (Infrastructure.Android) for why this differs from the file-transfer-only port (6101),
+    // confirmed via direct on-device port testing against the printer (2026-08-19).
+    private const int DefaultWifiProbePort = 9100;
     private static readonly TimeSpan NetworkProbeTimeout = TimeSpan.FromSeconds(3);
 
     // Overridable (rather than a plain const) so component tests can point the reachability probes

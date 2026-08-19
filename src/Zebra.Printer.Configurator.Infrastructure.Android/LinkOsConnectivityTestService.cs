@@ -26,7 +26,12 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// </summary>
 public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnectivityMonitor connectivityMonitor, PrinterOperationCancellation cancellation) : IPrinterConnectivityTestService
 {
-    private const int SgdPort = 6101;
+    // Confirmed via direct on-device port testing against the printer (2026-08-19): general SGD
+    // traffic (this reachability probe, plus the wlan.state read right after) only responds
+    // reliably on 9100 - 6101 is reserved for actual file transfers (see PrinterConnectionRunner's
+    // own FileTransferSgdPort). Using 6101 here was the root cause of a "Printer did not respond"
+    // timeout being reported even when the printer had genuinely rejoined WiFi.
+    private const int SgdPort = 9100;
     private static readonly TimeSpan PollTimeout = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(3);

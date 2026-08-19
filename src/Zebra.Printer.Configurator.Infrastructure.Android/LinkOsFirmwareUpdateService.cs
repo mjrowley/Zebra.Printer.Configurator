@@ -14,11 +14,12 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// FirmwareUpdaterLinkOs (reached through ZebraPrinterLinkOs.UpdateFirmwareUnconditionally),
 /// wrapped with ZebraPrinterFactory.GetLinkOsPrinter.
 ///
-/// Uses port 6101 (LinkOsPort below), not TcpConnection.DEFAULT_ZPL_TCP_PORT (9100) - 9100 is the
-/// raw, intermittent-print-job port and was observed on-device throttling a 41MB firmware transfer
-/// to ~10 minutes; 6101 is the same Link-OS/SGD port this app already uses for every other WiFi
-/// transfer (PrinterConnectionRunner.SgdPort, including the 5.9MB PDF Direct virtual device file and
-/// the bag tag templates), which has proven fast and reliable for binary payloads in this app.
+/// Uses port 6101 (LinkOsPort below), not TcpConnection.DEFAULT_ZPL_TCP_PORT (9100) - 9100 was
+/// observed on-device throttling a 41MB firmware transfer to ~10 minutes, and (confirmed separately
+/// via direct on-device port testing, 2026-08-19) is the port general SGD/status traffic actually
+/// needs - 6101 is reserved specifically for large file transfers, matching
+/// PrinterConnectionRunner.FileTransferSgdPort (used explicitly by the bag tag template push, the
+/// other large binary payload in this app), proven fast and reliable on this port.
 ///
 /// Uses "Unconditionally" deliberately, not the plain UpdateFirmware overload - confirmed on-device
 /// that the plain overload's own version check (which only compares the firmware string) silently

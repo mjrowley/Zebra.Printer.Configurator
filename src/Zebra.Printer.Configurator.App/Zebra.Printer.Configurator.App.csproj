@@ -37,7 +37,7 @@
                 CI for this project, but kept for parity/future-proofing.
         -->
         <VersionMajor>1</VersionMajor>
-        <VersionMinor>82</VersionMinor>
+        <VersionMinor>83</VersionMinor>
         <ApplicationDisplayVersion>$(VersionMajor).$(VersionMinor)</ApplicationDisplayVersion>
         <!-- Evaluate ApplicationVersion at project-evaluation time so Android tooling can read
              AndroidVersionCode when generating the manifest. This mirrors the SetAppVersion target

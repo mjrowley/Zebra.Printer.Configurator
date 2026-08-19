@@ -73,7 +73,7 @@ public sealed class LinkOsBagTagTemplateService(
                 appLog.Log($"Sending {printerFileName}...");
                 printer.SendFileContents(localPath);
             }
-        }, appLog, cancellation: null, cancellationToken);
+        }, appLog, cancellation: null, cancellationToken, wifiPort: PrinterConnectionRunner.FileTransferSgdPort);
 
         appLog.Log("Bag tag templates sent to the printer.", LogLevel.Success);
     }

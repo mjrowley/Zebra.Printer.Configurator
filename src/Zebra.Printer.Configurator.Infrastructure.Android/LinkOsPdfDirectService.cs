@@ -26,6 +26,14 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// The asset is extracted to a local file before this runs, not inside the session's RunAsync
 /// delegate - that delegate is synchronous (run inside its own Task.Run), so the async file copy
 /// can't happen partway through it.
+///
+/// The occasional SendFileContents call here (5.9MB, only on a printer that's never had PDF Direct
+/// installed) runs over whichever port the shared PrinterConnectionSession already opened with -
+/// PrinterConnectionRunner's general SGD port (9100), not FileTransferSgdPort (6101) - since this
+/// step shares one connection with the rest of PairAndConfigureWorkflow's pre-restart sequence
+/// (config apply, restart) rather than opening its own. Unlike the 41MB firmware transfer that
+/// specifically needed 6101, a 5.9MB one-time transfer on 9100 hasn't been observed to be a
+/// practical problem.
 /// </summary>
 public sealed class LinkOsPdfDirectService(IAppLog appLog) : IPdfDirectService
 {

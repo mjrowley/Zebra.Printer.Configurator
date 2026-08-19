@@ -15,21 +15,38 @@ namespace Zebra.Printer.Configurator.Infrastructure.Android;
 /// exhausts its own retries, BleConnectionRunner is tried as a last resort before giving up -
 /// mirroring Zebra's own Printer Setup Utility's documented connection search order (network, then
 /// Bluetooth Classic, then Bluetooth LE) at the transport layer, for every caller automatically.
+///
+/// The WiFi TCP port defaults to DefaultSgdPort (general SGD traffic) - callers that are actually
+/// pushing a file to the printer (SendFileContents) should pass FileTransferSgdPort explicitly
+/// instead; see both constants' own doc comments for why they differ.
 /// </summary>
 internal static class PrinterConnectionRunner
 {
-    private const int SgdPort = 6101;
+    // Confirmed via direct on-device port testing against the printer (2026-08-19): general SGD
+    // get/set/do traffic (apply configuration, restart, factory reset, calibration, status/version
+    // reads, web interface toggle, file *listing*) only responds reliably on 9100 - 6101 is reserved
+    // for actual file transfers (SendFileContents), which is where FileTransferSgdPort below is used
+    // explicitly instead. Do not use 6101 as the default for a new caller unless it's genuinely
+    // pushing a file to the printer.
+    private const int DefaultSgdPort = 9100;
 
-    public static Task RunAsync(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, Action<Connection> action, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken, bool allowBleFallback = true) =>
+    // See LinkOsFirmwareUpdateService's own doc comment for why 6101 (not 9100) is used for large
+    // binary transfers specifically - 9100 was observed on-device throttling a 41MB firmware transfer
+    // to ~10 minutes, where 6101 proved fast and reliable. Only the callers that actually push a file
+    // via SendFileContents should pass this explicitly (LinkOsBagTagTemplateService.DeployTemplatesAsync
+    // today) - everything else should use the DefaultSgdPort above.
+    public const int FileTransferSgdPort = 6101;
+
+    public static Task RunAsync(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, Action<Connection> action, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken, bool allowBleFallback = true, int wifiPort = DefaultSgdPort) =>
         RunAsync<object?>(device, connectionModeProvider, connection =>
         {
             action(connection);
             return null;
-        }, appLog, cancellation, cancellationToken, allowBleFallback);
+        }, appLog, cancellation, cancellationToken, allowBleFallback, wifiPort);
 
-    public static async Task<T> RunAsync<T>(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, Func<Connection, T> func, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken, bool allowBleFallback = true)
+    public static async Task<T> RunAsync<T>(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, Func<Connection, T> func, IAppLog appLog, PrinterOperationCancellation? cancellation, CancellationToken cancellationToken, bool allowBleFallback = true, int wifiPort = DefaultSgdPort)
     {
-        var connection = await OpenAsync(device, connectionModeProvider, appLog, cancellationToken, allowBleFallback);
+        var connection = await OpenAsync(device, connectionModeProvider, appLog, cancellationToken, allowBleFallback, wifiPort);
         using var _ = cancellation?.TrackActiveConnection(connection.Close);
         try
         {
@@ -72,11 +89,11 @@ internal static class PrinterConnectionRunner
     /// as a second, unexpected system pairing dialog with its own code right on the heels of the
     /// Classic one.
     /// </summary>
-    public static Task<Connection> OpenAsync(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, IAppLog appLog, CancellationToken cancellationToken, bool allowBleFallback = true)
+    public static Task<Connection> OpenAsync(PrinterDevice device, IPrinterConnectionModeProvider connectionModeProvider, IAppLog appLog, CancellationToken cancellationToken, bool allowBleFallback = true, int wifiPort = DefaultSgdPort)
     {
         if (connectionModeProvider.Mode == PrinterConnectionMode.Wifi && connectionModeProvider.WifiIpAddress is not null)
         {
-            return OpenWifiAsync(connectionModeProvider.WifiIpAddress, cancellationToken);
+            return OpenWifiAsync(connectionModeProvider.WifiIpAddress, wifiPort, cancellationToken);
         }
 
         return OpenBluetoothAsync(device.BluetoothMacAddress, appLog, cancellationToken, allowBleFallback);
@@ -95,10 +112,10 @@ internal static class PrinterConnectionRunner
         }
     }
 
-    private static Task<Connection> OpenWifiAsync(string ipAddress, CancellationToken cancellationToken) =>
+    private static Task<Connection> OpenWifiAsync(string ipAddress, int port, CancellationToken cancellationToken) =>
         Task.Run(() =>
         {
-            Connection connection = new TcpConnection(ipAddress, SgdPort);
+            Connection connection = new TcpConnection(ipAddress, port);
             connection.Open();
             return connection;
         }, cancellationToken);
