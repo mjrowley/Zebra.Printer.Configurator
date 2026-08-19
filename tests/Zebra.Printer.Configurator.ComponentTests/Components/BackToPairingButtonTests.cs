@@ -111,6 +111,34 @@ public class BackToPairingButtonTests : BunitContext
     }
 
     [Fact]
+    public void WhenOnDashboardRoute_ButtonIsHidden()
+    {
+        // PrinterDashboard.razor has its own identical-purpose "Disconnect Printer" button - showing
+        // this one too there would be a confusing exact duplicate (see PrinterDashboard's route).
+        _session.Device = Device;
+        var cut = Render<BackToPairingButton>();
+        var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+
+        navigation.NavigateTo("/dashboard");
+
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[data-testid='back-to-pairing-button']")));
+    }
+
+    [Fact]
+    public void WhenOnDashboardInfoRoute_ButtonStaysVisible()
+    {
+        // /dashboard/info has no disconnect affordance of its own - must not be treated as the
+        // dashboard route just because it starts with the same prefix.
+        _session.Device = Device;
+        var cut = Render<BackToPairingButton>();
+        var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+
+        navigation.NavigateTo("/dashboard/info");
+
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='back-to-pairing-button']")));
+    }
+
+    [Fact]
     public void ClickingButton_ShowsConfirmationDialog()
     {
         _session.Device = Device;

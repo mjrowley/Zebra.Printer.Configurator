@@ -15,10 +15,11 @@
 
    Session.Device is populated as soon as pairing itself succeeds (Pairing.razor's OnPrinterDiscovered,
    before it navigates to PrinterDashboard) rather than deferred until a later "Configure Printer"
-   click - so this is hidden only before a printer is ever paired (WaitingForTap/Pairing), and visible
-   everywhere afterward, including PrinterDashboard.razor itself, where it sits alongside that page's
-   own "Disconnect Printer" button as a global equivalent reachable from any page (e.g. mid-Configure),
-   not just the dashboard. *@
+   click - so this is hidden only before a printer is ever paired (WaitingForTap/Pairing). Also hidden
+   specifically on PrinterDashboard.razor's own route (but not its /dashboard/info sub-route) - that
+   page has an identical-purpose "Disconnect Printer" button of its own, so showing both there was a
+   confusing exact duplicate; everywhere else a paired device exists but has no such button of its own
+   (mid-Configure, mid-Progress, the info drill-in), this remains the only way to abandon the printer. *@
 @implements IDisposable
 @inject PairAndConfigureWorkflow Workflow
 @inject FirmwareUpdateStatusMonitor UpdateStatus
@@ -29,7 +30,7 @@
 @inject IPrinterConnectionModeProvider ConnectionModeProvider
 @inject NavigationManager Navigation
 
-@if (Session.Device is not null)
+@if (Session.Device is not null && !IsOnDashboardRoute)
 {
     @if (_confirming)
     {
@@ -69,6 +70,10 @@
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) =>
         InvokeAsync(StateHasChanged);
+
+    // Exact match only - "/dashboard/info" (no disconnect button of its own) must NOT be treated as
+    // the dashboard route here, or that page would lose its only way to abandon the printer.
+    private bool IsOnDashboardRoute => Navigation.Uri.EndsWith("/dashboard", StringComparison.Ordinal);
 
     private bool IsBusy =>
         Workflow.State is
