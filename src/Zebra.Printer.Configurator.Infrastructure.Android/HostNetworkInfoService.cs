@@ -22,19 +22,40 @@ public sealed class HostNetworkInfoService : IHostNetworkInfoService
     public async Task<HostNetworkInfo?> GetCurrentAsync(CancellationToken cancellationToken = default)
     {
         var connectivityManager = (ConnectivityManager?)Application.Context.GetSystemService(Context.ConnectivityService);
-        var activeNetwork = connectivityManager?.ActiveNetwork;
-        if (connectivityManager is null || activeNetwork is null)
+        if (connectivityManager is null)
         {
             return null;
         }
 
-        var capabilities = connectivityManager.GetNetworkCapabilities(activeNetwork);
-        if (capabilities is null || !capabilities.HasTransport(TransportType.Wifi))
+        // Not just ActiveNetwork - Android picks whichever network it considers best for
+        // general/internet-bound traffic there, which can be cellular even while the phone has a
+        // real WiFi connection alongside it, specifically when that WiFi network has no validated
+        // internet access (exactly the case for a store/warehouse WiFi network being set up for a
+        // printer, or one that's simply offline) - confirmed against Android's own ConnectivityManager
+        // docs: ActiveNetwork reflects the default-route network for apps that haven't requested a
+        // specific one, not "every network currently connected." This app doesn't need internet on
+        // this network at all - only its own IP/netmask/gateway, to push the printer's static
+        // configuration onto the same local subnet - so every connected network is scanned for one
+        // with WiFi transport instead of trusting ActiveNetwork's own internet-routing preference.
+        //
+        // GetAllNetworks() is deprecated (API 31+) in favor of registering a NetworkCallback and
+        // tracking connected networks from its own onAvailable/onLost calls - real async plumbing
+        // for what's a one-shot lookup here (same tradeoff TryGetCurrentSsidAsync below already
+        // makes for WifiManager.ConnectionInfo). It's deprecated, not removed, and still returns
+        // every currently-connected network on every OS version this app targets (33-36).
+#pragma warning disable CA1422
+        var wifiNetwork = connectivityManager.GetAllNetworks()?.FirstOrDefault(network =>
+        {
+            var caps = connectivityManager.GetNetworkCapabilities(network);
+            return caps is not null && caps.HasTransport(TransportType.Wifi);
+        });
+#pragma warning restore CA1422
+        if (wifiNetwork is null)
         {
             return null;
         }
 
-        var linkProperties = connectivityManager.GetLinkProperties(activeNetwork);
+        var linkProperties = connectivityManager.GetLinkProperties(wifiNetwork);
         if (linkProperties is null)
         {
             return null;
