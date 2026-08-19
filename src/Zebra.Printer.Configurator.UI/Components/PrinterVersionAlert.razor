@@ -7,12 +7,15 @@
    unsupported model, which never can).
 
    A firmware update can only ever be performed over WiFi (FirmwareUpdateLauncher needs a reachable
-   IP), so the check itself doesn't even run until that's available - there's no point telling the
-   user about an update they can't act on yet, and a never-configured printer has no WiFi at all when
-   this first renders on Pairing.razor ("Configure Printer" is exactly what gives it one). Nothing
-   renders and Configure isn't blocked in that case; callers are expected to re-render this component
-   once WiFi might exist (e.g. Result.razor, after a successful configuration) so the check actually
-   runs and can offer/enforce the update then.
+   IP) - there's no point telling the user about an update they can't act on yet, so a never-configured
+   printer (no WiFi at all when this first renders on Pairing.razor - "Configure Printer" is exactly
+   what gives it one) never shows a version-check result and Configure isn't blocked. It still shows
+   its own loading spinner for as long as the page's merged status read is genuinely in flight though
+   (see StatusLoading below) - that read runs and disables Configure regardless of WiFi availability,
+   and WebInterfaceTogglePanel deliberately defers its own loading spinner to this one, so silently
+   showing nothing here would leave the whole page looking frozen with no explanation. Callers are
+   expected to re-render this component once WiFi might exist (e.g. Result.razor, after a successful
+   configuration) so a firmware check result can actually be offered/enforced then.
 
    The actual transfer runs in FirmwareUpdateForegroundService (Android), not an inline awaited call
    here - a plain awaited Task tied to this component's lifecycle would be abandoned if the user
@@ -189,21 +192,17 @@ else if (_result is not null)
             return;
         }
 
-        if (!CanUpdateFirmware)
-        {
-            // A firmware update can only ever be performed over WiFi - no point running a Bluetooth
-            // version check (or showing anything) for a result the user couldn't act on yet anyway.
-            // See this component's own doc comment for the never-configured-printer/deadlock case
-            // this most commonly applies to.
-            _loading = false;
-            await NotifyBlockingChanged();
-            return;
-        }
-
         // Reflects the page's own merged status read (StatusLoading/VersionResult) rather than
         // running its own separate Bluetooth check - that used to race WebInterfaceTogglePanel's
         // own independent initial read, corrupting one of the two (confirmed on-device: a real
-        // printer with the web interface enabled got falsely reported as disabled).
+        // printer with the web interface enabled got falsely reported as disabled). Tracked even
+        // when !CanUpdateFirmware (e.g. a freshly-paired printer with no WiFi configured yet) -
+        // WebInterfaceTogglePanel deliberately defers its own loading spinner to this component's
+        // "Checking printer configuration..." one while the merged read is in flight (see its own
+        // comment), so this must still show it regardless of whether a firmware-update *result*
+        // will end up being actionable once the read completes - confirmed on-device: a fresh pair
+        // with no WiFi left the Configure button disabled (the merged read genuinely in flight) with
+        // no on-screen indication anything was happening at all.
         _reactToMergedStatus = true;
         _loading = StatusLoading;
         _previousStatusLoading = StatusLoading;
@@ -212,8 +211,7 @@ else if (_result is not null)
             // Defensive: the page always mounts this component with StatusLoading already true
             // (see Pairing.razor/Result.razor's own sequencing notes), but handle an
             // already-finished fetch gracefully regardless.
-            _result = VersionResult;
-            await NotifyBlockingChanged();
+            await ApplyMergedResultIfActionableAsync();
         }
     }
 
@@ -231,11 +229,25 @@ else if (_result is not null)
             // Fires once per merged fetch - the automatic first load AND every manual "Recheck
             // Configuration" afterward, so the firmware status shown here stays current across
             // rechecks, not just the initial one.
-            _result = VersionResult;
-            await NotifyBlockingChanged();
+            await ApplyMergedResultIfActionableAsync();
         }
 
         _previousStatusLoading = StatusLoading;
+    }
+
+    // A firmware update can only ever be performed over WiFi - no point showing a NeedsUpdate/
+    // Unsupported/UpToDate result the user couldn't act on (or that isn't even relevant) yet if
+    // WiFi isn't available. See this component's own doc comment for the never-configured-printer/
+    // deadlock case this most commonly applies to. Loading visibility (above) is intentionally NOT
+    // gated the same way - only the post-load result is.
+    private async Task ApplyMergedResultIfActionableAsync()
+    {
+        if (CanUpdateFirmware)
+        {
+            _result = VersionResult;
+        }
+
+        await NotifyBlockingChanged();
     }
 
     private async Task HandleUpdateStatusChanged()

@@ -281,6 +281,36 @@ public class PrinterVersionAlertTests : BunitContext
     }
 
     [Fact]
+    public void WhenWifiUnavailable_WhileStatusLoading_StillShowsLoadingSpinner()
+    {
+        // CanUpdateFirmware (WiFi availability) only gates whether a version-check *result* ends up
+        // shown once the merged read completes - it must not suppress the loading spinner itself,
+        // since the page's merged status read is genuinely in flight regardless of WiFi (and
+        // WebInterfaceTogglePanel deliberately defers its own spinner to this one) - confirmed
+        // on-device: a freshly-paired printer with no WiFi configured yet showed no spinner anywhere
+        // while its Configure button sat disabled for the duration of the read.
+        var cut = Render<PrinterVersionAlert>(p => p
+            .Add(c => c.Device, Device)
+            .Add(c => c.WifiIpAddress, (string?)null)
+            .Add(c => c.StatusLoading, true));
+
+        Assert.NotNull(cut.Find("[data-testid='version-check-loading']"));
+    }
+
+    [Fact]
+    public void WhenWifiUnavailable_AfterStatusLoadCompletes_ShowsNothing()
+    {
+        var cut = RenderAlert(
+            new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, Bundle = Bundle, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" },
+            wifiIpAddress: null,
+            wifiConnected: false);
+
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[data-testid='version-check-loading']")));
+        Assert.Empty(cut.FindAll("[data-testid='version-check-needs-update']"));
+        Assert.Empty(cut.FindAll("[data-testid='version-check-up-to-date']"));
+    }
+
+    [Fact]
     public void Unsupported_ShowsExactMessage_AndBlocks()
     {
         var blockingValues = new List<bool>();

@@ -31,6 +31,15 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnect
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(3);
 
+    // Confirmed on-device: a printer can read back wlan.ip.addr over Bluetooth - matching the target
+    // Static IP exactly - just seconds after the Static path's own PollTimeout above already gave up,
+    // i.e. it did rejoin WiFi correctly, just slightly slower than PollTimeout allows for (SGD service
+    // startup lagging a beat behind IP association on some WiFi networks). Rather than reporting a
+    // false failure for a printer that's actually fine, LogPrinterWlanSettingsAsync's already-collected
+    // readback (run regardless, for diagnostics) is checked for exactly that positive signal, and given
+    // one short extra window to answer before giving up for real.
+    private static readonly TimeSpan LateRejoinRetryTimeout = TimeSpan.FromSeconds(20);
+
     // DHCP mode has no known IP to poll over TCP the way Static mode does below - the printer's new
     // address can only be learned by reconnecting over Bluetooth and reading wlan.ip.addr back.
     // BluetoothConnectionRunner.RunAsync already retries internally (3 attempts/~9s) and a
@@ -68,11 +77,25 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnect
 
         if (!reachable)
         {
-            var failure = $"Printer did not respond on {configuration.StaticIpAddress}:{SgdPort} within {PollTimeout.TotalSeconds:N0}s after restart.";
-            appLog.Log(failure, LogLevel.Error);
-            connectivityMonitor.SetWifi(ConnectionIndicatorState.Error);
-            await LogPrinterWlanSettingsAsync(device, cancellationToken);
-            return ConnectionTestResult.Failed($"{failure} Check the activity log for the printer's actual WLAN settings.", configuration.StaticIpAddress);
+            var confirmedIp = await LogPrinterWlanSettingsAsync(device, cancellationToken);
+            if (string.Equals(confirmedIp, configuration.StaticIpAddress, StringComparison.OrdinalIgnoreCase))
+            {
+                appLog.Log($"Printer's own WLAN settings confirm it rejoined at {configuration.StaticIpAddress} - retrying briefly before giving up...");
+                reachable = await RetryPoller.PollUntilAsync(
+                    attempt: () => TcpPortProbe.IsReachableAsync(configuration.StaticIpAddress, SgdPort, ProbeTimeout, cancellationToken),
+                    timeout: LateRejoinRetryTimeout,
+                    interval: PollInterval,
+                    cancellationToken: cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            if (!reachable)
+            {
+                var failure = $"Printer did not respond on {configuration.StaticIpAddress}:{SgdPort} within {PollTimeout.TotalSeconds:N0}s after restart.";
+                appLog.Log(failure, LogLevel.Error);
+                connectivityMonitor.SetWifi(ConnectionIndicatorState.Error);
+                return ConnectionTestResult.Failed($"{failure} Check the activity log for the printer's actual WLAN settings.", configuration.StaticIpAddress);
+            }
         }
 
         appLog.Log($"Printer is reachable at {configuration.StaticIpAddress}:{SgdPort}. Confirming WiFi state...");
@@ -170,9 +193,14 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnect
         return ConnectionTestResult.Succeeded(wlanState ?? "unknown", assignedIp);
     }
 
-    private async Task LogPrinterWlanSettingsAsync(PrinterDevice device, CancellationToken cancellationToken)
+    // Returns the wlan.ip.addr value observed during this readback (null if the reconnect itself
+    // failed, or blank/"0.0.0.0" if the printer genuinely has no WiFi association) - callers use this
+    // as positive confirmation of a late-but-real rejoin (see LateRejoinRetryTimeout above), on top of
+    // the unconditional logging every key gets regardless.
+    private async Task<string?> LogPrinterWlanSettingsAsync(PrinterDevice device, CancellationToken cancellationToken)
     {
         appLog.Log("Reconnecting via Bluetooth to check the printer's WLAN settings...");
+        string? ipAddress = null;
         try
         {
             await BluetoothConnectionRunner.RunAsync(device.BluetoothMacAddress, connection =>
@@ -180,6 +208,11 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnect
                 foreach (var key in WlanDiagnosticKeys.All)
                 {
                     var value = SGD.GET(key, connection);
+                    if (key == "wlan.ip.addr")
+                    {
+                        ipAddress = value;
+                    }
+
                     // wlan.state only ever reports a real value when queried over the WiFi
                     // connection itself - this fallback path always runs over Bluetooth, so it
                     // always comes back "?" (Zebra's own SGD getvar convention for "no value to
@@ -205,5 +238,7 @@ public sealed class LinkOsConnectivityTestService(IAppLog appLog, PrinterConnect
         {
             appLog.Log($"Could not reconnect via Bluetooth to check WLAN settings: {ex.Message}", LogLevel.Error);
         }
+
+        return ipAddress;
     }
 }
