@@ -27,13 +27,13 @@
             <p data-testid="pairing-mode-instruction-nfc">
                 <strong>3. Tap this device to the printer 'NFC' icon to begin.</strong>
                 <br />
-                <img src="images/Zebra_NFC_Icon.png" alt="NFC icon" height="36" class="mt-1" />
+                <img src="images/Zebra_NFC_Icon.png" alt="NFC icon" height="36" style="margin-top: 0.25rem;" />
             </p>
             break;
 
         case PairingUiState.Pairing:
             <p data-testid="pairing-in-progress">
-                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
                 Pairing with printer&hellip;
             </p>
             break;
@@ -47,7 +47,7 @@
                 <PrinterVersionAlert Device="_discoveredDevice!" WifiIpAddress="@_wifiIpAddress" VersionResult="_printerStatus?.VersionResult" StatusLoading="_statusLoading" OnCancelled="Retry" />
                 @if (_webInterfaceState is { } webInterfaceState)
                 {
-                    <p data-testid="web-interface-status" class="@(webInterfaceState.BothEnabled ? "text-success" : "text-danger")">
+                    <p data-testid="web-interface-status" class="@(webInterfaceState.BothEnabled ? "status-text-success" : "status-text-error")">
                         Web Interface is currently @(webInterfaceState.BothEnabled ? "enabled" : "disabled").
                     </p>
                 }
@@ -79,7 +79,7 @@
             break;
 
         case PairingUiState.Failed:
-            <p class="text-danger" data-testid="pairing-error">@_errorMessage</p>
+            <p class="status-text-error" data-testid="pairing-error">@_errorMessage</p>
             <md-filled-button type="button" @onclick="Retry">Try Again</md-filled-button>
             break;
     }

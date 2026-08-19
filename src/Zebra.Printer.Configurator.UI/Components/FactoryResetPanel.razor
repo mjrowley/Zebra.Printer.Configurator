@@ -17,7 +17,7 @@
         break;
 
     case State.Confirming:
-        <p class="text-danger" data-testid="factory-reset-warning">
+        <p class="status-text-error" data-testid="factory-reset-warning">
             This erases all settings on the printer and restores factory defaults. It may also break
             the current Bluetooth pairing. Continue?
         </p>
@@ -27,7 +27,7 @@
 
     case State.Resetting:
         <p data-testid="factory-reset-progress">
-            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
             Resetting printer to factory defaults&hellip;
         </p>
         break;
@@ -47,7 +47,7 @@
         break;
 
     case State.Failed:
-        <p class="text-danger" data-testid="factory-reset-error">@_errorMessage</p>
+        <p class="status-text-error" data-testid="factory-reset-error">@_errorMessage</p>
         <md-filled-button type="button" @onclick="() => OnFinished.InvokeAsync()">Try Again</md-filled-button>
         break;
 }

@@ -13,38 +13,35 @@
     @if (_loadingHostNetwork)
     {
         <p data-testid="host-network-loading">
-            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
             Detecting your printer and current WiFi network&hellip;
         </p>
     }
     else if (_hostNetworkError is not null)
     {
-        <p class="text-danger" data-testid="host-network-error">@_hostNetworkError</p>
+        <p class="status-text-error" data-testid="host-network-error">@_hostNetworkError</p>
     }
     else
     {
         <EditForm Model="_model" OnValidSubmit="Submit">
             <DataAnnotationsValidator />
 
-            <div class="mb-3">
-                <label for="printer-name">Printer Name</label>
-                <InputText id="printer-name" class="form-control" @bind-Value="_model.PrinterName" />
+            <div class="form-field">
+                <MdTextField id="printer-name" Label="Printer Name" @bind-Value="_model.PrinterName" />
                 <ValidationMessage For="() => _model.PrinterName" />
             </div>
 
-            <div class="mb-3">
-                <label for="ssid">WiFi SSID</label>
-                <InputText id="ssid" class="form-control" @bind-Value="_model.Ssid" />
+            <div class="form-field">
+                <MdTextField id="ssid" Label="WiFi SSID" @bind-Value="_model.Ssid" />
                 <ValidationMessage For="() => _model.Ssid" />
             </div>
 
-            <div class="mb-3">
-                <label for="password">WiFi Password</label>
-                <InputText id="password" type="password" class="form-control" @bind-Value="_model.Password" />
+            <div class="form-field">
+                <MdTextField id="password" Type="password" Label="WiFi Password" @bind-Value="_model.Password" />
                 <ValidationMessage For="() => _model.Password" />
             </div>
 
-            <div class="mb-3">
+            <div class="form-field">
                 <span id="ip-address-mode-label">IP Addressing</span>
                 <div class="radio-group" role="radiogroup" aria-labelledby="ip-address-mode-label">
                     <label>
@@ -64,7 +61,7 @@
 
             @if (_model.IpAddressMode == WlanIpAddressMode.Static)
             {
-                <div class="mb-3">
+                <div class="form-field">
                     <label for="ip-octet-1">Printer Static IP Address</label>
                     <IpAddressInput @bind-Value="_model.StaticIpAddress" />
                     <ValidationMessage For="() => _model.StaticIpAddress" />

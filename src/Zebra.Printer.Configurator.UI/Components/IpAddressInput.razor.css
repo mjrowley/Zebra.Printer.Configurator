@@ -4,11 +4,25 @@
     gap: 0.25rem;
 }
 
+/* Replaces Bootstrap's form-control (border/radius/padding/colors) now that this component no
+   longer depends on it - token-based rather than hardcoded so it stays in step with the rest of the
+   app's Material palette. */
 .ip-octet {
     width: 3.5rem;
     text-align: center;
-    padding-left: 0.25rem;
-    padding-right: 0.25rem;
+    padding: 0.375rem 0.25rem;
+    font-size: 1rem;
+    color: var(--md-sys-color-on-surface);
+    background-color: var(--md-sys-color-surface);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: var(--radius-card);
+}
+
+.ip-octet:focus {
+    outline: none;
+    border-color: var(--md-sys-color-primary);
+    border-width: 2px;
+    padding: 0.375rem calc(0.25rem - 1px);
 }
 
 .ip-dot {

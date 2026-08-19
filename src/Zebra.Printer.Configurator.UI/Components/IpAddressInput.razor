@@ -3,19 +3,19 @@
 
 <div class="ip-address-input">
     <input @ref="_octetRefs[0]" id="ip-octet-1" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3"
-           class="form-control ip-octet" value="@_octets[0]"
+           class="ip-octet" value="@_octets[0]"
            @oninput="e => OnOctetInput(0, e)" @onkeydown="e => OnOctetKeyDown(0, e)" />
     <span class="ip-dot" aria-hidden="true">.</span>
     <input @ref="_octetRefs[1]" id="ip-octet-2" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3"
-           class="form-control ip-octet" value="@_octets[1]"
+           class="ip-octet" value="@_octets[1]"
            @oninput="e => OnOctetInput(1, e)" @onkeydown="e => OnOctetKeyDown(1, e)" />
     <span class="ip-dot" aria-hidden="true">.</span>
     <input @ref="_octetRefs[2]" id="ip-octet-3" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3"
-           class="form-control ip-octet" value="@_octets[2]"
+           class="ip-octet" value="@_octets[2]"
            @oninput="e => OnOctetInput(2, e)" @onkeydown="e => OnOctetKeyDown(2, e)" />
     <span class="ip-dot" aria-hidden="true">.</span>
     <input @ref="_octetRefs[3]" id="ip-octet-4" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3"
-           class="form-control ip-octet" value="@_octets[3]"
+           class="ip-octet" value="@_octets[3]"
            @oninput="e => OnOctetInput(3, e)" @onkeydown="e => OnOctetKeyDown(3, e)" />
 </div>
 

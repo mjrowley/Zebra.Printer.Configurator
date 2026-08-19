@@ -316,8 +316,8 @@ public class PairingTests : BunitContext
     }
 
     [Theory]
-    [InlineData(true, "enabled", "text-success")]
-    [InlineData(false, "disabled", "text-danger")]
+    [InlineData(true, "enabled", "status-text-success")]
+    [InlineData(false, "disabled", "status-text-error")]
     public void ReadyState_ShowsWebInterfaceStatusLine_ColoredByEnabledState(bool enabled, string expectedWord, string expectedClass)
     {
         var device = new PrinterDevice { BluetoothMacAddress = "AABBCCDDEEFF" };
@@ -356,7 +356,7 @@ public class PairingTests : BunitContext
         {
             var statusLine = cut.Find("[data-testid='web-interface-status']");
             Assert.Contains("currently enabled", statusLine.TextContent);
-            Assert.Contains("text-success", statusLine.ClassList);
+            Assert.Contains("status-text-success", statusLine.ClassList);
         });
     }
 

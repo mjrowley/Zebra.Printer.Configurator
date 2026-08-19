@@ -245,8 +245,8 @@ public class ResultTests : BunitContext
     }
 
     [Theory]
-    [InlineData(true, "enabled", "text-success")]
-    [InlineData(false, "disabled", "text-danger")]
+    [InlineData(true, "enabled", "status-text-success")]
+    [InlineData(false, "disabled", "status-text-error")]
     public async Task SucceededWorkflow_ShowsWebInterfaceStatusLine_ColoredByEnabledState(bool enabled, string expectedWord, string expectedClass)
     {
         await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED", "192.168.1.50"));

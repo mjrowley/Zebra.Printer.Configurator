@@ -9,36 +9,36 @@
 <div class="section-sticky-header">
     <h1>@FunctionName</h1>
 
-    <ul class="list-group" data-testid="progress-steps">
-        <li class="list-group-item @StepClass(PairingWorkflowState.ApplyingConfiguration)" data-testid="step-applying-configuration">
+    <div class="stepper" data-testid="progress-steps">
+        <div class="stepper-item @StepClass(PairingWorkflowState.ApplyingConfiguration)" data-testid="step-applying-configuration">
             @if (Workflow.State == PairingWorkflowState.ApplyingConfiguration)
             {
-                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
             }
             Connecting and applying configuration
-        </li>
-        <li class="list-group-item @StepClass(PairingWorkflowState.EnablingPdfDirect)" data-testid="step-enabling-pdf-direct">
+        </div>
+        <div class="stepper-item @StepClass(PairingWorkflowState.EnablingPdfDirect)" data-testid="step-enabling-pdf-direct">
             @if (Workflow.State == PairingWorkflowState.EnablingPdfDirect)
             {
-                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
             }
             Enabling PDF Direct
-        </li>
-        <li class="list-group-item @StepClass(PairingWorkflowState.Restarting)" data-testid="step-restarting">
+        </div>
+        <div class="stepper-item @StepClass(PairingWorkflowState.Restarting)" data-testid="step-restarting">
             @if (Workflow.State == PairingWorkflowState.Restarting)
             {
-                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
             }
             Restarting printer
-        </li>
-        <li class="list-group-item @StepClass(PairingWorkflowState.TestingConnection)" data-testid="step-testing-connection">
+        </div>
+        <div class="stepper-item @StepClass(PairingWorkflowState.TestingConnection)" data-testid="step-testing-connection">
             @if (Workflow.State == PairingWorkflowState.TestingConnection)
             {
-                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
             }
             Waiting for printer to rejoin WiFi
-        </li>
-    </ul>
+        </div>
+    </div>
 </div>
 
 @code {

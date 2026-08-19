@@ -26,7 +26,7 @@
             <PrinterVersionAlert Device="Session.Device!" WifiIpAddress="@Workflow.Result?.ResolvedIpAddress" VersionResult="_printerStatus?.VersionResult" StatusLoading="_statusLoading" OnCancelled="Retry" />
             @if (_webInterfaceState is { } webInterfaceState)
             {
-                <p data-testid="web-interface-status" class="@(webInterfaceState.BothEnabled ? "text-success" : "text-danger")">
+                <p data-testid="web-interface-status" class="@(webInterfaceState.BothEnabled ? "status-text-success" : "status-text-error")">
                     Web Interface is currently @(webInterfaceState.BothEnabled ? "enabled" : "disabled").
                 </p>
             }
@@ -35,7 +35,7 @@
             <md-filled-button type="button" data-testid="reconfigure-button" disabled="@(ActivityMonitor.IsBusy || _checkingNetwork)" @onclick="Reconfigure">
                 @if (_checkingNetwork)
                 {
-                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
                 }
                 Reconfigure Printer
             </md-filled-button>

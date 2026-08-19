@@ -1,0 +1,28 @@
+@* Thin wrapper around <md-outlined-text-field> giving it the standard Value/ValueChanged component
+   shape (@bind-Value from a parent) - not an InputBase<T>, so EditForm's own valid/invalid/modified
+   CSS classes don't apply automatically the way they did for InputText, but app.css never styled
+   those specially either, so there's no visual loss. Wired via a plain @oninput handler reading
+   e.Value - the same pattern IpAddressInput.razor already uses and this codebase's tests already
+   prove works - rather than depending on how a Lit-based custom element's own internal `value`
+   property interacts with Blazor's generic @bind-value directive on a raw element. Only the
+   well-understood outer "input" DOM event is relied on. *@
+<md-outlined-text-field id="@Id" label="@Label" type="@Type" value="@Value" @oninput="OnInput"></md-outlined-text-field>
+
+@code {
+    [Parameter]
+    public string? Id { get; set; }
+
+    [Parameter]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public string Type { get; set; } = "text";
+
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    private Task OnInput(ChangeEventArgs e) => ValueChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty);
+}

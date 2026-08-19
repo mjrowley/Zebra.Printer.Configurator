@@ -46,8 +46,8 @@ public class ConfigureTests : BunitContext
     {
         var cut = Render<Configure>();
 
-        cut.Find("#ssid").Change("");
-        cut.Find("#password").Change("correcthorsebatterystaple");
+        cut.Find("#ssid").Input("");
+        cut.Find("#password").Input("correcthorsebatterystaple");
         FillIp(cut, "192.168.1.50");
         await cut.Find("form").SubmitAsync();
 
@@ -60,8 +60,8 @@ public class ConfigureTests : BunitContext
     {
         var cut = Render<Configure>();
 
-        cut.Find("#ssid").Change("Warehouse-WiFi");
-        cut.Find("#password").Change("short");
+        cut.Find("#ssid").Input("Warehouse-WiFi");
+        cut.Find("#password").Input("short");
         FillIp(cut, "192.168.1.50");
         await cut.Find("form").SubmitAsync();
 
@@ -76,8 +76,8 @@ public class ConfigureTests : BunitContext
         // only accepts digits), so the reachable invalid case is leaving octets blank.
         var cut = Render<Configure>();
 
-        cut.Find("#ssid").Change("Warehouse-WiFi");
-        cut.Find("#password").Change("correcthorsebatterystaple");
+        cut.Find("#ssid").Input("Warehouse-WiFi");
+        cut.Find("#password").Input("correcthorsebatterystaple");
         cut.Find("#ip-octet-1").Input("192");
         cut.Find("#ip-octet-2").Input("168");
         await cut.Find("form").SubmitAsync();
@@ -151,8 +151,8 @@ public class ConfigureTests : BunitContext
             .Returns(new HostNetworkInfo { HostIpAddress = "192.168.1.42", Netmask = "255.255.255.0", Gateway = "192.168.1.1" });
         var cut = Render<Configure>();
 
-        cut.Find("#ssid").Change("Warehouse-WiFi");
-        cut.Find("#password").Change("correcthorsebatterystaple");
+        cut.Find("#ssid").Input("Warehouse-WiFi");
+        cut.Find("#password").Input("correcthorsebatterystaple");
         FillIp(cut, "192.168.1.50");
         await cut.Find("form").SubmitAsync();
 
@@ -211,8 +211,8 @@ public class ConfigureTests : BunitContext
         // does skip that validation rather than just happening to have a valid value lying around.
         var cut = Render<Configure>();
         cut.Find("[data-testid='ip-mode-dhcp']").Click();
-        cut.Find("#ssid").Change("Warehouse-WiFi");
-        cut.Find("#password").Change("correcthorsebatterystaple");
+        cut.Find("#ssid").Input("Warehouse-WiFi");
+        cut.Find("#password").Input("correcthorsebatterystaple");
 
         await cut.Find("form").SubmitAsync();
 
@@ -226,8 +226,8 @@ public class ConfigureTests : BunitContext
     public async Task Submit_WithStaticModeSelected_StillRequiresAValidIp()
     {
         var cut = Render<Configure>();
-        cut.Find("#ssid").Change("Warehouse-WiFi");
-        cut.Find("#password").Change("correcthorsebatterystaple");
+        cut.Find("#ssid").Input("Warehouse-WiFi");
+        cut.Find("#password").Input("correcthorsebatterystaple");
         cut.Find("[data-testid='ip-mode-dhcp']").Click();
         cut.Find("[data-testid='ip-mode-static']").Click();
         cut.Find("#ip-octet-1").Input("192");

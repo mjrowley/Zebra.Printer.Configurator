@@ -20,11 +20,11 @@
     }
     else if (_state == State.Complete)
     {
-        <p class="text-success" data-testid="calibrate-media-complete">Media calibration complete.</p>
+        <p class="status-text-success" data-testid="calibrate-media-complete">Media calibration complete.</p>
     }
     else if (_state == State.Failed)
     {
-        <p class="text-danger" data-testid="calibrate-media-error">@_errorMessage</p>
+        <p class="status-text-error" data-testid="calibrate-media-error">@_errorMessage</p>
     }
 
     @if (_state == State.Confirming)

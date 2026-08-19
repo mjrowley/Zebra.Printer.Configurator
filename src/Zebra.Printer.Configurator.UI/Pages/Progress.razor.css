@@ -1,29 +1,35 @@
-/* .active/.done are applied by StepClass() in Progress.razor.cs but had no styling anywhere in the
-   repo before this - .active only got Bootstrap's own default list-group-item.active look, and .done
-   had none at all. */
+/* .active/.done are applied by StepClass() in Progress.razor's own @code block. Custom div-based
+   stepper (not md-list/md-list-item) - Material's own list-row model fights this active/done
+   highlight look more than it helps, per the MD3 migration plan. */
 
-.list-group {
+.stepper {
+    background: var(--md-sys-color-surface);
     border-radius: var(--radius-card, 14px);
     overflow: hidden;
+    border: 1px solid var(--color-border, #e5e5ea);
 }
 
-.list-group-item {
-    border-color: var(--color-border, #e5e5ea);
+.stepper-item {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-border, #e5e5ea);
     color: var(--color-text-secondary, #6b6b70);
 }
 
-.list-group-item.active {
+.stepper-item:last-child {
+    border-bottom: none;
+}
+
+.stepper-item.active {
     background: var(--color-primary, #1c75bc);
-    border-color: var(--color-primary, #1c75bc);
-    color: #fff;
+    color: var(--md-sys-color-on-primary, #fff);
     font-weight: 600;
 }
 
-.list-group-item.done {
+.stepper-item.done {
     color: var(--color-text, #1c1c1e);
 }
 
-.list-group-item.done::before {
+.stepper-item.done::before {
     content: "\2713 ";
     color: var(--color-primary, #1c75bc);
     font-weight: 700;

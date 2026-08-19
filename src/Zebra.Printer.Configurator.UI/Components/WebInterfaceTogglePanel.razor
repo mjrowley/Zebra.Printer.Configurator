@@ -27,7 +27,7 @@
             // CloseComplete()'s self-heal) still show their own, since nothing else is indicating
             // progress for those.
             <p data-testid="web-interface-loading">
-                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
                 Checking web interface status&hellip;
             </p>
         }
@@ -42,20 +42,20 @@
 
     case State.Applying:
         <p data-testid="web-interface-applying">
-            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
             @(_pendingEnabled ? "Enabling" : "Disabling") web interface&hellip;
         </p>
         break;
 
     case State.Restarting:
         <p data-testid="web-interface-restarting">
-            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
             Restarting printer&hellip;
         </p>
         break;
 
     case State.Failed:
-        <p class="text-danger" data-testid="web-interface-error">@_errorMessage</p>
+        <p class="status-text-error" data-testid="web-interface-error">@_errorMessage</p>
         <md-filled-button type="button" @onclick="Retry">Try Again</md-filled-button>
         break;
 }

@@ -24,11 +24,11 @@
     }
     else if (_state == State.Complete)
     {
-        <p class="text-success" data-testid="deploy-templates-complete">Bag tag templates sent to the printer.</p>
+        <p class="status-text-success" data-testid="deploy-templates-complete">Bag tag templates sent to the printer.</p>
     }
     else if (_state == State.Failed)
     {
-        <p class="text-danger" data-testid="deploy-templates-error">@_errorMessage</p>
+        <p class="status-text-error" data-testid="deploy-templates-error">@_errorMessage</p>
     }
 
     @if (_state == State.Confirming)

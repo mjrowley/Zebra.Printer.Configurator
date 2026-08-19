@@ -35,14 +35,14 @@
 @if (_loading)
 {
     <p data-testid="version-check-loading">
-        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
         Checking printer configuration&hellip;
     </p>
 }
 else if (_updating)
 {
     <p data-testid="update-firmware-progress">
-        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        <md-circular-progress indeterminate class="spinner-inline"></md-circular-progress>
         @UpdateProgressText
     </p>
 }
@@ -51,11 +51,11 @@ else if (_result is not null)
     switch (_result.Outcome)
     {
         case PrinterVersionOutcome.NewerThanExpected:
-            <p class="text-warning" data-testid="version-check-newer">@NewerThanExpectedMessage</p>
+            <p class="status-text-warning" data-testid="version-check-newer">@NewerThanExpectedMessage</p>
             break;
 
         case PrinterVersionOutcome.NeedsUpdate:
-            <p class="text-danger" data-testid="version-check-needs-update">@NeedsUpdateMessage</p>
+            <p class="status-text-error" data-testid="version-check-needs-update">@NeedsUpdateMessage</p>
             <md-filled-button type="button" data-testid="update-firmware-button"
                     title="@UpdateDisabledReason" disabled="@(UpdateDisabledReason is not null)" @onclick="UpdateFirmware">
                 Update Firmware
@@ -63,18 +63,18 @@ else if (_result is not null)
             <md-filled-tonal-button type="button" data-testid="version-check-skip" @onclick="Skip">Skip for now</md-filled-tonal-button>
             @if (_updateError is not null)
             {
-                <p class="text-danger" data-testid="update-firmware-error">@_updateError</p>
+                <p class="status-text-error" data-testid="update-firmware-error">@_updateError</p>
             }
             break;
 
         case PrinterVersionOutcome.Unsupported:
-            <p class="text-danger" data-testid="version-check-unsupported">@UnsupportedMessage</p>
+            <p class="status-text-error" data-testid="version-check-unsupported">@UnsupportedMessage</p>
             <md-filled-tonal-button type="button" data-testid="version-check-skip" @onclick="Skip">Skip</md-filled-tonal-button>
             <md-outlined-button type="button" data-testid="version-check-cancel" @onclick="Cancel">Cancel</md-outlined-button>
             break;
 
         case PrinterVersionOutcome.UpToDate:
-            <p class="text-success" data-testid="version-check-up-to-date">Printer firmware is up to date.</p>
+            <p class="status-text-success" data-testid="version-check-up-to-date">Printer firmware is up to date.</p>
             break;
     }
 }
