@@ -1,8 +1,7 @@
 @* Renders whatever the host page's own CheckConfigurationState instance most recently produced
-   (populated directly by Pairing.razor/Result.razor's merged-status-read methods, and refreshed by
-   PrinterActionsMenu's "Recheck Configuration" menu item) - see CheckConfigurationState for why this
-   lives in its own component rather than the button that used to trigger it. Each value is coloured
-   by ConfigurationValueMatch: green if it matches what this app expects, red if it doesn't, default
+   (populated directly by PrinterDashboard.razor's merged-status-read method on load) - see
+   CheckConfigurationState for why this lives in its own component. Each value is coloured by
+   ConfigurationValueMatch: green if it matches what this app expects, red if it doesn't, default
    text colour for values this app doesn't set (Informational). *@
 @using Zebra.Printer.Configurator.Core.Configuration
 @implements IDisposable
@@ -17,15 +16,23 @@
     <div class="config-list" data-testid="check-configuration-results">
         @foreach (var value in State.Values)
         {
-            <div class="config-list-row">
-                <span>@value.Key</span>
-                <span class="config-list-value @MatchClass(value.Match)">@value.Value</span>
-            </div>
+            @if (!HiddenKeys.Contains(value.Key))
+            {
+                <div class="config-list-row">
+                    <span>@value.Key</span>
+                    <span class="config-list-value @MatchClass(value.Match)">@value.Value</span>
+                </div>
+            }
         }
     </div>
 }
 
 @code {
+    // Not useful in this raw diagnostic list - wlan.ip.default_addr_enable is an obscure fallback
+    // setting nobody reading this list needs, and wlan.state duplicates what PrinterInfo.razor's own
+    // "About Printer" -> Connectivity section already shows more legibly.
+    private static readonly HashSet<string> HiddenKeys = ["wlan.ip.default_addr_enable", "wlan.state"];
+
     [Parameter, EditorRequired]
     public CheckConfigurationState State { get; set; } = null!;
 

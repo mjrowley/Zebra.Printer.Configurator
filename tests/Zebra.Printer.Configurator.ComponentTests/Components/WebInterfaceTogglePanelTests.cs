@@ -53,7 +53,7 @@ public class WebInterfaceTogglePanelTests : BunitContext
     {
         var cut = RenderPanel(new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true });
 
-        cut.WaitForAssertion(() => Assert.Equal("Disable Web Interface", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim()));
+        cut.WaitForAssertion(() => Assert.Equal("Disable", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim()));
     }
 
     [Theory]
@@ -64,7 +64,7 @@ public class WebInterfaceTogglePanelTests : BunitContext
     {
         var cut = RenderPanel(new WebInterfaceState { HttpsEnabled = httpsEnabled, HttpEnabled = httpEnabled });
 
-        cut.WaitForAssertion(() => Assert.Equal("Enable Web Interface", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim()));
+        cut.WaitForAssertion(() => Assert.Equal("Enable", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim()));
     }
 
     [Fact]
@@ -167,7 +167,7 @@ public class WebInterfaceTogglePanelTests : BunitContext
 
         cut.Find("md-filled-button").Click();
 
-        cut.WaitForAssertion(() => Assert.Equal("Disable Web Interface", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim()));
+        cut.WaitForAssertion(() => Assert.Equal("Disable", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim()));
     }
 
     [Fact]
@@ -342,7 +342,7 @@ public class WebInterfaceTogglePanelTests : BunitContext
         _webInterfaceService.DidNotReceive().ReadStateAsync(Device, Arg.Any<CancellationToken>());
 
         cut.WaitForAssertion(
-            () => Assert.Equal("Disable Web Interface", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim()),
+            () => Assert.Equal("Disable", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim()),
             TimeSpan.FromSeconds(2));
     }
 

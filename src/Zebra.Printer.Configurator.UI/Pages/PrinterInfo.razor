@@ -49,9 +49,9 @@ else
 
         try
         {
-            // allowBleFallback: true - matches PrinterDashboard's own Configure-arrival/Recheck
-            // Configuration reads, both of which run well outside the fresh-bond race window this
-            // flag exists for (see PrinterConnectionRunner's own doc comment).
+            // allowBleFallback: true - matches PrinterDashboard's own Configure-arrival read, which
+            // runs well outside the fresh-bond race window this flag exists for (see
+            // PrinterConnectionRunner's own doc comment).
             _status = await StatusReader.ReadStatusAsync(Session.Device, allowBleFallback: true);
         }
         catch (Exception ex)
@@ -84,6 +84,7 @@ else
         ("Gateway", Value("wlan.ip.gateway") ?? "Unknown"),
         ("IP Address Protocol", Value("wlan.ip.protocol") ?? "Unknown"),
         ("DHCP Enabled", Value("ip.dhcp.enable") ?? "Unknown"),
+        ("WiFi MAC Address", Session.Device?.WifiMacAddress ?? "Unknown"),
         ("Bluetooth MAC Address", Session.Device?.BluetoothMacAddress ?? "Unknown"),
     ];
 

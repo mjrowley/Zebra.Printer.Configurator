@@ -91,6 +91,7 @@ public class PrinterInfoTests : BunitContext
             Assert.Contains("192.168.1.50", connectivitySection.TextContent);
             Assert.Contains("255.255.255.0", connectivitySection.TextContent);
             Assert.Contains("192.168.1.1", connectivitySection.TextContent);
+            Assert.Contains("112233445566", connectivitySection.TextContent);
             Assert.Contains("AABBCCDDEEFF", connectivitySection.TextContent);
         });
     }

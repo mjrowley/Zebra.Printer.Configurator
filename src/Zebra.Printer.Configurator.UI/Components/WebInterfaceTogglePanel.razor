@@ -3,7 +3,11 @@
    matching FactoryResetPanel/BagTagTemplatesPanel/CalibrateMediaButton in shape - unlike those three,
    this stays a directly-visible button rather than moving into PrinterActionsMenu's overflow menu,
    since its label conveys live state ("Enable"/"Disable"/"Requires Restart") that's worth surfacing
-   at a glance rather than hiding behind a menu tap.
+   at a glance rather than hiding behind a menu tap. The Idle/PendingRestart button label is
+   deliberately short ("Enable"/"Disable", not "Enable Web Interface") - PrinterDashboard.razor renders
+   this component directly alongside its own "Web Interface is currently enabled/disabled" line, so
+   the surrounding sentence already supplies the "Web Interface" context a standalone button wouldn't
+   have.
 
    The toggle itself (SetEnabledAsync) takes effect immediately in the printer's stored settings,
    but the web server that actually serves ip.https/ip.http only picks up the change on its next
@@ -169,7 +173,7 @@
 
     private string ButtonLabel => _state == State.PendingRestart
         ? "Web Interface Change Requires Restart"
-        : (_currentState?.BothEnabled == true ? "Disable Web Interface" : "Enable Web Interface");
+        : (_currentState?.BothEnabled == true ? "Disable" : "Enable");
 
     // Reflects the page's own merged status read (StatusLoading/InitialState) rather than running
     // its own separate Bluetooth check on mount - that used to race PrinterVersionAlert's own

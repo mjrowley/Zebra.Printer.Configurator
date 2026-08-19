@@ -12,17 +12,13 @@ namespace Zebra.Printer.Configurator.ComponentTests.Components;
 public class PrinterActionsMenuTests : BunitContext
 {
     private IRenderedComponent<PrinterActionsMenu> RenderMenu(
-        EventCallback? onRecheckConfiguration = null,
         EventCallback? onPushBagTagTemplates = null,
         EventCallback? onCalibrateMedia = null,
-        EventCallback? onFactoryReset = null,
-        bool recheckConfigurationDisabled = false)
+        EventCallback? onFactoryReset = null)
     {
         return Render<PrinterActionsMenu>(p =>
         {
             p.Add(c => c.AnchorId, "test-actions-menu-anchor");
-            p.Add(c => c.OnRecheckConfiguration, onRecheckConfiguration ?? EventCallback.Empty);
-            p.Add(c => c.RecheckConfigurationDisabled, recheckConfigurationDisabled);
             p.Add(c => c.OnPushBagTagTemplates, onPushBagTagTemplates ?? EventCallback.Empty);
             p.Add(c => c.OnCalibrateMedia, onCalibrateMedia ?? EventCallback.Empty);
             p.Add(c => c.OnFactoryReset, onFactoryReset ?? EventCallback.Empty);
@@ -39,7 +35,6 @@ public class PrinterActionsMenuTests : BunitContext
         // (MainLayout's .function-section), and an "absolute"-positioned popup gets clipped at that
         // container's boundary with no way to scroll to the rest of it once it has enough items.
         Assert.Equal("fixed", cut.Find("[data-testid='printer-actions-menu']").GetAttribute("positioning"));
-        Assert.NotNull(cut.Find("[data-testid='menu-item-recheck-configuration']"));
         Assert.NotNull(cut.Find("[data-testid='menu-item-push-bag-tag-templates']"));
         Assert.NotNull(cut.Find("[data-testid='menu-item-calibrate-media']"));
         Assert.NotNull(cut.Find("[data-testid='menu-item-factory-reset']"));
@@ -83,17 +78,6 @@ public class PrinterActionsMenuTests : BunitContext
     }
 
     [Fact]
-    public void ClickingRecheckConfigurationItem_InvokesCallback()
-    {
-        var invoked = false;
-        var cut = RenderMenu(onRecheckConfiguration: EventCallback.Factory.Create(this, () => invoked = true));
-
-        cut.Find("[data-testid='menu-item-recheck-configuration']").Click();
-
-        Assert.True(invoked);
-    }
-
-    [Fact]
     public void ClickingPushBagTagTemplatesItem_InvokesCallback()
     {
         var invoked = false;
@@ -124,13 +108,5 @@ public class PrinterActionsMenuTests : BunitContext
         cut.Find("[data-testid='menu-item-factory-reset']").Click();
 
         Assert.True(invoked);
-    }
-
-    [Fact]
-    public void RecheckConfigurationDisabled_ReflectsOnItem()
-    {
-        var cut = RenderMenu(recheckConfigurationDisabled: true);
-
-        Assert.True(cut.Find("[data-testid='menu-item-recheck-configuration']").HasAttribute("disabled"));
     }
 }

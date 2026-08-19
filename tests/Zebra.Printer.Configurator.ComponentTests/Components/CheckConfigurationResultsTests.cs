@@ -22,15 +22,39 @@ public class CheckConfigurationResultsTests : BunitContext
         var state = new CheckConfigurationState();
         var cut = Render<CheckConfigurationResults>(p => p.Add(c => c.State, state));
 
-        state.SetResults([new PrinterConfigurationValue("wlan.essid", "Warehouse-WiFi"), new PrinterConfigurationValue("wlan.state", "CONNECTED")]);
+        state.SetResults([new PrinterConfigurationValue("wlan.essid", "Warehouse-WiFi"), new PrinterConfigurationValue("wlan.security", "wpa psk")]);
 
         cut.WaitForAssertion(() =>
         {
             var results = cut.Find("[data-testid='check-configuration-results']");
             Assert.Contains("wlan.essid", results.TextContent);
             Assert.Contains("Warehouse-WiFi", results.TextContent);
-            Assert.Contains("wlan.state", results.TextContent);
-            Assert.Contains("CONNECTED", results.TextContent);
+            Assert.Contains("wlan.security", results.TextContent);
+            Assert.Contains("wpa psk", results.TextContent);
+        });
+    }
+
+    [Fact]
+    public void HiddenKeys_AreNotRendered()
+    {
+        // wlan.ip.default_addr_enable is an obscure fallback setting nobody reading this raw list
+        // needs, and wlan.state duplicates what PrinterInfo.razor's "About Printer" -> Connectivity
+        // section already shows more legibly - both are deliberately filtered out here.
+        var state = new CheckConfigurationState();
+        var cut = Render<CheckConfigurationResults>(p => p.Add(c => c.State, state));
+
+        state.SetResults([
+            new PrinterConfigurationValue("wlan.essid", "Warehouse-WiFi"),
+            new PrinterConfigurationValue("wlan.ip.default_addr_enable", "off"),
+            new PrinterConfigurationValue("wlan.state", "CONNECTED"),
+        ]);
+
+        cut.WaitForAssertion(() =>
+        {
+            var results = cut.Find("[data-testid='check-configuration-results']");
+            Assert.Contains("wlan.essid", results.TextContent);
+            Assert.DoesNotContain("wlan.ip.default_addr_enable", results.TextContent);
+            Assert.DoesNotContain("wlan.state", results.TextContent);
         });
     }
 
@@ -72,7 +96,7 @@ public class CheckConfigurationResultsTests : BunitContext
         var state = new CheckConfigurationState();
         var cut = Render<CheckConfigurationResults>(p => p.Add(c => c.State, state));
 
-        state.SetResults([new PrinterConfigurationValue("wlan.state", "CONNECTED", ConfigurationValueMatch.Informational)]);
+        state.SetResults([new PrinterConfigurationValue("wlan.security", "wpa psk", ConfigurationValueMatch.Informational)]);
 
         cut.WaitForAssertion(() =>
         {

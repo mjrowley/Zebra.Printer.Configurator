@@ -53,12 +53,22 @@
             }
 
             <PrinterVersionAlert Device="Session.Device!" WifiIpAddress="@_wifiIpAddress" VersionResult="_printerStatus?.VersionResult" StatusLoading="_statusLoading" OnCancelled="Disconnect" />
-            @if (_webInterfaceState is { } webInterfaceState)
-            {
-                <p data-testid="web-interface-status" class="@(webInterfaceState.BothEnabled ? "status-text-success" : "status-text-error")">
-                    Web Interface is currently @(webInterfaceState.BothEnabled ? "enabled" : "disabled").
-                </p>
-            }
+            @* WebInterfaceTogglePanel sits inline with the status line (not down in .button-row) -
+               its own Idle/PendingRestart label is just "Enable"/"Disable" (see the component's own
+               doc comment), relying on this sentence for the "Web Interface" context. Not nested
+               inside the @if below - the panel must keep rendering its own Loading/Applying/Failed
+               states even while _webInterfaceState itself is still null (StatusLoading, or a merged
+               read that failed outright - see LoadPrinterStatusAsync's own comment on why that field
+               is deliberately left untouched in that case). *@
+            <div class="web-interface-row">
+                @if (_webInterfaceState is { } webInterfaceState)
+                {
+                    <span data-testid="web-interface-status" class="@(webInterfaceState.BothEnabled ? "status-text-success" : "status-text-error")">
+                        Web Interface is currently @(webInterfaceState.BothEnabled ? "enabled" : "disabled").
+                    </span>
+                }
+                <WebInterfaceTogglePanel Device="Session.Device!" InitialState="_webInterfaceState" StatusLoading="_statusLoading" IsActiveChanged="OnWebInterfaceActiveChanged" CurrentStateChanged="OnWebInterfaceStateChanged" />
+            </div>
             <md-text-button type="button" data-testid="dashboard-info-link" @onclick="GoToInfo">About Printer</md-text-button>
         </div>
 
@@ -70,10 +80,7 @@
                 }
                 @(_justConfigured ? "Reconfigure Printer" : "Configure Printer")
             </md-filled-button>
-            <WebInterfaceTogglePanel Device="Session.Device!" InitialState="_webInterfaceState" StatusLoading="_statusLoading" IsActiveChanged="OnWebInterfaceActiveChanged" CurrentStateChanged="OnWebInterfaceStateChanged" />
             <PrinterActionsMenu AnchorId="dashboard-actions-menu-anchor"
-                OnRecheckConfiguration="RecheckConfigurationAsync"
-                RecheckConfigurationDisabled="@(_checkConfigState.Loading || _factoryResetActive || _templatesActive || _webInterfaceActive || _calibratingActive)"
                 OnPushBagTagTemplates="() => _bagTagTemplatesPanel!.RequestDeployAsync()"
                 OnCalibrateMedia="() => _calibrateMediaButton!.RequestConfirmAsync()"
                 OnFactoryReset="() => _factoryResetPanel!.RequestConfirmAsync()" />
@@ -187,8 +194,8 @@
 
     // Runs automatically for a freshly-paired or restored printer, where Bluetooth pairing alone
     // gives no indication of WiFi reachability at all - uses the Bluetooth link that's already just
-    // been confirmed to ask the printer for its own wlan.ip.addr, rather than requiring the user to
-    // press "Recheck Configuration" first.
+    // been confirmed to ask the printer for its own wlan.ip.addr, rather than requiring a manual
+    // action first.
     private async Task CheckWifiConnectivityAsync(PrinterDevice device)
     {
         ConnectivityMonitor.SetWifi(ConnectionIndicatorState.Connecting);
@@ -287,22 +294,6 @@
         }
     }
 
-    // "Recheck Configuration" menu item - re-runs the same merged read as the automatic first check,
-    // refreshing the firmware status/web interface state/configuration list together.
-    private Task RecheckConfigurationAsync()
-    {
-        if (Session.Device is null)
-        {
-            return Task.CompletedTask;
-        }
-
-        _printerStatus = null;
-        _statusLoading = true;
-        _checkConfigState.SetLoading();
-        StateHasChanged();
-        return LoadPrinterStatusAsync(Session.Device, allowBleFallback: true);
-    }
-
     // Unifies what used to be Pairing.razor's Continue() (first-time pairing - no confirmed WiFi IP
     // yet, so just navigate; Configure.razor's own form is exactly what gives the printer WiFi in the
     // first place) and Result.razor's Reconfigure() (mirrors Zebra's own Printer Setup Utility's
@@ -357,7 +348,7 @@
 
     // Keeps the top "Web Interface is currently..." line in sync with what WebInterfaceTogglePanel
     // itself most recently confirmed (Retry()/CloseComplete's self-heal reads) - without this, that
-    // line stays frozen at whatever the last merged/Recheck read said even after the panel's own
+    // line stays frozen at whatever the last merged read said even after the panel's own
     // toggle-and-restart flow successfully changes and re-confirms the real state.
     private void OnWebInterfaceStateChanged(WebInterfaceState? state) => _webInterfaceState = state;
 

@@ -247,14 +247,6 @@ public class PrinterDashboardTests : BunitContext
         Assert.Null(_factoryResetService.LastResetMacAddress);
     }
 
-    [Fact]
-    public void ShowsRecheckConfigurationMenuItem()
-    {
-        var cut = RenderArrivedFromPairing();
-
-        Assert.NotNull(cut.Find("[data-testid='menu-item-recheck-configuration']"));
-    }
-
     [Theory]
     [InlineData(true, "enabled", "status-text-success")]
     [InlineData(false, "disabled", "status-text-error")]
@@ -277,7 +269,7 @@ public class PrinterDashboardTests : BunitContext
     {
         // The top "Web Interface is currently..." line must reflect whatever WebInterfaceTogglePanel
         // itself most recently confirmed via its own reads (Retry()/CloseComplete()), not just stay
-        // frozen at the last merged/Recheck read - this covers the case where the merged read failed
+        // frozen at the last merged read - this covers the case where the merged read failed
         // entirely (so the panel starts in its own Failed/Try-Again state) and the panel's own retry
         // succeeds.
         _statusReader.ReadStatusAsync(Device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
@@ -329,62 +321,17 @@ public class PrinterDashboardTests : BunitContext
     }
 
     [Fact]
-    public void ClickingRecheckConfiguration_RefreshesFirmwareStatus_WebInterfaceState_AndConfigurationList()
-    {
-        using var listener = StartLoopbackListener(out var port);
-        _configurationReader.ReadConfigurationAsync(Device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns([new PrinterConfigurationValue("wlan.ip.addr", "127.0.0.1")]);
-        var firstStatus = new PrinterStatus
-        {
-            VersionResult = new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.UpToDate },
-            WebInterfaceState = new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false },
-            ConfigurationValues = [new PrinterConfigurationValue("device.friendly_name", "Before-Recheck")],
-        };
-        var secondStatus = new PrinterStatus
-        {
-            VersionResult = new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.NeedsUpdate, LinkOsVersionFound = "7.5.0", FirmwareVersionFound = "V93.21.06Z" },
-            WebInterfaceState = new WebInterfaceState { HttpsEnabled = true, HttpEnabled = true },
-            ConfigurationValues = [new PrinterConfigurationValue("device.friendly_name", "After-Recheck")],
-        };
-        // The recheck read is stubbed as a genuinely pending Task (resolved explicitly below) rather
-        // than an instantly-completed one - a real Bluetooth read always has an observable async gap,
-        // and PrinterVersionAlert/WebInterfaceTogglePanel only pick up a merged update by observing
-        // StatusLoading go true->false across two separate renders. An instantly-resolving mock lets
-        // Blazor coalesce both renders into one, which would never happen against real hardware.
-        var rechecktcs = new TaskCompletionSource<PrinterStatus>();
-        _statusReader.ReadStatusAsync(Device, Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(firstStatus), rechecktcs.Task);
-        var cut = RenderArrivedFromPairing(wifiProbePort: port);
-        cut.WaitForAssertion(() => Assert.Equal("Enable Web Interface", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim()));
-        cut.WaitForAssertion(() => Assert.Contains("Before-Recheck", cut.Find("[data-testid='check-configuration-results']").TextContent));
-
-        OpenActionsMenuAndClickItem(cut, "menu-item-recheck-configuration");
-
-        cut.WaitForAssertion(() => Assert.True(cut.Find("[data-testid='menu-item-recheck-configuration']").HasAttribute("disabled")));
-
-        rechecktcs.SetResult(secondStatus);
-
-        cut.WaitForAssertion(() =>
-        {
-            Assert.NotNull(cut.Find("[data-testid='version-check-needs-update']"));
-            Assert.Equal("Disable Web Interface", cut.Find("[data-testid='web-interface-toggle-button']").TextContent.Trim());
-            Assert.Contains("After-Recheck", cut.Find("[data-testid='check-configuration-results']").TextContent);
-        });
-    }
-
-    [Fact]
-    public void WhileFactoryResetIsSelected_ConfigureButtonAndRecheckAreDisabled()
+    public void WhileFactoryResetIsSelected_ConfigureButtonIsDisabled()
     {
         var cut = RenderArrivedFromPairing();
 
         OpenActionsMenuAndClickItem(cut, "menu-item-factory-reset");
 
         Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled"));
-        Assert.True(cut.Find("[data-testid='menu-item-recheck-configuration']").HasAttribute("disabled"));
     }
 
     [Fact]
-    public void WhileWebInterfaceToggleIsApplying_ConfigureAndRecheckAreDisabled()
+    public void WhileWebInterfaceToggleIsApplying_ConfigureButtonIsDisabled()
     {
         var setEnabledTcs = new TaskCompletionSource();
         _webInterfaceService.SetEnabledAsync(Device, false, Arg.Any<CancellationToken>()).Returns(setEnabledTcs.Task);
@@ -392,11 +339,7 @@ public class PrinterDashboardTests : BunitContext
 
         cut.Find("[data-testid='web-interface-toggle-button']").Click();
 
-        cut.WaitForAssertion(() =>
-        {
-            Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled"));
-            Assert.True(cut.Find("[data-testid='menu-item-recheck-configuration']").HasAttribute("disabled"));
-        });
+        cut.WaitForAssertion(() => Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled")));
         setEnabledTcs.SetResult();
     }
 
@@ -409,7 +352,7 @@ public class PrinterDashboardTests : BunitContext
     }
 
     [Fact]
-    public void WhileCalibratingMedia_ConfigureAndRecheckAndDisconnectAreDisabled()
+    public void WhileCalibratingMedia_ConfigureAndDisconnectAreDisabled()
     {
         var calibrateTcs = new TaskCompletionSource();
         _calibrationService.CalibrateAsync(Device, Arg.Any<CancellationToken>()).Returns(calibrateTcs.Task);
@@ -421,7 +364,6 @@ public class PrinterDashboardTests : BunitContext
         cut.WaitForAssertion(() =>
         {
             Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled"));
-            Assert.True(cut.Find("[data-testid='menu-item-recheck-configuration']").HasAttribute("disabled"));
             Assert.True(cut.Find("[data-testid='dashboard-disconnect-button']").HasAttribute("disabled"));
         });
         calibrateTcs.SetResult();
@@ -712,7 +654,6 @@ public class PrinterDashboardTests : BunitContext
 
         Assert.Contains("Reconfigure Printer", cut.Markup);
         Assert.NotNull(cut.Find("[data-testid='menu-item-factory-reset']"));
-        Assert.NotNull(cut.Find("[data-testid='menu-item-recheck-configuration']"));
         Assert.NotNull(cut.Find("[data-testid='menu-item-calibrate-media']"));
     }
 
@@ -778,11 +719,10 @@ public class PrinterDashboardTests : BunitContext
         OpenActionsMenuAndClickItem(cut, "menu-item-factory-reset");
 
         Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled"));
-        Assert.True(cut.Find("[data-testid='menu-item-recheck-configuration']").HasAttribute("disabled"));
     }
 
     [Fact]
-    public async Task WhileWebInterfaceToggleIsApplying_FromConfigureArrival_ConfigureAndRecheckAreDisabled()
+    public async Task WhileWebInterfaceToggleIsApplying_FromConfigureArrival_ConfigureButtonIsDisabled()
     {
         await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED", "192.168.1.50"));
         var setEnabledTcs = new TaskCompletionSource();
@@ -792,19 +732,15 @@ public class PrinterDashboardTests : BunitContext
 
         cut.Find("[data-testid='web-interface-toggle-button']").Click();
 
-        cut.WaitForAssertion(() =>
-        {
-            Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled"));
-            Assert.True(cut.Find("[data-testid='menu-item-recheck-configuration']").HasAttribute("disabled"));
-        });
+        cut.WaitForAssertion(() => Assert.True(cut.Find("[data-testid='configure-printer-button']").HasAttribute("disabled")));
         setEnabledTcs.SetResult();
     }
 
     [Fact]
     public async Task ArrivedFromSuccessfulConfigure_AutomaticallyFetchesPrinterStatusOnce()
     {
-        // The merged read now runs automatically as soon as the dashboard shows (via
-        // OnInitializedAsync), rather than only after a manual "Recheck Configuration" click.
+        // The merged read runs automatically as soon as the dashboard shows (via OnInitializedAsync) -
+        // there's no manual re-check trigger at all anymore.
         await RunWorkflowToCompletionAsync(ConnectionTestResult.Succeeded("CONNECTED", "192.168.1.50"));
         StubStatus(configurationValues: [new PrinterConfigurationValue("device.friendly_name", "Warehouse-01")]);
 

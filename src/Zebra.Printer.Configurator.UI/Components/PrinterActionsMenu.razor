@@ -1,12 +1,14 @@
 @* Material 3 overflow menu (md-menu, anchored off an md-icon-button "more actions" trigger) consolidating
-   the less-frequently-used per-printer actions - Recheck Configuration, Push Bag Tag Templates,
-   Calibrate Media, Factory Reset - so PrinterDashboard.razor's button row doesn't keep growing every
-   time a new maintenance action is added (it'd reached ~7 buttons across the two pages this replaced
-   before this). Configure/Reconfigure Printer and the Web Interface toggle stay directly visible
-   outside this menu - see WebInterfaceTogglePanel's own doc comment for why the toggle specifically
-   isn't here. "Abandon this printer" is PrinterDashboard's own standalone "Disconnect Printer" button,
-   not a menu item here - this menu used to also carry a Pairing.razor-only "Start Over" item for that
-   before the dashboard consolidation gave every arrival path the same button instead.
+   the less-frequently-used per-printer actions - Push Bag Tag Templates, Calibrate Media, Factory
+   Reset - so PrinterDashboard.razor's button row doesn't keep growing every time a new maintenance
+   action is added (it'd reached ~7 buttons across the two pages this replaced before this).
+   Configure/Reconfigure Printer and the Web Interface toggle stay directly visible outside this menu -
+   see WebInterfaceTogglePanel's own doc comment for why the toggle specifically isn't here. "Abandon
+   this printer" is PrinterDashboard's own standalone "Disconnect Printer" button, not a menu item
+   here - this menu used to also carry a Pairing.razor-only "Start Over" item for that before the
+   dashboard consolidation gave every arrival path the same button instead. Recheck Configuration was
+   also removed - PrinterDashboard's own "About Printer" link already re-reads and shows the printer's
+   current status, making a separate recheck action here redundant.
 
    FactoryResetPanel/BagTagTemplatesPanel/CalibrateMediaButton no longer render their own trigger
    buttons - the host page still renders those three components directly (elsewhere in its markup, so
@@ -36,9 +38,6 @@
        visible viewport, making the lower items unreachable with no way to scroll to them. "fixed"
        positions relative to the viewport instead, escaping that clipping entirely. *@
     <md-menu anchor="@AnchorId" open="@(_open)" positioning="fixed" data-testid="printer-actions-menu">
-        <md-menu-item data-testid="menu-item-recheck-configuration" disabled="@RecheckConfigurationDisabled" @onclick="() => Select(OnRecheckConfiguration)">
-            <div slot="headline">Recheck Configuration</div>
-        </md-menu-item>
         <md-menu-item data-testid="menu-item-push-bag-tag-templates" @onclick="() => Select(OnPushBagTagTemplates)">
             <div slot="headline">Push Bag Tag Templates</div>
         </md-menu-item>
@@ -59,12 +58,6 @@
     /// </summary>
     [Parameter, EditorRequired]
     public string AnchorId { get; set; } = null!;
-
-    [Parameter, EditorRequired]
-    public EventCallback OnRecheckConfiguration { get; set; }
-
-    [Parameter]
-    public bool RecheckConfigurationDisabled { get; set; }
 
     [Parameter, EditorRequired]
     public EventCallback OnPushBagTagTemplates { get; set; }

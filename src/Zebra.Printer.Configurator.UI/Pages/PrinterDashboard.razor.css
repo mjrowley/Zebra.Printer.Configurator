@@ -1,3 +1,15 @@
+/* Keeps the "Web Interface is currently enabled/disabled" line and its Enable/Disable toggle button
+   on the same row instead of the button sitting apart in .button-row below. flex-wrap so a long
+   status line (or the panel's own Loading/Applying/Failed text, which renders here too) still wraps
+   sanely on a narrow screen rather than overflowing. */
+.web-interface-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+}
+
 /* Bottom-pinned, full-width destructive action - deliberately outside .button-row (which packs
    buttons at their natural width) so this reads as a single, separated "leave this screen" action
    the way the reference dashboard's own Disconnect button does. */
