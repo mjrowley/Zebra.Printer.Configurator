@@ -72,7 +72,13 @@
     gap: 0.5rem;
 }
 
-.function-section ::deep .button-row > .btn {
+/* Was ".button-row > .btn" (Bootstrap's own button class) - retargeted to the md-*-button elements
+   that replaced every Bootstrap button in this app, so the "natural width, never wrap-compressed"
+   behavior the comment above describes keeps applying now that nothing renders with .btn anymore. */
+.function-section ::deep .button-row > md-filled-button,
+.function-section ::deep .button-row > md-outlined-button,
+.function-section ::deep .button-row > md-filled-tonal-button,
+.function-section ::deep .button-row > md-text-button {
     flex: 0 0 auto;
     white-space: nowrap;
 }
