@@ -750,6 +750,51 @@ public class PrinterDashboardTests : BunitContext
         _ = _statusReader.Received(1).ReadStatusAsync(Device, Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
+    // Covers the case that used to force a second full Bluetooth reconnect + WLAN/status read every
+    // time - e.g. Configure.razor's Back button bouncing back through Pairing.razor's restore path to
+    // here for the same, already-loaded device. A pre-populated Session.CachedDashboardStatus (as
+    // ApplyPrinterStatus would have left behind from an earlier successful load) should be reused
+    // outright instead of re-invoking either reader.
+    [Fact]
+    public void ArrivedFromPairing_WithCachedDashboardStatus_ReusesItWithoutRereading()
+    {
+        var cachedStatus = new PrinterStatus
+        {
+            VersionResult = new PrinterVersionCheckResult { Outcome = PrinterVersionOutcome.UpToDate },
+            WebInterfaceState = new WebInterfaceState { HttpsEnabled = false, HttpEnabled = false },
+            ConfigurationValues = [new PrinterConfigurationValue("device.friendly_name", "Cached-Printer")],
+        };
+        Services.AddSingleton(new PairAndConfigureWorkflow(
+            Substitute.For<IPrinterConnectionSessionFactory>(),
+            Substitute.For<IPrinterConfigurationService>(),
+            Substitute.For<IPdfDirectService>(),
+            Substitute.For<IPrinterRestartService>(),
+            Substitute.For<IPrinterConnectivityTestService>()));
+        Services.AddSingleton(new PairingSession
+        {
+            Device = Device,
+            CachedDashboardStatus = new PairingSession.DashboardStatusSnapshot("10.0.0.5", cachedStatus),
+        });
+
+        var cut = RenderDashboard();
+
+        Assert.NotNull(cut.Find("[data-testid='discovered-device']"));
+        Assert.Contains("Cached-Printer", cut.Find("[data-testid='check-configuration-results']").TextContent);
+        Assert.Contains("disabled", cut.Find("[data-testid='web-interface-status']").TextContent);
+        _ = _configurationReader.DidNotReceive().ReadConfigurationAsync(Arg.Any<PrinterDevice>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        _ = _statusReader.DidNotReceive().ReadStatusAsync(Arg.Any<PrinterDevice>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void ArrivedFromPairing_WithoutCachedDashboardStatus_ReadsConfigurationAndStatusOnce()
+    {
+        var cut = RenderArrivedFromPairing();
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='web-interface-status']"));
+        _ = _configurationReader.Received(1).ReadConfigurationAsync(Device, Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        _ = _statusReader.Received(1).ReadStatusAsync(Device, Arg.Any<bool>(), Arg.Any<CancellationToken>());
+    }
+
     private sealed class FakePrinterFactoryResetService : IPrinterFactoryResetService
     {
         public bool ShouldThrow { get; set; }

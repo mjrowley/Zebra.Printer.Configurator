@@ -177,6 +177,22 @@
         }
 
         ConnectivityMonitor.SetBluetooth(ConnectionIndicatorState.Connected);
+
+        if (Session.CachedDashboardStatus is { } cached)
+        {
+            // Already loaded once this session (most commonly: Configure.razor's Back button
+            // bouncing back through Pairing.razor's restore path to here) - reuse it instead of
+            // forcing a second full Bluetooth reconnect + WLAN/status read. ConnectivityMonitor/
+            // WifiMonitor are both app-lifetime singletons that keep running/updating in the
+            // background regardless of which page is mounted, so their indicator state is already
+            // current without needing to touch them here.
+            _wifiIpAddress = cached.WifiIpAddress;
+            ApplyPrinterStatus(cached.Status);
+            _statusLoading = false;
+            _ready = true;
+            return;
+        }
+
         // Deliberately no StateHasChanged() here, and _ready stays false, until
         // CheckWifiConnectivityAsync (which awaits real I/O and so yields at least one intermediate
         // render regardless) has actually finished - PrinterVersionAlert must not mount for the first
@@ -239,6 +255,17 @@
         }
     }
 
+    // Populates PrinterVersionAlert/WebInterfaceTogglePanel/CheckConfigurationResults' backing fields
+    // from a merged status read, and caches it on the session so a later remount of this page (see
+    // OnInitializedAsync's Session.CachedDashboardStatus check above) doesn't need to re-read it.
+    private void ApplyPrinterStatus(PrinterStatus status)
+    {
+        _printerStatus = status;
+        _webInterfaceState = status.WebInterfaceState;
+        _checkConfigState.SetResults(status.ConfigurationValues);
+        Session.CachedDashboardStatus = new PairingSession.DashboardStatusSnapshot(_wifiIpAddress, status);
+    }
+
     // Reads firmware version + web interface state + the full configuration list in one connection
     // (see PrinterStatus's own doc comment) - populates PrinterVersionAlert/WebInterfaceTogglePanel
     // via their VersionResult/InitialState + StatusLoading parameters, and CheckConfigurationResults
@@ -266,9 +293,7 @@
                 return;
             }
 
-            _printerStatus = status;
-            _webInterfaceState = status.WebInterfaceState;
-            _checkConfigState.SetResults(_printerStatus.ConfigurationValues);
+            ApplyPrinterStatus(status);
         }
         catch (Exception ex)
         {
@@ -350,7 +375,18 @@
     // itself most recently confirmed (Retry()/CloseComplete's self-heal reads) - without this, that
     // line stays frozen at whatever the last merged read said even after the panel's own
     // toggle-and-restart flow successfully changes and re-confirms the real state.
-    private void OnWebInterfaceStateChanged(WebInterfaceState? state) => _webInterfaceState = state;
+    // Also refreshes the cached snapshot (not just the live field) - otherwise a toggle followed by
+    // Configure.razor's Back button would restore the pre-toggle web interface state from a now-stale
+    // cache instead of what the panel just itself confirmed.
+    private void OnWebInterfaceStateChanged(WebInterfaceState? state)
+    {
+        _webInterfaceState = state;
+        if (state is not null && _printerStatus is not null)
+        {
+            _printerStatus = _printerStatus with { WebInterfaceState = state };
+            Session.CachedDashboardStatus = new PairingSession.DashboardStatusSnapshot(_wifiIpAddress, _printerStatus);
+        }
+    }
 
     // The one "abandon this printer" affordance for this page - replaces Pairing.razor's old
     // Ready-state "Start Over" menu item and lines up with Result.razor's old Retry(), both of which
