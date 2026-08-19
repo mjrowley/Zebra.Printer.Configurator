@@ -41,12 +41,25 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
     // a second, entirely separate OS pairing negotiation. Only applied after a bond this call itself
     // just completed - the "already paired" fast path above returns before any settling is needed.
     //
-    // Also doubles as the window EnsurePairedAsync waits before re-reading BondState to confirm the
-    // bond actually stuck (see there) - widened from 2s after an on-device repro showed the printer's
-    // dual-transport (BLE + Classic) negotiation flapping through BONDED/BONDING/NONE multiple times
-    // over as long as ~3.5s before settling, which a 2s window caught mid-flap and reported as a false
-    // failure even though the bond went on to end up BONDED moments later.
+    // Also doubles as the interval between each re-check EnsurePairedAsync makes to confirm the bond
+    // actually stuck (see PostBondSettlingWindow below) - widened from 2s after an on-device repro
+    // showed the printer's dual-transport (BLE + Classic) negotiation flapping through
+    // BONDED/BONDING/NONE multiple times over as long as ~3.5s before settling, which a 2s window
+    // caught mid-flap and reported as a false failure even though the bond went on to end up BONDED
+    // moments later.
     private static readonly TimeSpan PostBondSettlingDelay = TimeSpan.FromSeconds(5);
+
+    // Confirmed via adb logcat on two separate repros (2026-08-19, app v1.81): after the initial bond
+    // completes, Android's own Bluetooth stack can log `BluetoothRemoteDevices: keyMissingCallback:
+    // Initiating autonomous repairing` and silently restart LE-only pairing from scratch - the derived
+    // LE key from cross-transport key derivation doesn't always validate once GATT tries to use it.
+    // That renegotiation raises its own pairing confirmation, shown as a pull-down notification (not a
+    // blocking dialog - see this class's own doc comment) the user has to notice and tap, and the full
+    // round-trip (human reaction time included) was observed taking 6-7s - long enough that a single
+    // PostBondSettlingDelay check can land mid-repair and read a transient non-Bonded state, reporting
+    // "Pairing Failed" moments before the bond actually settles back to Bonded. Retrying the settling
+    // check across this whole window (not just once) lets that full renegotiation finish instead.
+    private static readonly TimeSpan PostBondSettlingWindow = TimeSpan.FromSeconds(20);
 
     /// <summary>
     /// The device address this call is currently trying to bond with, if any - checked by
@@ -132,17 +145,23 @@ public sealed class BluetoothPairingService(IBluetoothPermissionService bluetoot
 
             if (bonded)
             {
-                // Confirmed on-device (adb logcat during a repro): this printer's dual-mode (BR/EDR +
-                // LE) bonding can report Bonded via the Classic transport and then have Android fully
-                // tear the *entire* bond back down moments later when the LE side's own SSP
-                // authentication fails - ACL disconnected on both transports and the device's bond
-                // properties removed outright, not merely the LE side going stale. A single Bonded
-                // observation (from BondStateReceiver or the polling fallback below) isn't reliable
-                // evidence pairing actually stuck - only re-reading BondState directly after this
-                // settling delay is, since that failure showed up within ~100ms of the Bonded event,
-                // well inside this window.
-                await Task.Delay(PostBondSettlingDelay, cancellationToken);
-                bonded = device.BondState == Bond.Bonded;
+                // A single Bonded observation (from BondStateReceiver or the polling fallback above)
+                // isn't reliable evidence pairing actually stuck - this printer's dual-mode (BR/EDR +
+                // LE) bonding can report Bonded and then have the LE side renegotiate or fail moments
+                // later (see PostBondSettlingWindow above for the two known ways that shows up: a
+                // same-device autonomous LE repair, or Android tearing the *entire* bond back down).
+                // Each individual re-check still waits a full PostBondSettlingDelay first - long
+                // enough that a reading of Bonded is real settling, not a mid-flap flicker - but a
+                // miss doesn't give up immediately; it retries until PostBondSettlingWindow elapses,
+                // since the printer can still go on to bond successfully well after one such check.
+                var settlingDeadline = DateTime.UtcNow + PostBondSettlingWindow;
+                do
+                {
+                    await Task.Delay(PostBondSettlingDelay, cancellationToken);
+                    bonded = device.BondState == Bond.Bonded;
+                }
+                while (!bonded && DateTime.UtcNow < settlingDeadline);
+
                 if (!bonded)
                 {
                     appLog.Log(
