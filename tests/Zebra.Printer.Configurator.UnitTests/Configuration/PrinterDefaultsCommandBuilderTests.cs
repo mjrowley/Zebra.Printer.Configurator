@@ -27,7 +27,7 @@ public class PrinterDefaultsCommandBuilderTests
         Assert.Contains(("ezpl.print_method", "direct thermal"), commands);
         Assert.Contains(("ezpl.print_width", "799"), commands);
         Assert.Contains(("ezpl.label_length_max", "7"), commands);
-        Assert.Contains(("zpl.left_position", "-16"), commands);
+        Assert.Contains(("zpl.left_position", "-10"), commands);
         Assert.Contains(("apl.settings", "scale-to-fit"), commands);
     }
 
@@ -55,7 +55,7 @@ public class PrinterDefaultsCommandBuilderTests
 
         // Fixed defaults
         Assert.Equal("799", expected["ezpl.print_width"]);
-        Assert.Equal("-16", expected["zpl.left_position"]);
+        Assert.Equal("-10", expected["zpl.left_position"]);
         Assert.Equal("scale-to-fit", expected["apl.settings"]);
         Assert.Equal(Configuration.PrinterName, expected["device.friendly_name"]);
 
@@ -86,7 +86,7 @@ public class PrinterDefaultsCommandBuilderTests
         var expected = PrinterDefaultsCommandBuilder.BuildFixedDiagnosticDefaults();
 
         Assert.Equal("799", expected["ezpl.print_width"]);
-        Assert.Equal("-16", expected["zpl.left_position"]);
+        Assert.Equal("-10", expected["zpl.left_position"]);
         Assert.Equal("scale-to-fit", expected["apl.settings"]);
         Assert.Equal("tear off", expected["media.printmode"]);
         Assert.Equal(PrinterDefaultsCommandBuilder.PdfEnabledValue, expected["apl.enable"]);

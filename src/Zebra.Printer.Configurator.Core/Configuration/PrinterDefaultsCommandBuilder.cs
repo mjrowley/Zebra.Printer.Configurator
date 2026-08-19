@@ -21,14 +21,16 @@ public static class PrinterDefaultsCommandBuilder
     // area and clipping the left edge against the media guide.
     private const string PrintWidthDots = "799";
 
-    // Confirmed on-device against the 100mm label: -16 dots noticeably improves both print paths
-    // (bag tags via PrintStoredFormat, and PDF Direct labels once apl.settings is also set below) -
-    // without it, content sits hard against the media's left edge and clips. Unlike ^LH inside the
-    // bag tag templates (which only ever affected that stored format and, via the ^JUS that used to
-    // sit next to it, kept re-saving itself over this value - see the templates' own history), this
-    // is the device-level setting and applies to every print path uniformly. Key is zpl.left_position
-    // (not ezpl.left_position - a previous version of this file had that wrong).
-    private const string LeftPositionDots = "-16";
+    // -16 dots was the original on-device-confirmed value (see git history) for the 100mm label -
+    // without some negative offset, content sits hard against the media's left edge and clips.
+    // Adjusted to -10 dots per a follow-up request; not yet independently re-confirmed on-device at
+    // this new value the way -16 was. Unlike ^LH inside the bag tag templates (which only ever
+    // affected that stored format and, via the ^JUS that used to sit next to it, kept re-saving
+    // itself over this value - see the templates' own history), this is the device-level setting and
+    // applies to every print path uniformly (bag tags via PrintStoredFormat, and PDF Direct labels
+    // once apl.settings is also set below). Key is zpl.left_position (not ezpl.left_position - a
+    // previous version of this file had that wrong).
+    private const string LeftPositionDots = "-10";
 
     // PDF Direct (apl.enable "pdf") does not read the loaded media's actual size and scale the PDF
     // to fit it by default - confirmed on-device that without this, the PDF prints at its own native
