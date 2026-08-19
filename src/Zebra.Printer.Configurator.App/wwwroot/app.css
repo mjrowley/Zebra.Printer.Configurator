@@ -1,18 +1,48 @@
+/* --color-* here are aliases onto theme.css's --md-sys-color-* tokens (defined at :root there, so
+   already available here regardless of load order) rather than their own hardcoded hex values - every
+   existing --color-* consumer below (.status-card, .confirm-modal-box, etc.) picks up the Material
+   palette automatically from this one place instead of needing a per-selector rewrite.
+   --md-sys-color-error-container/-on-error-container are Material's own light-red-background/
+   on-that-background pair, a natural match for this app's pre-existing --color-danger-bg/-text roles. */
 :root {
-    --color-bg: #f2f2f7;
-    --color-surface: #ffffff;
-    --color-border: #e5e5ea;
-    --color-text: #1c1c1e;
-    --color-text-secondary: #6b6b70;
-    --color-primary: #1c75bc;
-    --color-danger: #d9534f;
-    --color-danger-bg: #f8d7da;
-    --color-danger-border: #f5c6cb;
-    --color-danger-text: #a94442;
-    /* Matches Bootstrap 5's $success, already used elsewhere in this app via .text-success. */
-    --color-success: #198754;
+    --color-bg: var(--md-sys-color-background);
+    --color-surface: var(--md-sys-color-surface);
+    --color-border: var(--md-sys-color-outline-variant);
+    --color-text: var(--md-sys-color-on-surface);
+    --color-text-secondary: var(--md-sys-color-on-surface-variant);
+    --color-primary: var(--md-sys-color-primary);
+    --color-danger: var(--md-sys-color-error);
+    --color-danger-bg: var(--md-sys-color-error-container);
+    --color-danger-border: var(--md-sys-color-error);
+    --color-danger-text: var(--md-sys-color-on-error-container);
+    --color-success: var(--md-sys-color-success);
     --radius-card: 14px;
     --radius-pill: 999px;
+}
+
+/* Bootstrap's text-success/-danger/-warning replacements, backed by the same Material/project tokens
+   as everywhere else instead of Bootstrap's own hardcoded palette. No --md-sys-color-warning role
+   exists in Material 3 either (same situation as "success") - tertiary is the closest semantic
+   Material role for an "attention, not quite an error" state, so it's reused here rather than
+   inventing a third project-defined token. */
+.status-text-success {
+    color: var(--md-sys-color-success);
+}
+
+.status-text-error {
+    color: var(--md-sys-color-error);
+}
+
+.status-text-warning {
+    color: var(--md-sys-color-tertiary, #7d5260);
+}
+
+/* Sizes md-circular-progress down to match the small inline spinners it replaces (Bootstrap's
+   spinner-border-sm) - md-circular-progress's own default size is meant for a standalone loading
+   indicator, not an icon-sized glyph sitting inline in a line of text. */
+.spinner-inline {
+    --md-circular-progress-size: 1rem;
+    vertical-align: text-bottom;
 }
 
 html, body {
